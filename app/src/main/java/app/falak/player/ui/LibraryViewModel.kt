@@ -1,4 +1,4 @@
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import android.app.Application
 import android.net.Uri
@@ -8,17 +8,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.novatv.player.data.Channel
-import com.novatv.player.data.Kind
-import com.novatv.player.data.Playlist
-import com.novatv.player.data.SeriesInfo
-import com.novatv.player.data.Settings
-import com.novatv.player.data.SourceType
-import com.novatv.player.data.XtreamApi
-import com.novatv.player.repo
+import app.falak.player.data.Channel
+import app.falak.player.data.Kind
+import app.falak.player.data.Playlist
+import app.falak.player.data.SeriesInfo
+import app.falak.player.data.Settings
+import app.falak.player.data.SourceType
+import app.falak.player.data.XtreamApi
+import app.falak.player.repo
+import app.falak.player.update.UpdateInfo
+import app.falak.player.update.Updater
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 enum class Screen { PLAYLISTS, LIBRARY, SERIES, GUIDE, SETTINGS }
@@ -66,6 +70,68 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var seriesError by mutableStateOf<String?>(null)
         private set
+
+    // ---- one-tap updates (GitHub build only) ----
+    var update by mutableStateOf<UpdateInfo?>(null)
+        private set
+    var updateProgress by mutableStateOf<Float?>(null)
+        private set
+    var updateMessage by mutableStateOf<String?>(null)
+    var updateChecking by mutableStateOf(false)
+        private set
+
+    fun checkForUpdates(manual: Boolean) {
+        if (!Updater.enabled || updateChecking) return
+        val prefs = getApplication<Application>().getSharedPreferences("updates", 0)
+        val now = System.currentTimeMillis()
+        if (!manual && now - prefs.getLong("lastCheck", 0) < 6 * 3_600_000L) return
+        updateChecking = true
+        viewModelScope.launch {
+            try {
+                val info = withContext(Dispatchers.IO) { Updater.check(repo.http) }
+                prefs.edit().putLong("lastCheck", now).apply()
+                update = info
+                if (manual && info == null) updateMessage = "You have the latest version."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (manual) updateMessage = "Couldn't check for updates: ${e.message}"
+            } finally {
+                updateChecking = false
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        if (updateProgress == null) update = null
+    }
+
+    fun installUpdate() {
+        val info = update ?: return
+        val ctx = getApplication<Application>()
+        if (!Updater.canInstall(ctx)) {
+            Updater.openInstallPermission(ctx)
+            updateMessage = "Allow Falak to install apps, then come back and tap Update again."
+            return
+        }
+        if (updateProgress != null) return
+        updateProgress = 0f
+        viewModelScope.launch {
+            try {
+                val apk = withContext(Dispatchers.IO) {
+                    Updater.download(ctx, repo.http, info) { p -> updateProgress = p }
+                }
+                Updater.install(ctx, apk)
+                update = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateMessage = "Update failed: ${e.message}"
+            } finally {
+                updateProgress = null
+            }
+        }
+    }
 
     private var loadJob: Job? = null
     private var seriesJob: Job? = null

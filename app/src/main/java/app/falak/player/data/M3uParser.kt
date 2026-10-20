@@ -1,4 +1,4 @@
-package com.novatv.player.data
+package app.falak.player.data
 
 import java.io.BufferedReader
 

@@ -8,15 +8,17 @@ plugins {
 }
 
 android {
-    namespace = "com.novatv.player"
+    namespace = "app.falak.player"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.novatv.player"
+        applicationId = "app.falak.player"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        // CI passes the GitHub run number, so every published build is a newer version.
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = "2.0"
+        buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
     }
 
     // Fixed signing key so each new build installs as an update over the previous one.
@@ -32,6 +34,20 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // "github" = sideloaded builds with one-tap updates; "play" = Google Play (no self-update allowed).
+    flavorDimensions += "store"
+    productFlavors {
+        create("github") {
+            dimension = "store"
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+        }
+        create("play") {
+            dimension = "store"
+            buildConfigField("boolean", "SELF_UPDATE", "false")
         }
     }
     compileOptions {

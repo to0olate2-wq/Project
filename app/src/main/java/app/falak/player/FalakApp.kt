@@ -1,12 +1,12 @@
-package com.novatv.player
+package app.falak.player
 
 import android.app.Application
 import android.content.Context
 import android.os.Build
-import com.novatv.player.data.Repository
+import app.falak.player.data.Repository
 import java.io.File
 
-class NovaApp : Application() {
+class FalakApp : Application() {
     lateinit var repo: Repository
         private set
 
@@ -18,7 +18,7 @@ class NovaApp : Application() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
-                val header = "Nova TV ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} " +
+                val header = "Falak ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} " +
                     "(SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}\n\n"
                 File(filesDir, Repository.CRASH_FILE).writeText(header + error.stackTraceToString().take(8000))
             } catch (t: Throwable) {
@@ -30,4 +30,4 @@ class NovaApp : Application() {
 }
 
 val Context.repo: Repository
-    get() = (applicationContext as NovaApp).repo
+    get() = (applicationContext as FalakApp).repo

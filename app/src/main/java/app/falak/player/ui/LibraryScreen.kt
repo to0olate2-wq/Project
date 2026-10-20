@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -67,14 +67,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.novatv.player.data.ADULT_GROUP
-import com.novatv.player.data.AppState
-import com.novatv.player.data.Channel
-import com.novatv.player.data.Epg
-import com.novatv.player.data.Kind
-import com.novatv.player.data.Program
-import com.novatv.player.data.Watch
-import com.novatv.player.data.progressKey
+import app.falak.player.data.ADULT_GROUP
+import app.falak.player.data.AppState
+import app.falak.player.data.Channel
+import app.falak.player.data.Epg
+import app.falak.player.data.Kind
+import app.falak.player.data.Program
+import app.falak.player.data.Watch
+import app.falak.player.data.progressKey
 import kotlinx.coroutines.delay
 
 @Composable

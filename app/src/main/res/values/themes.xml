@@ -1,10 +1,10 @@
 <resources>
-    <style name="Theme.NovaTV" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Falak" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorAccent">@color/accent</item>
     </style>
 
-    <style name="Theme.NovaTV.Player">
+    <style name="Theme.Falak.Player">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowFullscreen">true</item>
     </style>

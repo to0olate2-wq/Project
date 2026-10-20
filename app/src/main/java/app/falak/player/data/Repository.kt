@@ -1,4 +1,4 @@
-package com.novatv.player.data
+package app.falak.player.data
 
 import android.content.Context
 import android.net.Uri
@@ -40,7 +40,7 @@ class Repository(private val context: Context) {
     @Volatile var playQueue: List<Channel> = emptyList()
     @Volatile var currentPlaylist: Playlist? = null
 
-    /** Returns (and clears) the crash saved by NovaApp on the previous run, if any. */
+    /** Returns (and clears) the crash saved by FalakApp on the previous run, if any. */
     fun takeCrashReport(): String? {
         val f = File(context.filesDir, CRASH_FILE)
         if (!f.exists()) return null

@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -47,6 +47,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,10 +70,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.novatv.player.data.AppState
-import com.novatv.player.data.Channel
-import com.novatv.player.data.Playlist
-import com.novatv.player.data.SourceType
+import app.falak.player.data.AppState
+import app.falak.player.data.Channel
+import app.falak.player.data.Playlist
+import app.falak.player.data.SourceType
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -81,7 +83,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            NovaTheme {
+            FalakTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val state by vm.state.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -94,6 +96,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
+                    UpdateDialogs(vm)
+                    LaunchedEffect(Unit) { vm.checkForUpdates(manual = false) }
                 }
             }
         }
@@ -107,11 +111,49 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun UpdateDialogs(vm: LibraryViewModel) {
+    vm.update?.let { info ->
+        val progress = vm.updateProgress
+        AlertDialog(
+            onDismissRequest = { vm.dismissUpdate() },
+            title = { Text("Update available") },
+            text = {
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    Text(info.title, style = MaterialTheme.typography.titleMedium)
+                    if (info.notes.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(info.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (progress != null) {
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        Text("Downloading… ${(progress * 100).toInt()}%", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = progress == null, onClick = { vm.installUpdate() }) { Text("Update now") }
+            },
+            dismissButton = {
+                TextButton(enabled = progress == null, onClick = { vm.dismissUpdate() }) { Text("Later") }
+            },
+        )
+    }
+    vm.updateMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { vm.updateMessage = null },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { vm.updateMessage = null }) { Text("OK") } },
+        )
+    }
+}
+
+@Composable
 private fun CrashDialog(report: String, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Nova TV stopped last time") },
+        title = { Text("Falak stopped last time") },
         text = {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Text(
@@ -141,7 +183,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Nova TV",
+                "Falak",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),

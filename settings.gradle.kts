@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NovaTV"
+rootProject.name = "Falak"
 include(":app")

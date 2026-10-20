@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A1B7E"/>
+      <stop offset="0.55" stop-color="#3B2AA8"/>
+      <stop offset="1" stop-color="#0C7A8C"/>
+    </linearGradient>
+    <linearGradient id="tri" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCD5FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <!-- back half of the orbit -->
+  <g transform="rotate(-28 54 54)">
+    <path d="M24,54 A30,11 0 0,1 84,54" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="3.6" stroke-linecap="round"/>
+  </g>
+  <!-- play button -->
+  <path d="M47,40.5 L68.5,54 L47,67.5 Z" fill="url(#tri)" stroke="url(#tri)" stroke-width="5" stroke-linejoin="round"/>
+  <!-- front half of the orbit, with a gap where it crosses the play button -->
+  <g transform="rotate(-28 54 54)">
+    <path d="M24,54 A30,11 0 0,0 84,54" fill="none" stroke="#33229A" stroke-width="7.5" stroke-linecap="round"/>
+    <path d="M24,54 A30,11 0 0,0 84,54" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+  </g>
+  <!-- planet -->
+  <circle cx="80.7" cy="44.1" r="4.4" fill="#FFC857"/>
+</svg>

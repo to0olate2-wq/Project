@@ -8,12 +8,12 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
-        android:name=".NovaApp"
+        android:name=".FalakApp"
         android:label="@string/app_name"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:banner="@drawable/tv_banner"
-        android:theme="@style/Theme.NovaTV"
+        android:theme="@style/Theme.Falak"
         android:usesCleartextTraffic="true"
         android:largeHeap="true"
         android:supportsRtl="true">
@@ -37,6 +37,6 @@
             android:resizeableActivity="true"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation"
-            android:theme="@style/Theme.NovaTV.Player" />
+            android:theme="@style/Theme.Falak.Player" />
     </application>
 </manifest>

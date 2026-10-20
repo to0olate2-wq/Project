@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import app.falak.player.update.Updater
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -44,8 +46,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.novatv.player.BuildConfig
-import com.novatv.player.data.AppState
+import app.falak.player.BuildConfig
+import app.falak.player.data.AppState
 
 @Composable
 fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
@@ -103,6 +105,34 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        item {
+            LanguageRow("Preferred audio language", "When a channel or video has several audio tracks", s.audioLang) { code ->
+                vm.updateSettings { it.copy(audioLang = code) }
+            }
+        }
+        item {
+            SwitchRow("Show subtitles automatically", "When a stream includes subtitles or closed captions", s.subtitlesOn) {
+                vm.updateSettings { it.copy(subtitlesOn = !it.subtitlesOn) }
+            }
+        }
+        if (s.subtitlesOn) {
+            item {
+                LanguageRow("Subtitle language", null, s.subtitleLang) { code ->
+                    vm.updateSettings { it.copy(subtitleLang = code) }
+                }
+            }
+        }
+
+        if (Updater.enabled) {
+            item { SectionTitle("Updates") }
+            item {
+                ClickRow(
+                    title = if (vm.updateChecking) "Checking…" else "Check for updates",
+                    subtitle = "Falak ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                ) { vm.checkForUpdates(manual = true) }
+            }
+        }
+
         item { SectionTitle("General") }
         item {
             SwitchRow("Open last playlist on start", null, s.openLast) {
@@ -140,7 +170,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item { SectionTitle("About") }
         item {
             Text(
-                "Nova TV ${BuildConfig.VERSION_NAME}",
+                "Falak ${BuildConfig.VERSION_NAME}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -184,6 +214,28 @@ private fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
     )
+}
+
+private val LANGUAGES = listOf(
+    "" to "Default", "ar" to "Arabic", "en" to "English", "fr" to "French", "hi" to "Hindi",
+    "ur" to "Urdu", "es" to "Spanish", "tr" to "Turkish", "de" to "German", "it" to "Italian",
+    "pt" to "Portuguese", "ru" to "Russian", "fa" to "Persian", "ml" to "Malayalam", "ta" to "Tamil",
+)
+
+@Composable
+private fun LanguageRow(title: String, subtitle: String?, selected: String, onSelect: (String) -> Unit) {
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(6.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(LANGUAGES, key = { it.first }) { (code, name) ->
+                FilterChip(selected = selected == code, onClick = { onSelect(code) }, label = { Text(name) })
+            }
+        }
+    }
 }
 
 @Composable

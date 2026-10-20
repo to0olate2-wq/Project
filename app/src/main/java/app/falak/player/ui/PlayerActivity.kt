@@ -1,4 +1,4 @@
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -22,6 +22,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,22 +39,27 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
-import com.novatv.player.data.Channel
-import com.novatv.player.data.Epg
-import com.novatv.player.data.Kind
-import com.novatv.player.data.Repository
-import com.novatv.player.data.progressKey
-import com.novatv.player.repo
+import app.falak.player.data.Channel
+import app.falak.player.data.Epg
+import app.falak.player.data.Kind
+import app.falak.player.data.Repository
+import app.falak.player.data.progressKey
+import app.falak.player.repo
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class PlayerActivity : ComponentActivity() {
@@ -66,6 +72,12 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var bannerView: TextView
     private lateinit var messageView: TextView
     private lateinit var aspectButton: TextView
+    private lateinit var audioButton: TextView
+    private lateinit var ccButton: TextView
+    private lateinit var toolbar: LinearLayout
+    private val trackNames by lazy { DefaultTrackNameProvider(resources) }
+    private var autoSubtitlesDone = false
+    private var bannerFor: Channel? = null
     private var player: ExoPlayer? = null
 
     private var queue: List<Channel> = emptyList()
@@ -142,29 +154,27 @@ class PlayerActivity : ComponentActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
 
-        // Picture-size button, shown together with the player controls.
-        aspectButton = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            text = "⛶  ${aspectNames[aspect]}"
-            background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(0x99000000.toInt())
-            }
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            isFocusable = true
-            isClickable = true
-            setOnClickListener { cycleAspect() }
+        // Audio / Subtitles / Picture-size buttons, shown together with the player controls.
+        audioButton = pill("🔊  Audio") { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
+        ccButton = pill("CC  Subtitles") { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
+        aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
+        toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
+            val gap = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { marginEnd = dp(8) }
+            addView(audioButton, gap)
+            addView(ccButton, LinearLayout.LayoutParams(gap))
+            addView(aspectButton)
         }
         root.addView(
-            aspectButton,
+            toolbar,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
                 .apply { setMargins(dp(20), dp(20), dp(20), dp(20)) },
         )
         playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
-                aspectButton.visibility = if (inPip) View.GONE else visibility
+                toolbar.visibility = if (inPip) View.GONE else visibility
             },
         )
 
@@ -227,6 +237,15 @@ class PlayerActivity : ComponentActivity() {
             )
         }
         val exo = builder.build()
+        // Language preferences from Settings.
+        val s = repo.state.value.settings
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon().apply {
+            if (s.audioLang.isNotEmpty()) setPreferredAudioLanguage(s.audioLang)
+            if (s.subtitlesOn) {
+                setPreferredTextLanguage(s.subtitleLang.ifEmpty { null })
+                setSelectUndeterminedTextLanguage(true)
+            }
+        }.build()
         exo.addListener(listener)
         exo.playWhenReady = true
         player = exo
@@ -271,7 +290,18 @@ class PlayerActivity : ComponentActivity() {
             url.contains("m3u8", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
             url.contains(".mpd", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
-        val source = DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(itemBuilder.build())
+        val item = itemBuilder.build()
+        val source = if (url.contains("m3u8", ignoreCase = true)) {
+            // Expose closed captions (CEA-608) carried inside HLS video even when the playlist doesn't declare them.
+            HlsMediaSource.Factory(dataSource)
+                .setExtractorFactory(
+                    DefaultHlsExtractorFactory(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES, true),
+                )
+                .createMediaSource(item)
+        } else {
+            DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(item)
+        }
+        autoSubtitlesDone = false
 
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
@@ -341,6 +371,12 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        override fun onTracksChanged(tracks: Tracks) {
+            updateTrackButtons()
+            maybeAutoSubtitles()
+            if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
+        }
+
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 runCatching { setPictureInPictureParams(pipParams()) }
@@ -391,6 +427,8 @@ class PlayerActivity : ComponentActivity() {
                 }
                 KeyEvent.KEYCODE_BACK -> if (controlsShown) { playerView.hideController(); return true }
                 KeyEvent.KEYCODE_MENU -> { cycleAspect(); return true }
+                KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK -> { showTrackDialog(C.TRACK_TYPE_AUDIO); return true }
+                KeyEvent.KEYCODE_CAPTIONS -> { showTrackDialog(C.TRACK_TYPE_TEXT); return true }
             }
         }
         if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
@@ -429,7 +467,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.useController = !isInPictureInPictureMode
         if (isInPictureInPictureMode) {
             bannerView.visibility = View.GONE
-            aspectButton.visibility = View.GONE
+            toolbar.visibility = View.GONE
             hideMessage()
         } else if (lifecycle.currentState == Lifecycle.State.CREATED) {
             finish()
@@ -461,8 +499,127 @@ class PlayerActivity : ComponentActivity() {
 
     // ---- overlays ----
 
+    // ---- audio & subtitle tracks ----
+
+    private class TrackOption(val label: String, val selected: Boolean, val select: () -> Unit)
+
+    private fun trackOptions(type: Int): List<TrackOption> {
+        val p = player ?: return emptyList()
+        val out = ArrayList<TrackOption>()
+        if (type == C.TRACK_TYPE_TEXT) {
+            val anyOn = p.currentTracks.groups.any { it.type == type && it.isSelected }
+            out += TrackOption("Off", !anyOn) {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(type)
+                    .setTrackTypeDisabled(type, true)
+                    .build()
+            }
+        }
+        val seen = HashMap<String, Int>()
+        for (g in p.currentTracks.groups) {
+            if (g.type != type) continue
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val base = trackNames.getTrackName(g.getTrackFormat(i))
+                val n = (seen[base] ?: 0) + 1
+                seen[base] = n
+                val label = if (n > 1) "$base ($n)" else base
+                out += TrackOption(label, g.isTrackSelected(i)) {
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(type, false)
+                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                        .build()
+                }
+            }
+        }
+        return out
+    }
+
+    private fun countTracks(type: Int): Int {
+        val groups = player?.currentTracks?.groups ?: return 0
+        return groups.filter { it.type == type }.sumOf { g -> (0 until g.length).count { g.isTrackSupported(it) } }
+    }
+
+    private fun showTrackDialog(type: Int) {
+        val options = trackOptions(type)
+        val real = if (type == C.TRACK_TYPE_TEXT) options.size - 1 else options.size
+        if (real <= 0 || (type == C.TRACK_TYPE_AUDIO && real == 1)) {
+            val what = if (type == C.TRACK_TYPE_AUDIO) "Only one audio track" else "No subtitles"
+            Toast.makeText(this, "$what in this stream", Toast.LENGTH_SHORT).show()
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitles")
+            .setSingleChoiceItems(options.map { it.label }.toTypedArray(), options.indexOfFirst { it.selected }) { d, which ->
+                options[which].select()
+                d.dismiss()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun updateTrackButtons() {
+        val audio = countTracks(C.TRACK_TYPE_AUDIO)
+        val text = countTracks(C.TRACK_TYPE_TEXT)
+        audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
+        audioButton.text = "🔊  Audio ($audio)"
+        ccButton.visibility = if (text > 0) View.VISIBLE else View.GONE
+    }
+
+    /** With "Show subtitles automatically" on, turn on the first matching subtitle track. */
+    private fun maybeAutoSubtitles() {
+        val p = player ?: return
+        if (autoSubtitlesDone || !repo.state.value.settings.subtitlesOn) return
+        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (groups.isEmpty()) return
+        autoSubtitlesDone = true
+        if (groups.any { it.isSelected }) return
+        val lang = repo.state.value.settings.subtitleLang
+        val pick = groups.firstOrNull { g -> lang.isNotEmpty() && (0 until g.length).any { g.getTrackFormat(it).language?.startsWith(lang) == true } }
+            ?: groups.first()
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(TrackSelectionOverride(pick.mediaTrackGroup, 0))
+            .build()
+    }
+
+    /** e.g. "Audio: Arabic, English · Subtitles: 2" */
+    private fun trackSummary(): String {
+        val p = player ?: return ""
+        val audios = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { trackNames.getTrackName(g.getTrackFormat(it)) } }
+            .distinct()
+        val subs = countTracks(C.TRACK_TYPE_TEXT)
+        val parts = ArrayList<String>()
+        if (audios.size > 1) parts += "Audio: " + audios.take(4).joinToString(", ")
+        if (subs > 0) parts += "Subtitles: $subs"
+        return parts.joinToString("  ·  ")
+    }
+
+    private fun pill(label: String, onClick: () -> Unit): TextView = TextView(this).apply {
+        setTextColor(Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        text = label
+        background = GradientDrawable().apply {
+            cornerRadius = dp(18).toFloat()
+            setColor(0x99000000.toInt())
+        }
+        setPadding(dp(14), dp(8), dp(14), dp(8))
+        isFocusable = true
+        isClickable = true
+        setOnClickListener { onClick() }
+    }
+
     private fun showBanner(ch: Channel) {
         if (inPip) return
+        renderBanner(ch)
+        bannerView.visibility = View.VISIBLE
+        handler.removeCallbacks(hideBanner)
+        handler.postDelayed(hideBanner, 4500)
+    }
+
+    private fun renderBanner(ch: Channel) {
+        bannerFor = ch
         val now = System.currentTimeMillis()
         val programs = repo.epg.value[ch.epgKey]
         val current = Epg.current(programs, now)
@@ -478,11 +635,10 @@ class PlayerActivity : ComponentActivity() {
             text.append("\nNext  ${time(next.start)}   ${next.title}")
         }
         if (current == null && next == null) text.append("\n${ch.group}")
+        val tracks = trackSummary()
+        if (tracks.isNotEmpty()) text.append("\n$tracks")
 
         bannerView.text = text
-        bannerView.visibility = View.VISIBLE
-        handler.removeCallbacks(hideBanner)
-        handler.postDelayed(hideBanner, 4500)
     }
 
     private fun showMessage(text: String) {

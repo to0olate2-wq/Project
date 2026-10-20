@@ -1,4 +1,4 @@
-# Nova TV — IPTV player for Android phones and Android TV
+# Falak — media player for your own playlists (Android phones & Android TV)
 
 Stage 1 features
 - Add playlists by **M3U link**, **M3U file**, or **Xtream Codes login** (server, username, password)
@@ -21,16 +21,19 @@ No channels are included: you add your own provider's playlist.
 
 ## Build the APK
 
-### Option A — GitHub (no Android Studio needed)
+### Option A — Download the latest build (easiest)
+Open **Releases** → latest **Falak … (build N)** → download the `.apk`. Once installed, Falak updates itself: it offers new builds on launch (Settings → Check for updates).
+
+### Option A2 — Build it yourself on GitHub
 1. Create a new repository on GitHub and upload this whole folder (including `.github/`).
 2. Open the repo's **Actions** tab → the "Build APK" run starts on every push (about 5 minutes).
-3. Open the finished run → **Artifacts** → download `NovaTV-apk` (a zip containing `app-debug.apk`).
+3. Open the finished run → **Artifacts** → download `Falak-apk` (a zip containing the `.apk`).
 
 ### Option B — Android Studio on your Mac
 1. Install Android Studio from developer.android.com/studio.
 2. **File → Open** → select this `NovaTV` folder → wait for Gradle sync (first time downloads a few GB).
 3. **Build → Build App Bundle(s) / APK(s) → Build APK(s)**.
-4. The APK is at `app/build/outputs/apk/debug/app-debug.apk`.
+4. Pick the **githubDebug** variant (Build Variants panel). The APK is under `app/build/outputs/apk/github/debug/`.
 
 If sync complains about the Java version: **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** → pick a JDK 17 or 21.
 If Android Studio offers to upgrade the Android Gradle Plugin, you can accept or skip; both work.
@@ -46,3 +49,8 @@ If Android Studio offers to upgrade the Android Gradle Plugin, you can accept or
 
 ## Ideas for later
 Catch-up / timeshift, multi-screen, recordings, cloud backup of favorites.
+
+## Builds
+- **github** flavor: sideloaded APK with one-tap self-updates (published by CI as GitHub Releases).
+- **play** flavor: for Google Play — no self-update (Play doesn't allow it).
+- Branding source files (logo SVG, Play icon 512, feature graphic) are in `branding/`.

@@ -1,4 +1,4 @@
-package com.novatv.player.data
+package app.falak.player.data
 
 import android.util.JsonReader
 import android.util.JsonToken
@@ -63,6 +63,7 @@ class XtreamApi(
                 logo = o["stream_icon"].orEmpty(),
                 tvgId = o["epg_channel_id"].orEmpty(),
                 kind = Kind.LIVE,
+                added = o["added"]?.toLongOrNull() ?: 0L,
             )
         }
 
@@ -81,6 +82,8 @@ class XtreamApi(
                     url = "$vodPrefix/$sid.$ext",
                     logo = o["stream_icon"].orEmpty(),
                     kind = Kind.MOVIE,
+                    added = o["added"]?.toLongOrNull() ?: 0L,
+                    rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
                 )
             }
         } catch (e: IOException) {
@@ -101,6 +104,8 @@ class XtreamApi(
                     logo = o["cover"].orEmpty(),
                     kind = Kind.SERIES,
                     seriesId = sid,
+                    added = o["last_modified"]?.toLongOrNull() ?: 0L,
+                    rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
                 )
             }
         } catch (e: IOException) {

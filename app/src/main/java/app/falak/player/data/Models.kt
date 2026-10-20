@@ -1,4 +1,4 @@
-package com.novatv.player.data
+package app.falak.player.data
 
 import kotlinx.serialization.Serializable
 
@@ -37,6 +37,9 @@ data class Channel(
     val seriesId: String = "",
     /** Extra line shown under the name, e.g. "E3 · 45 min". */
     val info: String = "",
+    /** When the provider added it (epoch seconds, Xtream only); powers "Newly added". */
+    val added: Long = 0,
+    val rating: String = "",
 ) {
     val epgKey: String get() = tvgId.lowercase()
     val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
@@ -58,6 +61,11 @@ data class Settings(
     val bigBuffer: Boolean = false,
     val preferHls: Boolean = false,
     val openLast: Boolean = true,
+    /** ISO 639 code like "ar" or "en"; empty = what the stream prefers. */
+    val audioLang: String = "",
+    /** Show subtitles/closed captions automatically when a stream has them. */
+    val subtitlesOn: Boolean = false,
+    val subtitleLang: String = "",
     val pin: String = "",
     val lockAdult: Boolean = true,
     /** playlistId -> locked group names */

@@ -1,4 +1,4 @@
-package com.novatv.player.ui
+package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ScrollState
@@ -50,10 +50,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.novatv.player.data.AppState
-import com.novatv.player.data.Channel
-import com.novatv.player.data.Kind
-import com.novatv.player.data.Program
+import app.falak.player.data.AppState
+import app.falak.player.data.Channel
+import app.falak.player.data.Kind
+import app.falak.player.data.Program
 import kotlinx.coroutines.delay
 import java.util.Date
 
