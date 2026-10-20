@@ -11,6 +11,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
+import app.falak.player.data.DEFAULT_LIST
+import app.falak.player.data.GuideSuggestion
+import app.falak.player.data.suggestGuides
 import app.falak.player.data.Kind
 import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
@@ -248,12 +251,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadToken = token
         loadJob = viewModelScope.launch {
             try {
-                val data = repo.loadChannels(p, refresh)
-                index = withContext(Dispatchers.Default) { LibraryIndex.build(data.channels) }
-                channels = data.channels
-                providerEpg = data.epgUrl
-                serverTz = data.serverTz
+                // The saved copy shows at once; a fresh one is fetched only if it is missing or old.
+                val cached = if (refresh) null else repo.cachedChannels(p)
+                val data = cached ?: repo.loadChannels(p, refresh = true)
+                show(data)
+                if (loadToken === token) loading = false
                 loadGuide(force = refresh)
+                if (cached != null && isStale(cached.savedAt)) backgroundRefresh(p, token)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -265,6 +269,52 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 if (loadToken === token) loading = false
             }
         }
+    }
+
+    private suspend fun show(data: app.falak.player.data.PlaylistCache) {
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(data.channels) }
+        channels = data.channels
+        providerEpg = data.epgUrl
+        serverTz = data.serverTz
+        loadedAt = data.savedAt
+    }
+
+    /** When the open playlist was downloaded (epoch ms). */
+    var loadedAt by mutableStateOf(0L)
+        private set
+    /** A quiet refresh is running; the lists stay usable. */
+    var refreshing by mutableStateOf(false)
+        private set
+
+    private fun isStale(savedAt: Long): Boolean {
+        val hours = state.value.settings.autoRefreshHours
+        return hours > 0 && System.currentTimeMillis() - savedAt > hours * 3_600_000L
+    }
+
+    private suspend fun backgroundRefresh(p: Playlist, token: Any) {
+        refreshing = true
+        try {
+            val fresh = repo.loadChannels(p, refresh = true)
+            if (loadToken !== token || playlist?.id != p.id) return
+            show(fresh)
+            loadGuide(force = false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Keep the saved copy; we'll try again next time.
+        } catch (e: OutOfMemoryError) {
+            // same
+        } finally {
+            refreshing = false
+        }
+    }
+
+    /** Called when the app comes back to the front: refresh quietly if the playlist got old. */
+    fun refreshIfStale() {
+        val p = playlist ?: return
+        if (loading || refreshing || loadedAt == 0L || !isStale(loadedAt)) return
+        val token = loadToken
+        viewModelScope.launch { backgroundRefresh(p, token) }
     }
 
     /** Returns an error message, or null on success. */
@@ -428,6 +478,74 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
         return out
     }
+
+    // ---- the user's own lists ----
+
+    /** The list shown in Saved: [DEFAULT_LIST] or a list id. */
+    var savedList by mutableStateOf(DEFAULT_LIST)
+    /** Item whose "save to lists" sheet is open. */
+    var listSheetFor by mutableStateOf<Channel?>(null)
+
+    fun setInList(listId: String, ch: Channel, inList: Boolean) {
+        val p = playlist ?: return
+        repo.setInList(p.id, listId, ch.id, inList)
+    }
+
+    fun moveInList(listId: String, ch: Channel, delta: Int, toTop: Boolean = false) {
+        val p = playlist ?: return
+        repo.moveInList(p.id, listId, ch.id, delta, toTop)
+    }
+
+    fun createList(name: String, first: Channel?): String? {
+        val p = playlist ?: return null
+        return repo.createList(p.id, name, first?.id)
+    }
+
+    fun renameList(listId: String, name: String) {
+        playlist?.let { repo.renameList(it.id, listId, name) }
+    }
+
+    fun deleteList(listId: String) {
+        val p = playlist ?: return
+        repo.deleteList(p.id, listId)
+        if (savedList == listId) savedList = DEFAULT_LIST
+    }
+
+    fun moveList(listId: String, delta: Int) {
+        playlist?.let { repo.moveList(it.id, listId, delta) }
+    }
+
+    /** Star: one tap saves to Favourites; with lists of your own it opens the list sheet. */
+    fun onStar(ch: Channel) {
+        val p = playlist ?: return
+        if (state.value.favLists[p.id].isNullOrEmpty()) repo.toggleFavorite(p.id, ch.id) else listSheetFor = ch
+    }
+
+    // ---- fixing a channel's guide ----
+
+    /** Channel whose guide is being fixed by hand. */
+    var guideFixFor by mutableStateOf<Channel?>(null)
+
+    fun guideChoices(): List<app.falak.player.data.GuideChannel> = repo.guideChannels
+
+    /** guideId: a guide channel id, "" for no guide, null to go back to automatic. */
+    fun setGuideFor(ch: Channel, guideId: String?) {
+        val p = playlist ?: return
+        repo.setGuideOverride(p.id, ch.epgKey, guideId)
+        loadGuide(force = true)
+    }
+
+    fun guideOverrideFor(ch: Channel): String? = playlist?.let { state.value.settings.guideOverrides[it.id]?.get(ch.epgKey) }
+
+    /** Free guide sources that fit the countries in this playlist, best first. */
+    fun guideSuggestions(): List<GuideSuggestion> {
+        val p = playlist ?: return emptyList()
+        val key = index to p.extraEpg
+        suggestionCache?.let { if (it.first == key) return it.second }
+        return suggestGuides(index.live, p.extraEpg).also { suggestionCache = key to it }
+    }
+
+    private var suggestionCache: Pair<Any, List<GuideSuggestion>>? = null
 
     // ---- coming back from the player ----
 

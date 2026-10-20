@@ -80,6 +80,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
+import app.falak.player.data.DEFAULT_LIST
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
 import app.falak.player.data.Program
@@ -103,7 +104,13 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     val favIds = state.favorites[p.id].orEmpty()
     val recentIds = state.recents[p.id].orEmpty()
-    val favSet = remember(favIds) { favIds.toHashSet() }
+    val lists = state.favLists[p.id].orEmpty()
+    val savedList = vm.savedList.takeIf { id -> id == DEFAULT_LIST || lists.any { it.id == id } } ?: DEFAULT_LIST
+    val savedIds = if (savedList == DEFAULT_LIST) favIds else lists.firstOrNull { it.id == savedList }?.ids.orEmpty()
+    // The star lights up when an item is in any of your lists.
+    val favSet = remember(favIds, lists) { HashSet<String>(favIds).apply { lists.forEach { addAll(it.ids) } } }
+    var editList by remember { mutableStateOf<app.falak.player.data.FavList?>(null) }
+    var newList by remember { mutableStateOf(false) }
     val locked = rememberLockedGroups(vm, state)
     val hidden = remember(state.settings.hiddenGroups, p.id) { state.settings.hiddenGroups[p.id].orEmpty().toHashSet() }
     val excluded = remember(locked, hidden) { if (hidden.isEmpty()) locked else locked + hidden }
@@ -117,7 +124,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    val hasFav = favIds.isNotEmpty()
+    val hasFav = favIds.isNotEmpty() || lists.isNotEmpty()
     val hasRecent = recentIds.isNotEmpty()
     val sections = remember(index, hasFav, hasRecent) {
         Section.entries.filter { s ->
@@ -138,7 +145,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val sort = if (isVod) vm.sort else Sort.DEFAULT
     val base: List<Channel> = when (section) {
         Section.HOME -> index.all
-        Section.FAVORITES -> remember(favIds, index) { favIds.mapNotNull { index.byId[it] } }
+        Section.FAVORITES -> remember(savedIds, index) { savedIds.mapNotNull { index.byId[it] } }
         Section.RECENT -> remember(recentIds, index) { recentIds.mapNotNull { index.byId[it] } }
         else -> index.ofKind(kind!!)
     }
@@ -175,8 +182,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
     val listState = vm.listStateFor(section)
     val gridState = vm.gridStateFor(section)
-    LaunchedEffect(section, group, q, sort) {
-        val key = listOf(section, group, q, sort)
+    LaunchedEffect(section, group, q, sort, savedList) {
+        val key = listOf(section, group, q, sort, savedList)
         if (vm.lastListKey != null && vm.lastListKey != key) {
             listState.scrollToItem(0)
             gridState.scrollToItem(0)
@@ -271,7 +278,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             SearchField(vm.query, section.label) { vm.query = it }
         }
 
-        if (vm.loading && index.all.isNotEmpty()) {
+        if ((vm.loading || vm.refreshing) && index.all.isNotEmpty()) {
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
         }
         vm.error?.takeIf { index.all.isNotEmpty() }?.let {
@@ -319,12 +326,29 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                             sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
                                         }
                                     }
-                                    PosterGrid(list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem, Modifier.weight(1f).fillMaxWidth())
+                                    PosterGrid(
+                                        list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem,
+                                        { ch -> vm.listSheetFor = ch }, Modifier.weight(1f).fillMaxWidth(),
+                                    )
+                                }
+                                shown == Section.FAVORITES -> Column(m) {
+                                    if (noQuery) {
+                                        ListChips(lists, favIds.size, savedList, { vm.savedList = it }, { editList = it }) { newList = true }
+                                    }
+                                    ChannelList(
+                                        list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                        progress = state.progress, playlistId = p.id,
+                                        onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                        focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to save it here."
+                                        else "This list is empty. Long-press any channel, film or series and tick this list.",
+                                    )
                                 }
                                 else -> ChannelList(
                                     list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                     progress = state.progress, playlistId = p.id,
-                                    onOpen = openItem, onFav = { ch -> vm.toggleFavorite(ch) }, focusId = focusId, modifier = m,
+                                    onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                    focusId = focusId, modifier = m,
                                 )
                             }
                         }
@@ -343,6 +367,14 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     }
                 }
             }
+        }
+    }
+
+    editList?.let { l -> ListEditDialog(vm, l) { editList = null } }
+    if (newList) {
+        NewListDialog(onDismiss = { newList = false }) { name ->
+            vm.createList(name, null)?.let { vm.savedList = it }
+            newList = false
         }
     }
 
@@ -530,6 +562,7 @@ private fun PosterGrid(
     playlistId: String,
     focusId: String?,
     onOpen: (Channel) -> Unit,
+    onLongPress: (Channel) -> Unit,
     modifier: Modifier,
 ) {
     if (list.isEmpty()) {
@@ -545,7 +578,10 @@ private fun PosterGrid(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         gridItems(list, key = { it.id }) { ch ->
-            PosterCard(ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null, focusMe = ch.id == focusId)
+            PosterCard(
+                ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null,
+                focusMe = ch.id == focusId, onLongClick = { onLongPress(ch) },
+            )
         }
     }
 }
@@ -561,18 +597,22 @@ private fun ChannelList(
     playlistId: String,
     onOpen: (Channel) -> Unit,
     onFav: (Channel) -> Unit,
+    onLongPress: (Channel) -> Unit,
     focusId: String?,
     modifier: Modifier,
+    emptyText: String = "Nothing here yet",
 ) {
     if (list.isEmpty()) {
-        Box(modifier, contentAlignment = Alignment.Center) { Text("Nothing here yet", color = Muted) }
+        Box(modifier.padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+            Text(emptyText, color = Muted, textAlign = TextAlign.Center)
+        }
         return
     }
     LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, ch.id == focusId, Modifier.animateItem())
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier.animateItem())
             Rule()
         }
     }
@@ -580,6 +620,7 @@ private fun ChannelList(
 
 /** Editorial list row: number, logo, name, what's on now with time left, a quiet star. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ChannelRow(
     number: Int,
     ch: Channel,
@@ -589,6 +630,7 @@ private fun ChannelRow(
     now: Long,
     onClick: () -> Unit,
     onFav: () -> Unit,
+    onLongClick: () -> Unit,
     focusMe: Boolean,
     modifier: Modifier,
 ) {
@@ -608,7 +650,7 @@ private fun ChannelRow(
             .focusRequester(focus)
             .focusRing(shape)
             .clip(shape)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -688,7 +730,7 @@ private fun ChannelRow(
         IconButton(onClick = onFav) {
             Icon(
                 Icons.Filled.Star,
-                contentDescription = if (isFav) "Remove from saved" else "Save",
+                contentDescription = if (isFav) "In your lists" else "Save",
                 tint = if (isFav) Amber else Faint.copy(alpha = 0.45f),
                 modifier = Modifier.size(20.dp),
             )

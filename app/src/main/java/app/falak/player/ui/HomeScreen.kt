@@ -93,6 +93,14 @@ fun HomeContent(
     }
     val favLive = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) } }
     val favVod = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind != Kind.LIVE && ok(it) } }
+    // Your own lists get a shelf each (live channels and videos separately).
+    val myLists = remember(state.favLists, p.id, index, locked) {
+        state.favLists[p.id].orEmpty().map { l ->
+            val items = l.ids.mapNotNull { index.byId[it] }.filter(::ok)
+            Triple(l, items.filter { it.kind == Kind.LIVE }, items.filter { it.kind != Kind.LIVE })
+        }.filter { it.second.isNotEmpty() || it.third.isNotEmpty() }
+    }
+    val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }
     val recentLive = remember(recentIds, index, locked) {
         recentIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) }.take(20)
     }
@@ -147,48 +155,64 @@ fun HomeContent(
         }
         if (favLive.isNotEmpty()) {
             item(key = "favLive") {
-                LiveShelf("On now", favLive, epg, now, onPlay) { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }
+                LiveShelf("On now", favLive, epg, now, onPlay, onLongPress = sheet) {
+                    vm.savedList = app.falak.player.data.DEFAULT_LIST
+                    seeAll(Section.FAVORITES, null, Sort.DEFAULT)
+                }
             }
         }
         if (recentLive.isNotEmpty()) {
             item(key = "recentLive") {
-                LiveShelf("Recently watched", recentLive, epg, now, onPlay) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
+                LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
             }
         }
         if (newMovies.isNotEmpty()) {
             item(key = "newMovies") {
                 Shelf("New films", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
-                    items(newMovies, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(newMovies, ch) }) }
+                    items(newMovies, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(newMovies, ch) }, onLongClick = { sheet(ch) }) }
                 }
             }
         }
         if (newSeries.isNotEmpty()) {
             item(key = "newSeries") {
                 Shelf("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
-                    items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }) }
+                    items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }, onLongClick = { sheet(ch) }) }
                 }
             }
         }
         if (favVod.isNotEmpty()) {
             item(key = "favVod") {
                 Shelf("Your list", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
-                    items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }) }
+                    items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        items(myLists, key = { "list:" + it.first.id }) { (l, live, vod) ->
+            val open = { vm.section = Section.FAVORITES; vm.savedList = l.id }
+            Column {
+                if (live.isNotEmpty()) {
+                    LiveShelf(l.name, live.take(30), epg, now, { _, ch -> onPlay(live, ch) }, count = live.size, onLongPress = sheet) { open() }
+                }
+                if (vod.isNotEmpty()) {
+                    Shelf(if (live.isNotEmpty()) "${l.name} · films & series" else l.name, count = vod.size, onSeeAll = open) {
+                        items(vod.take(30), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(vod, ch) }, onLongClick = { sheet(ch) }) }
+                    }
                 }
             }
         }
         items(liveGroups, key = { "live:" + it.first }) { (group, list) ->
-            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, count = list.size) {
+            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, count = list.size, onLongPress = sheet) {
                 seeAll(Section.LIVE, group, Sort.DEFAULT)
             }
         }
         items(movieGroups, key = { "movies:" + it.first }) { (group, list) ->
             Shelf(group, count = list.size, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
-                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }) }
+                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
             }
         }
         items(seriesGroups, key = { "series:" + it.first }) { (group, list) ->
             Shelf(group, count = list.size, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
-                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(list, ch) }) }
+                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
             }
         }
     }
@@ -202,11 +226,15 @@ private fun LiveShelf(
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
     count: Int? = null,
+    onLongPress: ((Channel) -> Unit)? = null,
     onSeeAll: (() -> Unit)?,
 ) {
     Shelf(title, count = count, onSeeAll = onSeeAll) {
         items(list, key = { it.id }) { ch ->
-            ChannelCard(ch, Epg.current(epg[ch.epgKey], now), now, onClick = { onPlay(list, ch) })
+            ChannelCard(
+                ch, Epg.current(epg[ch.epgKey], now), now, onClick = { onPlay(list, ch) },
+                onLongClick = onLongPress?.let { f -> { f(ch) } },
+            )
         }
     }
 }

@@ -59,7 +59,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val ch = vm.details ?: return
     val info = vm.vodInfo
     val watched = state.progress[progressKey(p.id, ch.id)]
-    val isFav = ch.id in state.favorites[p.id].orEmpty()
+    val isFav = ch.id in state.favorites[p.id].orEmpty() || state.favLists[p.id].orEmpty().any { ch.id in it.ids }
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val playFocus = remember { FocusRequester() }
@@ -135,7 +135,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         }
                     }) { Text("Trailer") }
                 }
-                OutlinedButton(onClick = { vm.toggleFavorite(ch) }) {
+                OutlinedButton(onClick = { vm.onStar(ch) }) {
                     Icon(if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text(if (isFav) "In my list" else "My list")

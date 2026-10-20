@@ -2,6 +2,7 @@ package app.falak.player.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,7 @@ private fun EdgeProgress(fraction: Float, modifier: Modifier = Modifier) {
 
 /** Film / series poster with its title underneath. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun PosterCard(
     ch: Channel,
     watched: Watch?,
@@ -70,6 +72,7 @@ fun PosterCard(
     modifier: Modifier = Modifier,
     width: Dp? = 120.dp,
     focusMe: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
     val focus = remember { FocusRequester() }
@@ -88,7 +91,7 @@ fun PosterCard(
                 .cardFocus(shape)
                 .clip(shape)
                 .background(Ink3)
-                .clickable(onClick = onClick),
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         ) {
             if (ch.logo.isBlank()) {
                 Text(
@@ -139,12 +142,14 @@ fun PosterCard(
 
 /** Live channel tile: logo on ink, red LIVE mark, what's on and how far in. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun ChannelCard(
     ch: Channel,
     current: Program?,
     now: Long,
     onClick: () -> Unit,
     width: Dp = 200.dp,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
     Column(Modifier.width(width)) {
@@ -155,7 +160,7 @@ fun ChannelCard(
                 .cardFocus(shape)
                 .clip(shape)
                 .background(Brush.verticalGradient(listOf(Ink3, Ink2)))
-                .clickable(onClick = onClick),
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         ) {
             if (ch.logo.isBlank()) {
                 Text(

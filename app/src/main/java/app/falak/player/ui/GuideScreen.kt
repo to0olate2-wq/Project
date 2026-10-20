@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -194,6 +195,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                         now = now,
                         hScroll = hScroll,
                         onChannel = { onPlay(channels, ch) },
+                        onChannelLong = { vm.listSheetFor = ch },
                         onProgram = { prog ->
                             val live = now >= prog.start && now < prog.stop
                             if (live && !ch.hasCatchup) onPlay(channels, ch) else details = ch to prog
@@ -241,6 +243,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
 private fun xOf(time: Long, windowStart: Long): Dp = MinuteWidth * ((time - windowStart) / 60_000L).toInt()
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun GuideRow(
     ch: Channel,
     programs: List<Program>?,
@@ -250,6 +253,7 @@ private fun GuideRow(
     now: Long,
     hScroll: ScrollState,
     onChannel: () -> Unit,
+    onChannelLong: () -> Unit,
     onProgram: (Program) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -261,7 +265,7 @@ private fun GuideRow(
                 .fillMaxHeight()
                 .focusRing(cellShape)
                 .panel(cellShape, raised = true)
-                .clickable(onClick = onChannel)
+                .combinedClickable(onClick = onChannel, onLongClick = onChannelLong)
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

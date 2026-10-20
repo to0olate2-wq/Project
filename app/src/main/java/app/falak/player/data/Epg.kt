@@ -7,13 +7,24 @@ import java.io.InputStream
 import java.util.zip.GZIPInputStream
 
 /**
- * Links guide channels to playlist channels: first by tvg-id, then by cleaned-up name
- * ("AR: MBC 1 HD" ≈ "MBC1"), which fixes most "no guide" channels.
+ * Links guide channels to playlist channels.
+ *
+ * Every guide channel gets a score for every playlist channel it could belong to: a hand-picked
+ * guide beats a tvg-id match, which beats a name match; name matches from the same country beat
+ * those from another country ("FR: beIN Sports 1" must not get the Arabic beIN 1 schedule).
+ * Each playlist channel then takes programmes from its single best guide channel only, so two
+ * similar guide channels can never be mixed into one timeline.
  */
-class GuideMatcher(channels: List<Channel>) {
+class GuideMatcher(channels: List<Channel>, overrides: Map<String, String> = emptyMap()) {
     val keys: Set<String>
     private val byId = HashMap<String, MutableSet<String>>()
     private val byName = HashMap<String, MutableSet<String>>()
+    private val byLoose = HashMap<String, MutableSet<String>>()
+    private val countryOfKey = HashMap<String, String?>()
+    /** guide id (lowercase) -> keys the user pointed at it */
+    private val forced = HashMap<String, MutableSet<String>>()
+    /** Keys with a hand-picked guide (or "no guide"): automatic matching leaves them alone. */
+    private val pinned = HashSet<String>()
     /** How far back to keep programmes per key: longer for channels with replay. */
     val pastMs = HashMap<String, Long>()
 
@@ -26,33 +37,89 @@ class GuideMatcher(channels: List<Channel>) {
             if (ch.tvgId.isNotBlank()) byId.getOrPut(ch.tvgId.lowercase()) { HashSet() } += key
             val n = normName(ch.name)
             if (n.length >= 2) byName.getOrPut(n) { HashSet() } += key
+            val l = looseName(ch.name)
+            if (l.length >= 3) byLoose.getOrPut(l) { HashSet() } += key
+            if (key !in countryOfKey) countryOfKey[key] = countryOf(ch.name, ch.group)
             val past = if (ch.catchupDays > 0) ch.catchupDays.coerceAtMost(7) * 86_400_000L else 4 * 3_600_000L
             if (past > (pastMs[key] ?: 0L)) pastMs[key] = past
         }
         keys = all
+        for ((key, guideId) in overrides) {
+            if (key !in all) continue
+            pinned += key
+            if (guideId.isNotEmpty()) forced.getOrPut(guideId.lowercase()) { HashSet() } += key
+        }
     }
 
-    /** Playlist keys for a guide channel id and its display names. */
-    fun resolve(guideId: String, displayNames: List<String>): Set<String> {
-        byId[guideId.lowercase()]?.let { return it }
-        val out = HashSet<String>()
-        for (name in displayNames) byName[normName(name)]?.let { out += it }
-        if (out.isEmpty()) {
-            // ids like "MBC1.ae" or "bbc.one.uk"
-            byName[normName(guideId.substringBeforeLast('.'))]?.let { out += it }
-            byName[normName(guideId)]?.let { out += it }
+    /** Scores of the playlist keys a guide channel could feed (higher is better). */
+    fun candidates(guideId: String, displayNames: List<String>): Map<String, Int> {
+        val out = HashMap<String, Int>()
+        fun offer(key: String, score: Int) {
+            if (key in pinned) return
+            if (score > (out[key] ?: -1)) out[key] = score
         }
+        val gid = guideId.lowercase()
+        forced[gid]?.forEach { out[it] = SCORE_PICKED }
+        byId[gid]?.forEach { offer(it, SCORE_ID) }
+        val country = guideCountry(guideId)
+        val strict = HashSet<String>()
+        val loose = HashSet<String>()
+        for (name in displayNames) {
+            strict += normName(name)
+            loose += looseName(name)
+        }
+        // ids like "MBC1.ae" or "bbc.one.uk" double as names
+        strict += normName(guideId.substringBeforeLast('.'))
+        loose += looseName(guideId.substringBeforeLast('.').replace('.', ' '))
+        for (n in strict) byName[n]?.forEach { k -> offer(k, 1 + 2 * countryAgreement(countryOfKey[k], country)) }
+        for (n in loose) {
+            if (n.length < 3) continue
+            byLoose[n]?.forEach { k ->
+                val agree = countryAgreement(countryOfKey[k], country)
+                if (agree > 0) offer(k, 2 * agree)
+            }
+        }
+        return out
+    }
+
+    companion object {
+        const val SCORE_PICKED = 100
+        const val SCORE_ID = 50
+    }
+}
+
+/**
+ * Picks, for each playlist key, the one guide channel that feeds it. Guide channels are offered
+ * in file order; a later one only takes a key over when it scores strictly higher.
+ */
+private class Assignment(private val matcher: GuideMatcher) {
+    private val best = HashMap<String, Pair<String, Int>>() // key -> (guide id, score)
+
+    fun offer(guideId: String, names: List<String>) {
+        for ((key, score) in matcher.candidates(guideId, names)) {
+            val cur = best[key]
+            if (cur == null || score > cur.second) best[key] = guideId to score
+        }
+    }
+
+    /** guide id -> keys it feeds */
+    fun result(): HashMap<String, MutableSet<String>> {
+        val out = HashMap<String, MutableSet<String>>()
+        for ((key, v) in best) out.getOrPut(v.first) { HashSet() } += key
         return out
     }
 }
 
+/** Result of reading one guide source. */
+class ParsedGuide(val programs: Map<String, MutableList<Program>>, val channels: List<GuideChannel>)
+
 object Epg {
 
     /**
-     * Streams an XMLTV file (plain or .gz) and returns programmes for matched channels.
-     * [shiftMs] corrects guides published with a wrong time zone.
+     * Streams an XMLTV file (plain or .gz) and returns programmes for matched channels plus the
+     * list of every channel the file offers. [shiftMs] corrects guides with a wrong time zone.
      */
-    fun parse(input: InputStream, matcher: GuideMatcher, now: Long, shiftMs: Long = 0): Map<String, MutableList<Program>> {
+    fun parse(input: InputStream, matcher: GuideMatcher, now: Long, source: String = "", shiftMs: Long = 0): ParsedGuide {
         val buffered = BufferedInputStream(input, 64 * 1024)
         buffered.mark(4)
         val b1 = buffered.read()
@@ -63,8 +130,10 @@ object Epg {
 
         val future = now + 48 * 3_600_000L
         val out = HashMap<String, MutableList<Program>>()
-        val names = HashMap<String, MutableList<String>>()
-        val resolved = HashMap<String, Set<String>>()
+        val names = LinkedHashMap<String, MutableList<String>>()
+        var routes: HashMap<String, MutableSet<String>>? = null
+        val late = HashMap<String, Set<String>>()
+        var taken: HashSet<String>? = null
         try {
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
@@ -79,20 +148,31 @@ object Epg {
             while (event != XmlPullParser.END_DOCUMENT) {
                 if (event == XmlPullParser.START_TAG) {
                     when (parser.name) {
-                        "channel" -> channelId = parser.getAttributeValue(null, "id")
+                        "channel" -> channelId = parser.getAttributeValue(null, "id")?.also { id ->
+                            names.getOrPut(id) { ArrayList(2) }
+                        }
                         "display-name" -> channelId?.let { id ->
-                            names.getOrPut(id) { ArrayList(2) } += parser.nextText()
+                            names.getOrPut(id) { ArrayList(2) } += parser.nextText().trim()
                         }
                         "programme" -> {
                             channelId = null
+                            // All <channel> entries come first: decide who feeds whom once, up front.
+                            val r = routes ?: Assignment(matcher).also { a ->
+                                for ((id, n) in names) a.offer(id, n)
+                            }.result().also { routes = it }
                             val id = parser.getAttributeValue(null, "channel").orEmpty()
-                            val keys = resolved.getOrPut(id) { matcher.resolve(id, names[id].orEmpty()) }
-                            start = parseTime(parser.getAttributeValue(null, "start"))
-                            stop = parseTime(parser.getAttributeValue(null, "stop"))
+                            // Some files have programmes for channels they never declared.
+                            val keys = r[id] ?: if (id in names) emptySet() else late.getOrPut(id) {
+                                if (taken == null) taken = r.values.flatMapTo(HashSet()) { it }
+                                val t = taken!!
+                                matcher.candidates(id, emptyList()).keys.filterTo(HashSet()) { it !in t }.also { t += it }
+                            }
+                            start = Epg.parseTime(parser.getAttributeValue(null, "start"))
+                            stop = Epg.parseTime(parser.getAttributeValue(null, "stop"))
                             if (stop <= start) stop = start + 30 * 60_000L
                             start += shiftMs
                             stop += shiftMs
-                            targets = if (start > shiftMs && start < future) {
+                            targets = if (keys.isNotEmpty() && start > shiftMs && start < future) {
                                 keys.filterTo(HashSet()) { k -> stop > now - (matcher.pastMs[k] ?: 0L) }
                             } else {
                                 emptySet()
@@ -115,8 +195,16 @@ object Epg {
         } catch (e: Exception) {
             // Broken guide files are common; keep whatever was read.
         }
-        out.values.forEach { list -> list.sortBy { it.start } }
-        return out
+        for (list in out.values) {
+            list.sortBy { it.start }
+            // Drop overlaps some guides contain (repeated or stacked entries).
+            var i = 1
+            while (i < list.size) {
+                if (list[i].start < list[i - 1].stop && list[i].start == list[i - 1].start) list.removeAt(i) else i++
+            }
+        }
+        val listed = names.map { (id, n) -> GuideChannel(id, n.firstOrNull { it.isNotBlank() } ?: id, source) }
+        return ParsedGuide(out, listed)
     }
 
     fun current(list: List<Program>?, now: Long): Program? =

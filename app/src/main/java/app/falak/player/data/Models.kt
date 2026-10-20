@@ -52,7 +52,8 @@ data class Channel(
 ) {
     /** Guide key: the tvg-id, or the cleaned-up name when the playlist has no id. */
     val epgKey: String by lazy(LazyThreadSafetyMode.NONE) {
-        tvgId.lowercase().ifEmpty { "name:" + normName(name) }
+        // Name-only keys carry the country, so "FR: beIN Sports 1" and "AR: beIN Sports 1" stay apart.
+        tvgId.lowercase().ifEmpty { "name:" + (countryOf(name, group) ?: "") + ":" + normName(name) }
     }
     val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
     val hasCatchup: Boolean get() = kind == Kind.LIVE && catchupDays > 0
@@ -61,24 +62,135 @@ data class Channel(
 @Serializable
 data class Program(val start: Long, val stop: Long, val title: String, val desc: String)
 
-@Serializable
-class GuideCache(val savedAt: Long, val programs: Map<String, List<Program>>, val matched: Int = 0)
+class GuideCache(
+    val savedAt: Long,
+    val programs: Map<String, List<Program>>,
+    val matched: Int = 0,
+    /** Live channels the guide was matched against. */
+    val total: Int = 0,
+    /** Every channel the guide sources offer, for fixing a channel's guide by hand. */
+    val channels: List<GuideChannel> = emptyList(),
+)
 
-private val PREFIX = Regex("^\\s*[\\[(]?[a-z]{2,3}[\\])]?\\s*(?:[|\\-–]\\s+|:\\s*)")
+/** A channel listed in a guide source: its XMLTV id, display name and the source's host. */
+class GuideChannel(val id: String, val name: String, val source: String)
+
+/** A user-made list of channels, films or series ("Sports", "Kids", …). */
+@Serializable
+data class FavList(val id: String, val name: String, val ids: List<String> = emptyList())
+
+/** List id of the built-in Favourites list (stored in [AppState.favorites]). */
+const val DEFAULT_LIST = "fav"
+
+/**
+ * Country/language tags in front of names: "UK: ", "UK | ", "|UK| ", "[UK] ", "(AR) ", "AR ▎ ", "USA - ".
+ * Group 1 = bracketed tag, group 2 = bare tag followed by a separator.
+ */
+private val PREFIX = Regex(
+    "^\\s*(?:[\\[(|]\\s*([a-z0-9]{2,3})\\s*[\\])|]\\s*[|:▎┃•\\-–—]*\\s*|([a-z0-9]{2,3})\\s*(?:[|:▎┃•]+\\s*|\\s[-–—]\\s+|[-–—]\\s+))",
+)
+/** Superscript tags like ᴴᴰ, ᶠᴴᴰ, ⁴ᴷ (phonetic extensions and super/subscripts). */
+private val SUPERSCRIPT = Regex("[\\u1D00-\\u1DBF\\u2070-\\u209F]+")
 private val BRACKETS = Regex("[\\[(][^\\])]*[\\])]")
-private val QUALITY = Regex("\\b(fhd|uhd|hd|sd|4k|8k|hevc|h265|1080p?|720p?|hq|lq|backup|vip|raw|multi|ᴴᴰ)\\b")
-private val NON_WORD = Regex("[^\\p{L}\\p{N}+]")
+private val QUALITY = Regex(
+    "\\b(fhd|uhd|hd|sd|4k|8k|hevc|h\\.?26[45]|1080[pi]?|720p?|2160p?|50fps|60fps|fps|hq|lq|backup|vip|raw|multi|" +
+        "hdr|dolby|full hd|ultra hd|low|high|alt|bk|orig|original|direct|ᴴᴰ|ᶠᴴᴰ|ᵁᴴᴰ|ᴿᴬᵂ|⁴ᴷ|ˢᴰ)\\b",
+)
+private val NON_WORD = Regex("[^\\p{L}\\p{N}+]+")
+private val COMBINING = Regex("\\p{Mn}+")
+/** Non-country prefixes providers put in front of names. */
+private val TAGS = setOf(
+    "en", "eng", "ara", "arb", "fra", "fre", "ger", "ita", "spa", "esp", "por", "tur", "hin", "urd", "per", "kur",
+    "int", "vip", "top", "ott", "4k", "hd", "fhd", "uhd", "sd", "ex", "ext", "pl", "24", "7",
+)
+
+/** Words that some guides add and others don't ("Al Jazeera" vs "Al Jazeera Channel"). */
+private val GENERIC = setOf("tv", "channel", "network", "television", "the", "live", "east", "hd")
+
+/** Lowercase, accents removed, country prefixes and quality tags dropped, split into words. */
+fun nameWords(s: String): List<String> {
+    var t = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+    t = COMBINING.replace(t, "")
+    t = SUPERSCRIPT.replace(t, " ")
+    t = t.replace("&", " and ")
+    repeat(2) { // "VIP | UK | BBC One"
+        val m = PREFIX.find(t)
+        val tag = m?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+        if (m != null && tag != null && (canonCountry(tag) != null || tag in TAGS)) t = t.substring(m.range.last + 1)
+    }
+    t = BRACKETS.replace(t, " ")
+    t = QUALITY.replace(t, " ")
+    return t.split(NON_WORD).filter { it.isNotEmpty() }
+}
 
 /**
  * "AR: MBC 1 HD", "[AE] MBC1 (Backup)" and "mbc1" all become "mbc1", so guides can be
  * matched by channel name when the playlist's tvg-id doesn't match the guide.
  */
-fun normName(s: String): String {
-    var t = s.lowercase()
-    t = PREFIX.replace(t, "")
-    t = BRACKETS.replace(t, " ")
-    t = QUALITY.replace(t, " ")
-    return NON_WORD.replace(t, "")
+fun normName(s: String): String = nameWords(s).joinToString("")
+
+/** Like [normName] but also ignores generic words such as "TV" and "Channel". */
+fun looseName(s: String): String = nameWords(s).filter { it !in GENERIC }.joinToString("")
+
+private val COUNTRY_WORDS = listOf(
+    "united kingdom" to "uk", "england" to "uk", "british" to "uk", "scotland" to "uk",
+    "united states" to "us", "usa" to "us", "america" to "us",
+    "arabic" to "ar", "arab" to "ar", "عربي" to "ar", "france" to "fr", "french" to "fr",
+    "germany" to "de", "deutsch" to "de", "canada" to "ca", "india" to "in", "hindi" to "in",
+    "turkey" to "tr", "turkish" to "tr", "türk" to "tr", "spain" to "es", "españa" to "es", "spanish" to "es",
+    "italy" to "it", "italia" to "it", "portugal" to "pt", "brazil" to "br", "brasil" to "br",
+    "australia" to "au", "egypt" to "eg", "netherlands" to "nl", "dutch" to "nl", "poland" to "pl",
+    "pakistan" to "pk", "ireland" to "ie", "mexico" to "mx", "latino" to "mx", "greece" to "gr",
+)
+
+/** Real country (or "ar" for Arabic) codes; other prefixes like "EN" or "VIP" say nothing about the guide. */
+private val COUNTRY_CODES = setOf(
+    "uk", "us", "ca", "au", "nz", "ie", "fr", "de", "at", "ch", "it", "es", "pt", "br", "mx", "ar", "tr", "in",
+    "pk", "bd", "nl", "be", "se", "no", "dk", "fi", "pl", "ro", "gr", "ru", "ua", "ae", "sa", "eg", "qa", "kw",
+    "lb", "ma", "dz", "tn", "iq", "jo", "om", "bh", "sy", "ps", "ly", "sd", "ye", "il", "ir", "af", "za", "ng",
+    "ke", "ph", "id", "my", "sg", "th", "vn", "cn", "hk", "tw", "jp", "kr", "al", "rs", "hr", "ba", "mk", "bg",
+    "hu", "cz", "sk", "si", "cl", "co", "pe", "ve", "ec", "uy", "cr", "pa", "do", "pr", "cu", "lat",
+)
+
+private val ARABIC_REGION = setOf(
+    "ar", "ae", "sa", "eg", "qa", "kw", "lb", "ma", "dz", "tn", "iq", "jo", "om", "bh", "sy", "ps", "ly", "sd", "ye",
+)
+
+private fun canonCountry(code: String): String? = when (val c = code.lowercase()) {
+    "gb", "eng" -> "uk"
+    "usa" -> "us"
+    "lat" -> "mx"
+    else -> c.takeIf { it in COUNTRY_CODES }
+}
+
+/** Country of a playlist channel from its name prefix ("UK: …") or its group ("UK | Sports", "ARABIC"). */
+fun countryOf(name: String, group: String): String? {
+    for (s in listOf(name, group)) {
+        var t = s.lowercase()
+        repeat(2) { // "VIP | UK | …": look past one non-country tag
+            val m = PREFIX.find(t) ?: return@repeat
+            val tag = m.groupValues[1].ifEmpty { m.groupValues[2] }
+            canonCountry(tag)?.let { return it }
+            if (tag !in TAGS) return@repeat
+            t = t.substring(m.range.last + 1)
+        }
+    }
+    val g = group.lowercase()
+    return COUNTRY_WORDS.firstOrNull { (w, _) -> g.contains(w) }?.second
+}
+
+/** Country suffix of an XMLTV id: "BBCOne.uk" → "uk", "MBC1.ae" → "ae". */
+fun guideCountry(guideId: String): String? {
+    val tail = guideId.substringAfterLast('.', "")
+    return if (tail.length in 2..3) canonCountry(tail) else null
+}
+
+/** 2 = same country (or same Arabic region), 1 = unknown on either side, 0 = different countries. */
+fun countryAgreement(channel: String?, guide: String?): Int = when {
+    channel == null || guide == null -> 1
+    channel == guide -> 2
+    channel in ARABIC_REGION && guide in ARABIC_REGION -> 2
+    else -> 0
 }
 
 class Season(val number: Int, val episodes: List<Channel>)
@@ -114,6 +226,8 @@ data class PlaylistCache(
     val epgUrl: String = "",
     /** Xtream server time zone (IANA id), needed to request replays at the right time. */
     val serverTz: String = "",
+    /** When this copy was downloaded (epoch ms); drives the automatic refresh. */
+    val savedAt: Long = 0,
 )
 
 @Serializable
@@ -142,6 +256,10 @@ data class Settings(
     val hiddenGroups: Map<String, List<String>> = emptyMap(),
     /** Index into the theme list (Screening room, Midnight, Pure black, Emerald, Daylight). */
     val theme: Int = 0,
+    /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */
+    val autoRefreshHours: Int = 12,
+    /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */
+    val guideOverrides: Map<String, Map<String, String>> = emptyMap(),
 )
 
 /** Watch progress of a movie or episode. */
@@ -162,6 +280,8 @@ data class AppState(
     val playlists: List<Playlist> = emptyList(),
     /** playlistId -> channel ids */
     val favorites: Map<String, List<String>> = emptyMap(),
+    /** playlistId -> the user's own lists, in display order */
+    val favLists: Map<String, List<FavList>> = emptyMap(),
     val recents: Map<String, List<String>> = emptyMap(),
     val lastPlaylistId: String? = null,
     val settings: Settings = Settings(),

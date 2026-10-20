@@ -538,6 +538,10 @@ class PlayerActivity : ComponentActivity() {
                 .mapNotNull { idx.byId[it] }
                 .filter { it.kind == ch.kind && it.group !in excluded }
             if (favs.isNotEmpty()) out["★ Favourites"] = favs
+            for (l in repo.state.value.favLists[pl.id].orEmpty()) {
+                val items = l.ids.mapNotNull { idx.byId[it] }.filter { it.kind == ch.kind && it.group !in excluded }
+                if (items.isNotEmpty()) out["★ ${l.name}"] = items
+            }
         }
         for ((g, list) in idx.groupsOf(ch.kind)) if (g !in excluded) out[g] = list
         // Played from a list that isn't a group (search, recents…): keep that list too.

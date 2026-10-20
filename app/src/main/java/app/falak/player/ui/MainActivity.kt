@@ -139,6 +139,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    vm.listSheetFor?.let { ch ->
+                        val inSaved = vm.screen == Screen.LIBRARY && vm.section == Section.FAVORITES && vm.query.isBlank()
+                        ItemSheet(vm, state, ch, orderInList = if (inSaved) vm.savedList else null) { vm.listSheetFor = null }
+                    }
+                    vm.guideFixFor?.let { ch -> GuideFixDialog(vm, ch) { vm.guideFixFor = null } }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
                     UpdateDialogs(vm)
                     LaunchedEffect(Unit) { vm.checkForUpdates(manual = false) }
@@ -150,6 +155,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.onReturnFromPlayer()
+        vm.refreshIfStale()
     }
 
     /** How deep a page sits, so transitions know which way to slide. */

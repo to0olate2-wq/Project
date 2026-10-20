@@ -54,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.falak.player.BuildConfig
 import app.falak.player.data.AppState
+import app.falak.player.data.GUIDE_SOURCES
+import app.falak.player.data.guideSourceName
 
 @Composable
 fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
@@ -178,10 +180,45 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     TextButton(onClick = { vm.updatePlaylist(p.copy(epgShiftMinutes = (shift + 30).coerceAtMost(720)), false) }) { Text("+30m") }
                 }
             }
+            val suggestions = vm.guideSuggestions()
+            if (suggestions.isNotEmpty()) {
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .panel(RoundedCornerShape(10.dp))
+                            .padding(14.dp),
+                    ) {
+                        Text("Better guide for your channels", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = Paper)
+                        Text(
+                            "These free guides match where your channels come from. Add them and the guide fills in channels your provider's guide misses.",
+                            fontSize = 13.sp,
+                            color = Muted,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                        )
+                        suggestions.forEach { sug ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(sug.source.name, fontSize = 15.sp, color = Paper)
+                                    Text("about ${sug.channels} of your channels", fontSize = 12.sp, color = Faint)
+                                }
+                                TextButton(onClick = { vm.updatePlaylist(p.copy(extraEpg = p.extraEpg + sug.source.url), true) }) { Text("Add") }
+                            }
+                        }
+                        if (suggestions.size > 1) {
+                            Spacer(Modifier.height(6.dp))
+                            PaperButton("Add all ${suggestions.size}") {
+                                vm.updatePlaylist(p.copy(extraEpg = (p.extraEpg + suggestions.map { it.source.url }).distinct()), true)
+                            }
+                        }
+                    }
+                }
+            }
             items(p.extraEpg, key = { "epg:$it" }) { url ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        GUIDE_PRESETS.firstOrNull { it.second == url }?.first ?: url,
+                        guideSourceName(url),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -198,6 +235,23 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 ClickRow(if (vm.guideLoading) "Loading guide…" else "Reload guide now", "Downloads all guide sources again") {
                     vm.loadGuide(force = true)
                 }
+            }
+            val fixed = s.guideOverrides[p.id].orEmpty()
+            if (fixed.isNotEmpty()) {
+                item {
+                    ClickRow("Undo ${fixed.size} hand-picked guide" + if (fixed.size == 1) "" else "s", "Go back to automatic matching for every channel") {
+                        vm.updateSettings { it.copy(guideOverrides = it.guideOverrides - p.id) }
+                        vm.loadGuide(force = true)
+                    }
+                }
+            }
+            item {
+                Text(
+                    "Wrong or missing guide on a channel? Long-press it in the list and choose Fix TV guide.",
+                    fontSize = 12.sp,
+                    color = Faint,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
             }
         }
 
@@ -220,6 +274,27 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item {
             SwitchRow("Open last playlist on start", null, s.openLast) {
                 vm.updateSettings { it.copy(openLast = !it.openLast) }
+            }
+        }
+        item {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
+                        if (p != null && vm.loadedAt > 0) " · last updated ${ageText(vm.loadedAt)}" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
+                        FilterChip(
+                            selected = s.autoRefreshHours == h,
+                            onClick = { vm.updateSettings { it.copy(autoRefreshHours = h) } },
+                            label = { Text(label) },
+                        )
+                    }
+                }
             }
         }
 
@@ -366,26 +441,16 @@ private fun ThemeCard(p: Palette, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-private const val EPG_SHARE = "https://epgshare01.online/epgshare01/epg_ripper_"
-
-/** Free, daily-updated XMLTV guides (epgshare01). */
-private val GUIDE_PRESETS = listOf(
-    "UAE & Arabic channels" to "${EPG_SHARE}AE1.xml.gz",
-    "beIN Sports" to "${EPG_SHARE}BEIN1.xml.gz",
-    "Al Jazeera" to "${EPG_SHARE}ALJAZEERA1.xml.gz",
-    "Egypt" to "${EPG_SHARE}EG1.xml.gz",
-    "United Kingdom" to "${EPG_SHARE}UK1.xml.gz",
-    "United States" to "${EPG_SHARE}US2.xml.gz",
-    "US sports" to "${EPG_SHARE}US_SPORTS1.xml.gz",
-    "India" to "${EPG_SHARE}IN1.xml.gz",
-    "Turkey" to "${EPG_SHARE}TR1.xml.gz",
-    "France" to "${EPG_SHARE}FR1.xml.gz",
-    "Germany" to "${EPG_SHARE}DE1.xml.gz",
-    "Spain" to "${EPG_SHARE}ES1.xml.gz",
-    "Italy" to "${EPG_SHARE}IT1.xml.gz",
-    "Canada" to "${EPG_SHARE}CA2.xml.gz",
-    "Australia" to "${EPG_SHARE}AU1.xml.gz",
-)
+/** "3 h ago", "2 days ago". */
+private fun ageText(at: Long): String {
+    val mins = (System.currentTimeMillis() - at) / 60_000
+    return when {
+        mins < 2 -> "just now"
+        mins < 60 -> "$mins min ago"
+        mins < 48 * 60 -> "${mins / 60} h ago"
+        else -> "${mins / (24 * 60)} days ago"
+    }
+}
 
 private fun formatShift(minutes: Int): String {
     if (minutes == 0) return "Off"
@@ -417,7 +482,9 @@ private fun AddGuideDialog(existing: List<String>, onDismiss: () -> Unit, onAdd:
                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                 )
                 LazyColumn {
-                    items(GUIDE_PRESETS.filter { it.second !in existing }, key = { it.second }) { (name, url) ->
+                    items(GUIDE_SOURCES.filter { it.url !in existing }, key = { it.url }) { src ->
+                        val name = src.name
+                        val url = src.url
                         val shape = RoundedCornerShape(8.dp)
                         Text(
                             name,
