@@ -17,7 +17,7 @@ android {
         targetSdk = 35
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "2.3"
+        versionName = "2.4"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
     }
 
@@ -91,6 +91,8 @@ dependencies {
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
+    // FFmpeg audio decoder (Dolby AC-3/E-AC-3, DTS, MP2, TrueHD…) for devices without hardware decoders.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

@@ -103,6 +103,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
+            SwitchRow(
+                "Software audio decoding",
+                "Turn on if some channels or movies play without sound (Dolby/DTS on TV boxes)",
+                s.softwareAudio,
+            ) { vm.updateSettings { it.copy(softwareAudio = !it.softwareAudio) } }
+        }
+        item {
             SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }

@@ -52,6 +52,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -238,7 +239,15 @@ class PlayerActivity : ComponentActivity() {
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
-        val builder = ExoPlayer.Builder(this)
+        // FFmpeg takes over audio the device can't decode (AC-3, E-AC-3, DTS, MP2…),
+        // or all audio when "Software audio" is on.
+        val renderers = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(
+                if (repo.state.value.settings.softwareAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON,
+            )
+        val builder = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(audio, true)
             .setHandleAudioBecomingNoisy(true)
         if (repo.state.value.settings.bigBuffer) {
