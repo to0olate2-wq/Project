@@ -49,7 +49,30 @@ data class Program(val start: Long, val stop: Long, val title: String, val desc:
 
 class Season(val number: Int, val episodes: List<Channel>)
 
-class SeriesInfo(val plot: String, val cover: String, val seasons: List<Season>)
+class SeriesInfo(
+    val plot: String,
+    val cover: String,
+    val seasons: List<Season>,
+    val backdrop: String = "",
+    val genre: String = "",
+    val cast: String = "",
+    val year: String = "",
+    val rating: String = "",
+)
+
+/** Movie details (Xtream get_vod_info). */
+class VodInfo(
+    val plot: String,
+    val poster: String,
+    val backdrop: String,
+    val genre: String,
+    val cast: String,
+    val director: String,
+    val year: String,
+    val duration: String,
+    val rating: String,
+    val trailer: String,
+)
 
 @Serializable
 data class PlaylistCache(val channels: List<Channel>, val epgUrl: String = "")
@@ -74,7 +97,16 @@ data class Settings(
 
 /** Watch progress of a movie or episode. */
 @Serializable
-data class Watch(val pos: Long, val dur: Long)
+data class Watch(
+    val pos: Long,
+    val dur: Long,
+    // Enough to show it in "Continue watching" and resume it directly (episodes aren't in the main list).
+    val title: String = "",
+    val image: String = "",
+    val url: String = "",
+    val kind: Kind = Kind.MOVIE,
+    val seriesId: String = "",
+)
 
 @Serializable
 data class AppState(

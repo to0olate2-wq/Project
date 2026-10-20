@@ -26,6 +26,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -104,6 +108,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
 
     val sections = Section.entries.filter { s ->
         when (s) {
+            Section.HOME -> all.isNotEmpty()
             Section.FAVORITES -> favIds.isNotEmpty()
             Section.RECENT -> recentIds.isNotEmpty()
             else -> s.kind != null && s.kind in kinds
@@ -112,6 +117,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val section = vm.section.takeIf { it in sections } ?: sections.firstOrNull() ?: Section.LIVE
     val byId = remember(all) { all.associateBy { it.id } }
     val base = when (section) {
+        Section.HOME -> all // searching from Home looks through everything
         Section.FAVORITES -> remember(byId, favIds) { favIds.mapNotNull { byId[it] } }
         Section.RECENT -> remember(byId, recentIds) { recentIds.mapNotNull { byId[it] } }
         else -> remember(all, section) { all.filter { it.kind == section.kind } }
@@ -122,27 +128,59 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val counts = remember(base) { base.groupingBy { it.group }.eachCount() }
     // Channels in locked groups stay hidden from "All", search, favorites and recents.
     val openBase = remember(base, locked) { if (locked.isEmpty()) base else base.filterNot { it.group in locked } }
-    val visible = remember(openBase, group, q) {
-        openBase.filter { ch ->
+    val isVodSection = section == Section.MOVIES || section == Section.SERIES
+    val sort = if (isVodSection) vm.sort else Sort.DEFAULT
+    val visible = remember(openBase, group, q, sort) {
+        val filtered = openBase.filter { ch ->
             if (q.isNotEmpty()) ch.name.contains(q, ignoreCase = true)
             else group == null || ch.group == group
+        }
+        when (sort) {
+            Sort.DEFAULT -> filtered
+            Sort.NEWEST -> filtered.sortedByDescending { it.added }
+            Sort.AZ -> filtered.sortedBy { it.name.lowercase() }
+            Sort.RATING -> filtered.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+        }
+    }
+    val sorts = remember(base, isVodSection) {
+        if (!isVodSection) emptyList()
+        else Sort.entries.filter { s ->
+            when (s) {
+                Sort.NEWEST -> base.any { it.added > 0 }
+                Sort.RATING -> base.any { (it.rating.toDoubleOrNull() ?: 0.0) > 0 }
+                else -> true
+            }
         }
     }
 
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
     val listState = vm.listState
-    LaunchedEffect(section, group, q) {
-        val key = Triple(section, group, q)
-        if (vm.lastListKey != null && vm.lastListKey != key) listState.scrollToItem(0)
+    val gridState = vm.gridState
+    LaunchedEffect(section, group, q, sort) {
+        val key = listOf(section, group, q, sort)
+        if (vm.lastListKey != null && vm.lastListKey != key) {
+            listState.scrollToItem(0)
+            gridState.scrollToItem(0)
+        }
         vm.lastListKey = key
     }
+    // Movies open their details page, series their episodes; channels play.
+    val openItem: (Channel) -> Unit = { ch ->
+        when {
+            ch.isSeriesFolder -> vm.openSeries(ch)
+            ch.kind == Kind.MOVIE -> vm.openDetails(ch)
+            else -> onPlay(visible, ch)
+        }
+    }
 
-    BackHandler(enabled = searching || group != null) {
-        if (searching) {
-            searching = false
-            vm.query = ""
-        } else {
-            vm.group = null
+    BackHandler(enabled = searching || group != null || (section != Section.HOME && Section.HOME in sections)) {
+        when {
+            searching -> {
+                searching = false
+                vm.query = ""
+            }
+            group != null -> vm.group = null
+            else -> vm.section = Section.HOME
         }
     }
 
@@ -227,17 +265,37 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = { vm.open(p, refresh = true) }) { Text("Try again") }
             }
+            section == Section.HOME && q.isEmpty() -> HomeContent(vm, state, all, locked, epg, now, onPlay)
             else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                 val wide = maxWidth >= 720.dp
                 val groupsVisible = showGroups && q.isEmpty() && counts.size > 1
                 val channelList: @Composable (Modifier) -> Unit = { m ->
-                    ChannelList(
-                        list = visible, favIds = favSet, epg = epg, now = now, state = listState,
-                        progress = state.progress, playlistId = p.id,
-                        onPlay = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(visible, ch) },
-                        onFav = { ch -> vm.toggleFavorite(ch) },
-                        modifier = m,
-                    )
+                    if (isVodSection) {
+                        Column(m) {
+                            if (sorts.size > 1) {
+                                Row(
+                                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    sorts.forEach { s ->
+                                        FilterChip(selected = s == sort, onClick = { vm.sort = s }, label = { Text(s.label) })
+                                    }
+                                }
+                            }
+                            PosterGrid(
+                                list = visible, state = gridState, progress = state.progress, playlistId = p.id,
+                                onOpen = openItem, modifier = Modifier.weight(1f).fillMaxWidth(),
+                            )
+                        }
+                    } else {
+                        ChannelList(
+                            list = visible, favIds = favSet, epg = epg, now = now, state = listState,
+                            progress = state.progress, playlistId = p.id,
+                            onPlay = openItem,
+                            onFav = { ch -> vm.toggleFavorite(ch) },
+                            modifier = m,
+                        )
+                    }
                 }
                 if (wide && groupsVisible) {
                     Row(Modifier.fillMaxSize()) {
@@ -285,6 +343,35 @@ fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
         } else {
             all.mapTo(LinkedHashSet()) { it.group }
                 .filterTo(HashSet()) { g -> g in explicit || (s.lockAdult && ADULT_GROUP.containsMatchIn(g)) }
+        }
+    }
+}
+
+@Composable
+private fun PosterGrid(
+    list: List<Channel>,
+    state: LazyGridState,
+    progress: Map<String, Watch>,
+    playlistId: String,
+    onOpen: (Channel) -> Unit,
+    modifier: Modifier,
+) {
+    if (list.isEmpty()) {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text("Nothing here", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(108.dp),
+        state = state,
+        modifier = modifier,
+        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        gridItems(list, key = { it.id }) { ch ->
+            PosterCard(ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null)
         }
     }
 }

@@ -39,6 +39,8 @@ class Repository(private val context: Context) {
     /** Set right before opening the player: the list to zap through and where it came from. */
     @Volatile var playQueue: List<Channel> = emptyList()
     @Volatile var currentPlaylist: Playlist? = null
+    /** The series whose episodes are in [playQueue], if any (for "Continue watching"). */
+    @Volatile var currentSeries: Channel? = null
 
     /** Returns (and clears) the crash saved by FalakApp on the previous run, if any. */
     fun takeCrashReport(): String? {
@@ -92,10 +94,16 @@ class Repository(private val context: Context) {
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
     /** pos = 0 clears the entry (finished or barely started). Keeps the most recent 300. */
-    fun saveProgress(key: String, pos: Long, dur: Long) = update { s ->
+    fun saveProgress(key: String, pos: Long, dur: Long, ch: Channel? = null, seriesId: String = "") = update { s ->
         val next = LinkedHashMap(s.progress)
         next.remove(key)
-        if (pos > 0) next[key] = Watch(pos, dur)
+        if (pos > 0) {
+            next[key] = Watch(
+                pos = pos, dur = dur,
+                title = ch?.name.orEmpty(), image = ch?.logo.orEmpty(), url = ch?.url.orEmpty(),
+                kind = ch?.kind ?: Kind.MOVIE, seriesId = seriesId,
+            )
+        }
         while (next.size > 300) next.remove(next.keys.first())
         s.copy(progress = next)
     }
@@ -107,6 +115,10 @@ class Repository(private val context: Context) {
             XtreamApi(http, server, user, pass, p.userAgent)
         }
         SourceType.M3U_FILE -> null
+    }
+
+    suspend fun loadVodInfo(p: Playlist, streamId: String): VodInfo? = withContext(Dispatchers.IO) {
+        xtreamFor(p)?.vodInfo(streamId)
     }
 
     suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = withContext(Dispatchers.IO) {

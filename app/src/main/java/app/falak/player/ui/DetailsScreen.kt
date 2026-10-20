@@ -1,0 +1,199 @@
+package app.falak.player.ui
+
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import app.falak.player.data.AppState
+import app.falak.player.data.Channel
+import app.falak.player.data.progressKey
+import coil.compose.AsyncImage
+
+@Composable
+fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
+    val p = vm.playlist ?: return
+    val ch = vm.details ?: return
+    val info = vm.vodInfo
+    val watched = state.progress[progressKey(p.id, ch.id)]
+    val isFav = ch.id in state.favorites[p.id].orEmpty()
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val playFocus = remember { FocusRequester() }
+
+    BackHandler { vm.screen = Screen.LIBRARY }
+    LaunchedEffect(ch.id) { runCatching { playFocus.requestFocus() } }
+
+    val poster = info?.poster?.takeIf { it.isNotBlank() } ?: ch.logo
+    val backdrop = info?.backdrop?.takeIf { it.isNotBlank() } ?: poster
+
+    Box(Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = backdrop.ifBlank { null },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().height(320.dp).alpha(0.55f),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(320.dp)
+                .background(Brush.verticalGradient(listOf(Color(0x550B0A14), colors.background))),
+        )
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+        ) {
+            Spacer(Modifier.height(60.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                AsyncImage(
+                    model = poster.ifBlank { null },
+                    contentDescription = ch.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.width(128.dp).height(192.dp).clip(RoundedCornerShape(12.dp)).background(colors.surfaceVariant),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(ch.name, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    val meta = listOfNotNull(
+                        info?.year?.takeIf { it.isNotBlank() },
+                        info?.duration?.let { formatRuntime(it) },
+                        ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
+                    ).joinToString("  ·  ")
+                    if (meta.isNotEmpty()) {
+                        Text(meta, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                    }
+                    info?.genre?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = colors.secondary, maxLines = 2)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = { onPlay(listOf(ch), ch) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                    modifier = Modifier.focusRequester(playFocus),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (watched != null) "Resume ${formatClock(watched.pos)}" else "Play")
+                }
+                if (watched != null) {
+                    OutlinedButton(onClick = { vm.clearProgress(ch); onPlay(listOf(ch), ch) }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Start over")
+                    }
+                }
+                info?.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
+                    OutlinedButton(onClick = {
+                        val url = if (trailer.startsWith("http")) trailer else "https://www.youtube.com/watch?v=$trailer"
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }) { Text("Trailer") }
+                }
+                OutlinedButton(onClick = { vm.toggleFavorite(ch) }) {
+                    Icon(if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (isFav) "In my list" else "My list")
+                }
+            }
+            if (watched != null && watched.dur > 0) {
+                LinearProgressIndicator(
+                    progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
+                    color = colors.secondary,
+                    modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp),
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            if (vm.detailsLoading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            info?.plot?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(14.dp))
+            }
+            info?.cast?.takeIf { it.isNotBlank() }?.let { Credit("Cast", it) }
+            info?.director?.takeIf { it.isNotBlank() }?.let { Credit("Director", it) }
+            Credit("Category", ch.group)
+            Spacer(Modifier.height(32.dp))
+        }
+        IconButton(onClick = { vm.screen = Screen.LIBRARY }, modifier = Modifier.padding(6.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        }
+    }
+}
+
+@Composable
+private fun Credit(label: String, value: String) {
+    Row(Modifier.padding(bottom = 6.dp)) {
+        Text("$label: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** "01:52:10" or "112" (minutes) → "1h 52m". */
+internal fun formatRuntime(raw: String): String? {
+    val parts = raw.trim().split(':').mapNotNull { it.toIntOrNull() }
+    val minutes = when {
+        parts.size >= 2 -> parts[0] * 60 + parts[1]
+        parts.size == 1 -> parts[0]
+        else -> return null
+    }
+    if (minutes <= 0) return null
+    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
+}
+
+/** 2_052_000 ms → "34:12" (or "1:02:03"). */
+internal fun formatClock(ms: Long): String {
+    val total = ms / 1000
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+    else String.format(java.util.Locale.US, "%d:%02d", m, s)
+}

@@ -486,7 +486,21 @@ class PlayerActivity : ComponentActivity() {
         if (dur <= 0) return
         val pos = p.currentPosition
         val finished = p.playbackState == Player.STATE_ENDED || pos > dur - 120_000
-        repo.saveProgress(progressKey(pl.id, ch.id), if (finished || pos < 30_000) 0 else pos, dur)
+        // Episodes are saved with the show's name and artwork so "Continue watching" looks right.
+        val show = repo.currentSeries
+        val meta = if (show != null && ch.kind == Kind.SERIES) {
+            val episode = ch.info.split(" · ").take(2).joinToString(" ").ifBlank { ch.name }
+            ch.copy(name = "${show.name} · $episode", logo = show.logo.ifBlank { ch.logo })
+        } else {
+            ch
+        }
+        repo.saveProgress(
+            progressKey(pl.id, ch.id),
+            if (finished || pos < 30_000) 0 else pos,
+            dur,
+            meta,
+            show?.seriesId.orEmpty(),
+        )
     }
 
     private fun cycleAspect() {

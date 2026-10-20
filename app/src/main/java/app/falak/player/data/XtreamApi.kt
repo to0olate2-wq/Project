@@ -166,7 +166,41 @@ class XtreamApi(
             plot = info?.str("plot").orEmpty(),
             cover = info?.str("cover").orEmpty(),
             seasons = seasons.map { (n, list) -> Season(n, list.sortedBy { it.first }.map { it.second }) },
+            backdrop = info?.firstImage("backdrop_path").orEmpty(),
+            genre = info?.str("genre").orEmpty(),
+            cast = info?.str("cast").orEmpty(),
+            year = info?.str("releaseDate").orEmpty().ifBlank { info?.str("release_date").orEmpty() }.take(4),
+            rating = info?.str("rating").orEmpty().takeIf { it != "0" }.orEmpty(),
         )
+    }
+
+    fun vodInfo(streamId: String): VodInfo {
+        val text = call("get_vod_info", mapOf("vod_id" to streamId)) { it }
+        val root = try {
+            Json.parseToJsonElement(text) as? JsonObject
+        } catch (e: Exception) {
+            null
+        } ?: throw IOException("No details for this movie")
+        val info = root["info"] as? JsonObject ?: JsonObject(emptyMap())
+        return VodInfo(
+            plot = info.str("plot").ifBlank { info.str("description") },
+            poster = info.str("movie_image").ifBlank { info.str("cover_big") },
+            backdrop = info.firstImage("backdrop_path"),
+            genre = info.str("genre"),
+            cast = info.str("cast").ifBlank { info.str("actors") },
+            director = info.str("director"),
+            year = info.str("releasedate").ifBlank { info.str("release_date") }.take(4),
+            duration = info.str("duration"),
+            rating = info.str("rating").takeIf { it != "0" }.orEmpty(),
+            trailer = info.str("youtube_trailer"),
+        )
+    }
+
+    /** backdrop_path is an array on most panels and a string on some. */
+    private fun JsonObject.firstImage(key: String): String = when (val v = this[key]) {
+        is JsonArray -> (v.firstOrNull() as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
+        is JsonPrimitive -> if (v is JsonNull) "" else v.content
+        else -> ""
     }
 
     private fun prefix(kind: String): String =

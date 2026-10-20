@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.falak.player.data.Channel
@@ -13,6 +14,8 @@ import app.falak.player.data.Kind
 import app.falak.player.data.Playlist
 import app.falak.player.data.SeriesInfo
 import app.falak.player.data.Settings
+import app.falak.player.data.VodInfo
+import app.falak.player.data.progressKey
 import app.falak.player.data.SourceType
 import app.falak.player.data.XtreamApi
 import app.falak.player.repo
@@ -25,9 +28,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, GUIDE, SETTINGS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS }
+
+enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
 enum class Section(val label: String, val kind: Kind?) {
+    HOME("Home", null),
     LIVE("Live TV", Kind.LIVE),
     MOVIES("Movies", Kind.MOVIE),
     SERIES("Series", Kind.SERIES),
@@ -49,7 +55,43 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var error by mutableStateOf<String?>(null)
         private set
-    var section by mutableStateOf(Section.LIVE)
+    var section by mutableStateOf(Section.HOME)
+    var sort by mutableStateOf(Sort.DEFAULT)
+
+    var details by mutableStateOf<Channel?>(null)
+        private set
+    var vodInfo by mutableStateOf<VodInfo?>(null)
+        private set
+    var detailsLoading by mutableStateOf(false)
+        private set
+    private var detailsJob: Job? = null
+
+    /** Movie details page (Xtream fills in plot, cast, backdrop…). */
+    fun openDetails(ch: Channel) {
+        val p = playlist ?: return
+        details = ch
+        vodInfo = null
+        screen = Screen.DETAILS
+        detailsJob?.cancel()
+        if (!ch.id.startsWith("m")) return
+        detailsLoading = true
+        detailsJob = viewModelScope.launch {
+            try {
+                vodInfo = repo.loadVodInfo(p, ch.id.removePrefix("m"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // details are optional; the page still works with the basics
+            } finally {
+                detailsLoading = false
+            }
+        }
+    }
+
+    fun clearProgress(ch: Channel) {
+        val p = playlist ?: return
+        repo.saveProgress(progressKey(p.id, ch.id), 0, 0)
+    }
     var group by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
 
@@ -58,6 +100,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Kept here so the list keeps its position when coming back from a series or the guide. */
     var listState by mutableStateOf(LazyListState())
+        private set
+    var gridState by mutableStateOf(LazyGridState())
+        private set
+    var homeState by mutableStateOf(LazyListState())
         private set
     var lastListKey: Any? = null
 
@@ -154,8 +200,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             channels = emptyList()
             group = null
             query = ""
-            section = Section.LIVE
+            section = Section.HOME
+            sort = Sort.DEFAULT
             listState = LazyListState()
+            gridState = LazyGridState()
+            homeState = LazyListState()
             lastListKey = null
             repo.clearEpg()
         }
@@ -246,6 +295,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun prepareQueue(list: List<Channel>, ch: Channel) {
         repo.playQueue = list
         repo.currentPlaylist = playlist
+        repo.currentSeries = if (screen == Screen.SERIES) series else null
         // For episodes, remember the series itself in "Recent".
         val recentId = if (screen == Screen.SERIES) series?.id ?: ch.id else ch.id
         playlist?.let { repo.addRecent(it.id, recentId) }

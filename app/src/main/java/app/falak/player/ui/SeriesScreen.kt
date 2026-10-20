@@ -101,13 +101,35 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                                     )
                                     Spacer(Modifier.width(14.dp))
                                 }
-                                Text(
-                                    info.plot,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 8,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Column {
+                                    val meta = listOfNotNull(
+                                        info.year.takeIf { it.isNotBlank() },
+                                        ratingLabel(info.rating.ifBlank { show.rating }),
+                                        "${info.seasons.size} season" + if (info.seasons.size == 1) "" else "s",
+                                    ).joinToString("  ·  ")
+                                    Text(meta, style = MaterialTheme.typography.bodyMedium)
+                                    if (info.genre.isNotBlank()) {
+                                        Text(info.genre, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        info.plot,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 8,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (info.cast.isNotBlank()) {
+                                        Text(
+                                            "Cast: ${info.cast}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 6.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

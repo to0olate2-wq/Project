@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
                             Screen.PLAYLISTS -> PlaylistsScreen(vm, state)
                             Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
                             Screen.SERIES -> SeriesScreen(vm, state, onPlay = ::play)
+                            Screen.DETAILS -> DetailsScreen(vm, state, onPlay = ::play)
                             Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
                             Screen.SETTINGS -> SettingsScreen(vm, state)
                         }
