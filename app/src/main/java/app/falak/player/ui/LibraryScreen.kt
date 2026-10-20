@@ -197,7 +197,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (section == Section.LIVE && epg.isNotEmpty()) {
+            if ((section == Section.LIVE || section == Section.HOME) && Kind.LIVE in kinds) {
                 IconButton(onClick = { vm.screen = Screen.GUIDE }) {
                     Icon(Icons.Filled.DateRange, contentDescription = "TV guide")
                 }
@@ -520,7 +520,12 @@ private fun ChannelRow(
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(ch.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (ch.hasCatchup) "${ch.name}  ⟲" else ch.name,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (current != null) {
                 Text(
                     current.title,

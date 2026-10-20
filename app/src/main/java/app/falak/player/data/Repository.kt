@@ -163,7 +163,7 @@ class Repository(private val context: Context) {
             }
             SourceType.XTREAM -> {
                 val api = XtreamApi(http, p.url, p.username, p.password, p.userAgent)
-                PlaylistCache(api.loadAll(), api.epgUrl)
+                PlaylistCache(api.loadAll(), api.epgUrl, api.serverTimezone())
             }
         }
         if (result.channels.isEmpty()) throw IOException("No channels found in this playlist")
@@ -186,7 +186,7 @@ class Repository(private val context: Context) {
         return try {
             val api = XtreamApi(http, server, user, pass, p.userAgent)
             val list = api.loadAll()
-            if (list.isEmpty()) null else PlaylistCache(list, api.epgUrl)
+            if (list.isEmpty()) null else PlaylistCache(list, api.epgUrl, api.serverTimezone())
         } catch (e: Exception) {
             null // fall back to downloading the M3U file
         }
@@ -214,24 +214,84 @@ class Repository(private val context: Context) {
         )
     }
 
-    suspend fun loadEpg(url: String, channels: List<Channel>, userAgent: String) = withContext(Dispatchers.IO) {
-        val wanted = channels.asSequence()
-            .filter { it.kind == Kind.LIVE && it.tvgId.isNotBlank() }
-            .map { it.epgKey }
-            .toHashSet()
-        if (wanted.isEmpty() || url.isBlank()) return@withContext
-        val req = Request.Builder().url(url.trim())
-            .header("User-Agent", userAgent.ifBlank { DEFAULT_UA })
-            .build()
-        http.newCall(req).execute().use { res ->
-            val body = res.body
-            if (res.isSuccessful && body != null) {
-                _epg.value = Epg.parse(body.byteStream(), wanted, System.currentTimeMillis())
+    /**
+     * TV guide for a playlist: the provider's guide plus any extra sources, matched by id or
+     * channel name and merged (first source with data for a channel wins). Uses the disk cache
+     * unless [force] or it is older than 8 hours. Returns a short status line.
+     */
+    suspend fun loadGuide(p: Playlist, channels: List<Channel>, providerUrl: String, force: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val file = File(cacheDir, "${p.id}.guide.json")
+            val now = System.currentTimeMillis()
+            if (file.exists()) {
+                val cached = try {
+                    file.inputStream().buffered().use { json.decodeFromStream(GuideCache.serializer(), it) }
+                } catch (e: Exception) {
+                    null
+                }
+                if (cached != null) {
+                    rawGuide = cached.programs
+                    publishGuide(p.epgShiftMinutes)
+                    if (!force && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
+                }
             }
+            val sources = (listOf(providerUrl) + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            if (sources.isEmpty()) return@withContext "No TV guide link for this playlist. Add a guide source in Settings."
+            val matcher = GuideMatcher(channels)
+            if (matcher.keys.isEmpty()) return@withContext ""
+            val merged = HashMap<String, List<Program>>()
+            val failed = ArrayList<String>()
+            for (url in sources) {
+                try {
+                    val req = Request.Builder().url(url).header("User-Agent", p.userAgent.ifBlank { DEFAULT_UA }).build()
+                    http.newCall(req).execute().use { res ->
+                        val body = res.body
+                        if (!res.isSuccessful || body == null) throw IOException("HTTP ${res.code}")
+                        val part = Epg.parse(body.byteStream(), matcher, now)
+                        for ((key, list) in part) if (merged[key].isNullOrEmpty()) merged[key] = list
+                    }
+                } catch (e: Exception) {
+                    failed += url.substringAfter("://").substringBefore('/')
+                }
+                rawGuide = HashMap(merged) // show what we have so far
+                publishGuide(p.epgShiftMinutes)
+            }
+            val result = GuideCache(now, merged, matched = merged.size)
+            try {
+                file.outputStream().buffered().use { json.encodeToStream(GuideCache.serializer(), result, it) }
+            } catch (e: Throwable) {
+                file.delete()
+            }
+            guideStatus(result) + if (failed.isNotEmpty()) " · couldn't load: ${failed.joinToString()}" else ""
+        }
+
+    @Volatile private var rawGuide: Map<String, List<Program>> = emptyMap()
+
+    /** Applies the playlist's guide time correction without downloading again. */
+    fun publishGuide(shiftMinutes: Int) {
+        val raw = rawGuide
+        val shift = shiftMinutes * 60_000L
+        _epg.value = if (shift == 0L) raw else raw.mapValues { (_, list) ->
+            list.map { it.copy(start = it.start + shift, stop = it.stop + shift) }
         }
     }
 
+    private fun guideStatus(c: GuideCache): String {
+        val mins = (System.currentTimeMillis() - c.savedAt) / 60_000
+        val age = when {
+            mins < 2 -> "just now"
+            mins < 60 -> "$mins min ago"
+            else -> "${mins / 60} h ago"
+        }
+        return "Guide for ${c.matched} channels · updated $age"
+    }
+
+    fun updatePlaylist(p: Playlist) = update { s ->
+        s.copy(playlists = s.playlists.map { if (it.id == p.id) p else it })
+    }
+
     fun clearEpg() {
+        rawGuide = emptyMap()
         _epg.value = emptyMap()
     }
 

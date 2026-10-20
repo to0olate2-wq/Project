@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
@@ -5,6 +7,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,7 +27,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -51,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import app.falak.player.data.AppState
+import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
 import app.falak.player.data.Program
@@ -73,8 +81,21 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
             value = System.currentTimeMillis()
         }
     }
-    val windowStart = remember { System.currentTimeMillis() / HALF_HOUR * HALF_HOUR - 2 * HALF_HOUR }
-    val windowEnd = windowStart + 28 * HALF_HOUR // 14 hours
+    var day by remember { mutableIntStateOf(0) }
+    val windowStart = remember(day) {
+        if (day == 0) {
+            System.currentTimeMillis() / HALF_HOUR * HALF_HOUR - 2 * HALF_HOUR
+        } else {
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            cal.add(java.util.Calendar.DAY_OF_YEAR, day)
+            cal.timeInMillis
+        }
+    }
+    val windowEnd = windowStart + if (day == 0) 28 * HALF_HOUR else 48 * HALF_HOUR
     val totalWidth = xOf(windowEnd, windowStart)
     val locked = rememberLockedGroups(vm, state)
     val group = vm.group
@@ -84,10 +105,11 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     }
     val hScroll = rememberScrollState()
     val density = LocalDensity.current
-    LaunchedEffect(Unit) {
-        val target = with(density) { xOf(System.currentTimeMillis() - HALF_HOUR, windowStart).roundToPx() }
+    LaunchedEffect(day) {
+        val target = if (day == 0) with(density) { xOf(System.currentTimeMillis() - HALF_HOUR, windowStart).roundToPx() } else 0
         hScroll.scrollTo(target.coerceAtLeast(0))
     }
+    val replayDays = remember(channels) { channels.maxOfOrNull { it.catchupDays }?.coerceAtMost(3) ?: 0 }
     val timeFormat = rememberTimeFormat()
     var details by remember { mutableStateOf<Pair<Channel, Program>?>(null) }
 
@@ -103,7 +125,37 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            IconButton(onClick = { vm.loadGuide(force = true) }, enabled = !vm.guideLoading) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Reload guide")
+            }
+        }
+        if (vm.guideLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (vm.guideStatus.isNotEmpty()) {
+            Text(vm.guideStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ((-replayDays)..1).forEach { d ->
+                FilterChip(
+                    selected = d == day,
+                    onClick = { day = d },
+                    label = {
+                        Text(
+                            when (d) {
+                                0 -> "Today"
+                                -1 -> "Yesterday"
+                                1 -> "Tomorrow"
+                                else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
+                                    .format(Date(System.currentTimeMillis() + d * 86_400_000L))
+                            },
+                        )
+                    },
+                )
+            }
         }
 
         // Time ruler
@@ -140,7 +192,8 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                         hScroll = hScroll,
                         onChannel = { onPlay(channels, ch) },
                         onProgram = { prog ->
-                            if (now >= prog.start && now < prog.stop) onPlay(channels, ch) else details = ch to prog
+                            val live = now >= prog.start && now < prog.stop
+                            if (live && !ch.hasCatchup) onPlay(channels, ch) else details = ch to prog
                         },
                     )
                 }
@@ -165,7 +218,17 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                 }
             },
             confirmButton = {
-                TextButton(onClick = { details = null; onPlay(channels, ch) }) { Text("Watch channel") }
+                Row {
+                    if (Catchup.canReplay(ch, prog, now)) {
+                        val live = now >= prog.start && now < prog.stop
+                        TextButton(onClick = {
+                            details = null
+                            val item = vm.replay(ch, prog, now)
+                            if (item != null) onPlay(listOf(item), item)
+                        }) { Text(if (live) "Watch from start" else "Watch replay") }
+                    }
+                    TextButton(onClick = { details = null; onPlay(channels, ch) }) { Text("Watch live") }
+                }
             },
             dismissButton = { TextButton(onClick = { details = null }) { Text("Close") } },
         )
@@ -207,7 +270,12 @@ private fun GuideRow(
                 modifier = Modifier.size(36.dp, 28.dp),
             )
             Spacer(Modifier.width(6.dp))
-            Text(ch.name, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column {
+                Text(ch.name, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (ch.hasCatchup) {
+                    Text("⟲ ${ch.catchupDays}d replay", style = MaterialTheme.typography.labelSmall, color = colors.secondary)
+                }
+            }
         }
         Spacer(Modifier.width(4.dp))
         Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hScroll)) {
@@ -242,7 +310,7 @@ private fun GuideRow(
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         ) {
                             Text(
-                                prog.title,
+                                (if (Catchup.canReplay(ch, prog, now) && !live) "⟲ " else "") + prog.title,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (live) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 2,

@@ -480,7 +480,7 @@ class PlayerActivity : ComponentActivity() {
     private fun saveProgress() {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
-        if (ch.kind == Kind.LIVE) return
+        if (ch.kind == Kind.LIVE || ch.id.startsWith("cu:")) return
         val pl = repo.currentPlaylist ?: return
         val dur = p.duration
         if (dur <= 0) return

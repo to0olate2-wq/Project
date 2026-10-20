@@ -46,6 +46,14 @@ class XtreamApi(
         }
     }
 
+    /** IANA time zone of the server (replay times are given in it), or "" if unknown. */
+    fun serverTimezone(): String = try {
+        val root = Json.parseToJsonElement(call(null) { it }) as? JsonObject
+        (root?.get("server_info") as? JsonObject)?.str("timezone").orEmpty()
+    } catch (e: Exception) {
+        ""
+    }
+
     fun loadAll(): List<Channel> {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
@@ -64,6 +72,8 @@ class XtreamApi(
                 tvgId = o["epg_channel_id"].orEmpty(),
                 kind = Kind.LIVE,
                 added = o["added"]?.toLongOrNull() ?: 0L,
+                catchupDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toIntOrNull() ?: 1).coerceAtLeast(1) else 0,
+                catchupType = if (o["tv_archive"] == "1") "xc" else "",
             )
         }
 

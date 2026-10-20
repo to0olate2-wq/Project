@@ -12,6 +12,7 @@ object M3uParser {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
         var epgUrl = ""
+        var headerCatchup: Map<String, String> = emptyMap()
         var attrs: Map<String, String> = emptyMap()
         var title = ""
         var extGroup = ""
@@ -27,6 +28,7 @@ object M3uParser {
                         val a = attributes(line)
                         epgUrl = (a["url-tvg"] ?: a["x-tvg-url"] ?: a["tvg-url"] ?: "")
                             .split(',').first().trim()
+                        headerCatchup = a.filterKeys { it.startsWith("catchup") || it == "timeshift" }
                     }
                     line.startsWith("#EXTINF", ignoreCase = true) -> {
                         val comma = titleComma(line)
@@ -57,10 +59,17 @@ object M3uParser {
                         var id = baseId
                         var n = 1
                         while (!ids.add(id)) id = baseId + "_" + n++
+                        val cu = headerCatchup + attrs.filterKeys { it.startsWith("catchup") || it == "timeshift" || it == "tvg-rec" }
+                        val cuType = (cu["catchup"] ?: cu["catchup-type"]).orEmpty().lowercase()
+                        val cuDays = (cu["catchup-days"] ?: cu["timeshift"] ?: cu["tvg-rec"])?.toIntOrNull()
+                            ?: if (cuType.isNotEmpty()) 1 else 0
                         out += Channel(
                             id = id, name = name, group = group, url = line,
                             logo = attrs["tvg-logo"].orEmpty(), tvgId = attrs["tvg-id"].orEmpty(),
                             kind = kind, userAgent = ua, referrer = ref,
+                            catchupDays = if (kind == Kind.LIVE && (cuType.isNotEmpty() || cuDays > 0)) cuDays.coerceAtLeast(1) else 0,
+                            catchupType = cuType,
+                            catchupSource = cu["catchup-source"].orEmpty(),
                         )
                         attrs = emptyMap(); title = ""; extGroup = ""; ua = ""; ref = ""
                     }

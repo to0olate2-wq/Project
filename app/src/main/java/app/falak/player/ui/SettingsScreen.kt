@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,6 +56,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val p = vm.playlist
     val pinSet = s.pin.isNotEmpty()
     var editPin by remember { mutableStateOf(false) }
+    var addGuide by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
     val guarded: (() -> Unit) -> Unit = { action ->
@@ -119,6 +121,52 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             item {
                 LanguageRow("Subtitle language", null, s.subtitleLang) { code ->
                     vm.updateSettings { it.copy(subtitleLang = code) }
+                }
+            }
+        }
+
+        if (p != null) {
+            item { SectionTitle("TV guide · ${p.name}") }
+            if (vm.guideStatus.isNotEmpty()) {
+                item {
+                    Text(vm.guideStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Guide time correction", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "If shows appear earlier or later than they air",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val shift = p.epgShiftMinutes
+                    TextButton(onClick = { vm.updatePlaylist(p.copy(epgShiftMinutes = (shift - 30).coerceAtLeast(-720)), false) }) { Text("−30m") }
+                    Text(formatShift(shift), style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { vm.updatePlaylist(p.copy(epgShiftMinutes = (shift + 30).coerceAtMost(720)), false) }) { Text("+30m") }
+                }
+            }
+            items(p.extraEpg, key = { "epg:$it" }) { url ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        GUIDE_PRESETS.firstOrNull { it.second == url }?.first ?: url,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.updatePlaylist(p.copy(extraEpg = p.extraEpg - url), true) }) { Text("Remove") }
+                }
+            }
+            item {
+                ClickRow("Add a guide source", "Free regional guides fill in channels your provider's guide misses") {
+                    addGuide = true
+                }
+            }
+            item {
+                ClickRow(if (vm.guideLoading) "Loading guide…" else "Reload guide now", "Downloads all guide sources again") {
+                    vm.loadGuide(force = true)
                 }
             }
         }
@@ -192,6 +240,17 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         )
     }
 
+    if (addGuide && p != null) {
+        AddGuideDialog(
+            existing = p.extraEpg,
+            onDismiss = { addGuide = false },
+            onAdd = { url ->
+                addGuide = false
+                if (url !in p.extraEpg) vm.updatePlaylist(p.copy(extraEpg = p.extraEpg + url), true)
+            },
+        )
+    }
+
     if (editPin) {
         EditPinDialog(
             hasPin = pinSet,
@@ -213,6 +272,79 @@ private fun SectionTitle(text: String) {
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
+    )
+}
+
+private const val EPG_SHARE = "https://epgshare01.online/epgshare01/epg_ripper_"
+
+/** Free, daily-updated XMLTV guides (epgshare01). */
+private val GUIDE_PRESETS = listOf(
+    "UAE & Arabic channels" to "${EPG_SHARE}AE1.xml.gz",
+    "beIN Sports" to "${EPG_SHARE}BEIN1.xml.gz",
+    "Al Jazeera" to "${EPG_SHARE}ALJAZEERA1.xml.gz",
+    "Egypt" to "${EPG_SHARE}EG1.xml.gz",
+    "United Kingdom" to "${EPG_SHARE}UK1.xml.gz",
+    "United States" to "${EPG_SHARE}US2.xml.gz",
+    "US sports" to "${EPG_SHARE}US_SPORTS1.xml.gz",
+    "India" to "${EPG_SHARE}IN1.xml.gz",
+    "Turkey" to "${EPG_SHARE}TR1.xml.gz",
+    "France" to "${EPG_SHARE}FR1.xml.gz",
+    "Germany" to "${EPG_SHARE}DE1.xml.gz",
+    "Spain" to "${EPG_SHARE}ES1.xml.gz",
+    "Italy" to "${EPG_SHARE}IT1.xml.gz",
+    "Canada" to "${EPG_SHARE}CA2.xml.gz",
+    "Australia" to "${EPG_SHARE}AU1.xml.gz",
+)
+
+private fun formatShift(minutes: Int): String {
+    if (minutes == 0) return "Off"
+    val sign = if (minutes > 0) "+" else "−"
+    val m = kotlin.math.abs(minutes)
+    return if (m % 60 == 0) "$sign${m / 60}h" else "$sign${m / 60}h${m % 60}"
+}
+
+@Composable
+private fun AddGuideDialog(existing: List<String>, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var custom by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add a guide source") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp)) {
+                OutlinedTextField(
+                    value = custom,
+                    onValueChange = { custom = it },
+                    label = { Text("Your XMLTV link (.xml or .xml.gz)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Or pick a free regional guide:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                )
+                LazyColumn {
+                    items(GUIDE_PRESETS.filter { it.second !in existing }, key = { it.second }) { (name, url) ->
+                        val shape = RoundedCornerShape(8.dp)
+                        Text(
+                            name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRing(shape)
+                                .clip(shape)
+                                .clickable { onAdd(url) }
+                                .padding(vertical = 10.dp, horizontal = 6.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = custom.trim().startsWith("http"), onClick = { onAdd(custom.trim()) }) { Text("Add link") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

@@ -17,6 +17,10 @@ data class Playlist(
     /** Optional EPG (XMLTV) link that overrides the one from the provider. */
     val epgUrl: String = "",
     val userAgent: String = "",
+    /** Extra XMLTV guides merged after the provider's (fills channels the provider misses). */
+    val extraEpg: List<String> = emptyList(),
+    /** Fix for guides published with the wrong time zone, in minutes (e.g. -60). */
+    val epgShiftMinutes: Int = 0,
 )
 
 @Serializable
@@ -40,12 +44,42 @@ data class Channel(
     /** When the provider added it (epoch seconds, Xtream only); powers "Newly added". */
     val added: Long = 0,
     val rating: String = "",
+    /** Days of replay (catch-up) the provider keeps for this live channel; 0 = none. */
+    val catchupDays: Int = 0,
+    /** "xc" (Xtream), "default", "append", "shift", "flussonic" … from the playlist. */
+    val catchupType: String = "",
+    val catchupSource: String = "",
 ) {
-    val epgKey: String get() = tvgId.lowercase()
+    /** Guide key: the tvg-id, or the cleaned-up name when the playlist has no id. */
+    val epgKey: String by lazy(LazyThreadSafetyMode.NONE) {
+        tvgId.lowercase().ifEmpty { "name:" + normName(name) }
+    }
     val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
+    val hasCatchup: Boolean get() = kind == Kind.LIVE && catchupDays > 0
 }
 
+@Serializable
 data class Program(val start: Long, val stop: Long, val title: String, val desc: String)
+
+@Serializable
+class GuideCache(val savedAt: Long, val programs: Map<String, List<Program>>, val matched: Int = 0)
+
+private val PREFIX = Regex("^\\s*[\\[(]?[a-z]{2,3}[\\])]?\\s*(?:[|\\-–]\\s+|:\\s*)")
+private val BRACKETS = Regex("[\\[(][^\\])]*[\\])]")
+private val QUALITY = Regex("\\b(fhd|uhd|hd|sd|4k|8k|hevc|h265|1080p?|720p?|hq|lq|backup|vip|raw|multi|ᴴᴰ)\\b")
+private val NON_WORD = Regex("[^\\p{L}\\p{N}+]")
+
+/**
+ * "AR: MBC 1 HD", "[AE] MBC1 (Backup)" and "mbc1" all become "mbc1", so guides can be
+ * matched by channel name when the playlist's tvg-id doesn't match the guide.
+ */
+fun normName(s: String): String {
+    var t = s.lowercase()
+    t = PREFIX.replace(t, "")
+    t = BRACKETS.replace(t, " ")
+    t = QUALITY.replace(t, " ")
+    return NON_WORD.replace(t, "")
+}
 
 class Season(val number: Int, val episodes: List<Channel>)
 
@@ -75,7 +109,12 @@ class VodInfo(
 )
 
 @Serializable
-data class PlaylistCache(val channels: List<Channel>, val epgUrl: String = "")
+data class PlaylistCache(
+    val channels: List<Channel>,
+    val epgUrl: String = "",
+    /** Xtream server time zone (IANA id), needed to request replays at the right time. */
+    val serverTz: String = "",
+)
 
 @Serializable
 data class Settings(

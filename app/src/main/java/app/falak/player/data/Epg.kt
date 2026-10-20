@@ -6,10 +6,53 @@ import java.io.BufferedInputStream
 import java.io.InputStream
 import java.util.zip.GZIPInputStream
 
-/** XMLTV guide parser. Keeps only wanted channels and roughly the next day and a half. */
+/**
+ * Links guide channels to playlist channels: first by tvg-id, then by cleaned-up name
+ * ("AR: MBC 1 HD" ≈ "MBC1"), which fixes most "no guide" channels.
+ */
+class GuideMatcher(channels: List<Channel>) {
+    val keys: Set<String>
+    private val byId = HashMap<String, MutableSet<String>>()
+    private val byName = HashMap<String, MutableSet<String>>()
+    /** How far back to keep programmes per key: longer for channels with replay. */
+    val pastMs = HashMap<String, Long>()
+
+    init {
+        val all = HashSet<String>()
+        for (ch in channels) {
+            if (ch.kind != Kind.LIVE) continue
+            val key = ch.epgKey
+            all += key
+            if (ch.tvgId.isNotBlank()) byId.getOrPut(ch.tvgId.lowercase()) { HashSet() } += key
+            val n = normName(ch.name)
+            if (n.length >= 2) byName.getOrPut(n) { HashSet() } += key
+            val past = if (ch.catchupDays > 0) ch.catchupDays.coerceAtMost(7) * 86_400_000L else 4 * 3_600_000L
+            if (past > (pastMs[key] ?: 0L)) pastMs[key] = past
+        }
+        keys = all
+    }
+
+    /** Playlist keys for a guide channel id and its display names. */
+    fun resolve(guideId: String, displayNames: List<String>): Set<String> {
+        byId[guideId.lowercase()]?.let { return it }
+        val out = HashSet<String>()
+        for (name in displayNames) byName[normName(name)]?.let { out += it }
+        if (out.isEmpty()) {
+            // ids like "MBC1.ae" or "bbc.one.uk"
+            byName[normName(guideId.substringBeforeLast('.'))]?.let { out += it }
+            byName[normName(guideId)]?.let { out += it }
+        }
+        return out
+    }
+}
+
 object Epg {
 
-    fun parse(input: InputStream, wanted: Set<String>, now: Long): Map<String, List<Program>> {
+    /**
+     * Streams an XMLTV file (plain or .gz) and returns programmes for matched channels.
+     * [shiftMs] corrects guides published with a wrong time zone.
+     */
+    fun parse(input: InputStream, matcher: GuideMatcher, now: Long, shiftMs: Long = 0): Map<String, MutableList<Program>> {
         val buffered = BufferedInputStream(input, 64 * 1024)
         buffered.mark(4)
         val b1 = buffered.read()
@@ -18,15 +61,16 @@ object Epg {
         val stream: InputStream =
             if (b1 == 0x1f && b2 == 0x8b) GZIPInputStream(buffered, 64 * 1024) else buffered
 
-        val from = now - 4 * 3_600_000L
-        val to = now + 36 * 3_600_000L
+        val future = now + 48 * 3_600_000L
         val out = HashMap<String, MutableList<Program>>()
+        val names = HashMap<String, MutableList<String>>()
+        val resolved = HashMap<String, Set<String>>()
         try {
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             parser.setInput(stream, null)
-            var keep = false
-            var channel = ""
+            var channelId: String? = null
+            var targets: Set<String> = emptySet()
             var start = 0L
             var stop = 0L
             var title = ""
@@ -35,21 +79,36 @@ object Epg {
             while (event != XmlPullParser.END_DOCUMENT) {
                 if (event == XmlPullParser.START_TAG) {
                     when (parser.name) {
+                        "channel" -> channelId = parser.getAttributeValue(null, "id")
+                        "display-name" -> channelId?.let { id ->
+                            names.getOrPut(id) { ArrayList(2) } += parser.nextText()
+                        }
                         "programme" -> {
-                            channel = parser.getAttributeValue(null, "channel")?.lowercase().orEmpty()
+                            channelId = null
+                            val id = parser.getAttributeValue(null, "channel").orEmpty()
+                            val keys = resolved.getOrPut(id) { matcher.resolve(id, names[id].orEmpty()) }
                             start = parseTime(parser.getAttributeValue(null, "start"))
                             stop = parseTime(parser.getAttributeValue(null, "stop"))
                             if (stop <= start) stop = start + 30 * 60_000L
-                            keep = start > 0 && channel in wanted && stop > from && start < to
+                            start += shiftMs
+                            stop += shiftMs
+                            targets = if (start > shiftMs && start < future) {
+                                keys.filterTo(HashSet()) { k -> stop > now - (matcher.pastMs[k] ?: 0L) }
+                            } else {
+                                emptySet()
+                            }
                             title = ""
                             desc = ""
                         }
-                        "title" -> if (keep && title.isEmpty()) title = parser.nextText()
-                        "desc" -> if (keep && desc.isEmpty()) desc = parser.nextText()
+                        "title" -> if (targets.isNotEmpty() && title.isEmpty()) title = parser.nextText()
+                        "desc" -> if (targets.isNotEmpty() && desc.isEmpty()) desc = parser.nextText().take(400)
                     }
                 } else if (event == XmlPullParser.END_TAG && parser.name == "programme") {
-                    if (keep) out.getOrPut(channel) { ArrayList() }.add(Program(start, stop, title, desc))
-                    keep = false
+                    if (targets.isNotEmpty()) {
+                        val prog = Program(start, stop, title, desc)
+                        for (k in targets) out.getOrPut(k) { ArrayList() }.add(prog)
+                    }
+                    targets = emptySet()
                 }
                 event = parser.next()
             }

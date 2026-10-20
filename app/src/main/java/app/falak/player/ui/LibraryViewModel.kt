@@ -9,9 +9,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
 import app.falak.player.data.Playlist
+import app.falak.player.data.Program
 import app.falak.player.data.SeriesInfo
 import app.falak.player.data.Settings
 import app.falak.player.data.VodInfo
@@ -203,6 +205,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             section = Section.HOME
             sort = Sort.DEFAULT
             listState = LazyListState()
+            guideStatus = ""
             gridState = LazyGridState()
             homeState = LazyListState()
             lastListKey = null
@@ -218,16 +221,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val data = repo.loadChannels(p, refresh)
                 channels = data.channels
-                val epgUrl = p.epgUrl.ifBlank { data.epgUrl }
-                launch {
-                    try {
-                        repo.loadEpg(epgUrl, data.channels, p.userAgent)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // The guide is optional; channels still work without it.
-                    }
-                }
+                providerEpg = data.epgUrl
+                serverTz = data.serverTz
+                loadGuide(force = refresh)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -277,6 +273,52 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         e.message ?: "Something went wrong"
     }
 
+    // ---- TV guide ----
+    private var providerEpg = ""
+    /** Xtream server time zone, used for replay URLs. */
+    var serverTz = ""
+        private set
+    var guideStatus by mutableStateOf("")
+        private set
+    var guideLoading by mutableStateOf(false)
+        private set
+    private var guideJob: Job? = null
+
+    fun loadGuide(force: Boolean) {
+        val p = playlist ?: return
+        val list = channels
+        if (list.isEmpty()) return
+        guideJob?.cancel()
+        guideLoading = true
+        guideJob = viewModelScope.launch {
+            try {
+                guideStatus = repo.loadGuide(p, list, p.epgUrl.ifBlank { providerEpg }, force)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                guideStatus = "Guide failed to load: ${e.message}"
+            } catch (e: OutOfMemoryError) {
+                guideStatus = "The guide is too large for this device."
+            } finally {
+                guideLoading = false
+            }
+        }
+    }
+
+    /** Saves playlist changes; new guide sources reload the guide, a time correction applies instantly. */
+    fun updatePlaylist(p: Playlist, reloadGuide: Boolean) {
+        repo.updatePlaylist(p)
+        if (playlist?.id == p.id) {
+            playlist = p
+            if (reloadGuide) loadGuide(force = true) else repo.publishGuide(p.epgShiftMinutes)
+        }
+    }
+
+    fun replay(ch: Channel, prog: Program, now: Long): Channel? {
+        val url = Catchup.url(ch, prog, serverTz, now) ?: return null
+        return Catchup.asItem(ch, prog, url)
+    }
+
     fun remove(p: Playlist) {
         repo.removePlaylist(p.id)
         if (playlist?.id == p.id) {
@@ -298,7 +340,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         repo.currentSeries = if (screen == Screen.SERIES) series else null
         // For episodes, remember the series itself in "Recent".
         val recentId = if (screen == Screen.SERIES) series?.id ?: ch.id else ch.id
-        playlist?.let { repo.addRecent(it.id, recentId) }
+        if (!recentId.startsWith("cu:")) playlist?.let { repo.addRecent(it.id, recentId) }
     }
 
     fun openSeries(ch: Channel) {
