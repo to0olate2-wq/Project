@@ -3,13 +3,18 @@ package app.falak.player.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,6 +30,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,15 +46,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,15 +66,34 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 
 /**
- * In-player browser: groups on the left, the group's channels on the right. Moving through the
- * groups updates the channels instantly; picking a channel switches without leaving the player.
+ * Sizes shared with the player, which fits the picture into the free space beside the browser
+ * (above it on a phone held upright).
+ */
+object BrowserLayout {
+    fun channelsWidthDp(tv: Boolean): Int = if (tv) 420 else 320
+    fun groupsWidthDp(tv: Boolean): Int = if (tv) 240 else 160
+
+    /** Upright phones: the picture sits on top across the full width, the list below it. */
+    const val PORTRAIT_GROUPS_DP = 140
+
+    /** Width taken by the browser in landscape, in dp. */
+    fun panelWidthDp(tv: Boolean, showGroups: Boolean): Int =
+        channelsWidthDp(tv) + if (showGroups) groupsWidthDp(tv) else 0
+}
+
+/**
+ * In-player browser. It opens on the channels of the playing channel's group; Left (or the Groups
+ * button) brings in the list of groups. The picture keeps playing beside it. Picking a live channel
+ * plays it there; picking the channel that is already playing goes back to full screen.
  */
 @Composable
 fun ChannelBrowser(
     open: Boolean,
+    showGroups: Boolean,
     groups: Map<String, List<Channel>>,
     currentId: String?,
     epg: Map<String, List<Program>>,
+    onShowGroups: (Boolean) -> Unit,
     onPick: (List<Channel>, Channel) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -94,63 +120,129 @@ fun ChannelBrowser(
         val channels = groups[shown].orEmpty()
         val now = remember { System.currentTimeMillis() }
         val currentFocus = remember { FocusRequester() }
+        val firstFocus = remember { FocusRequester() }
         val groupFocus = remember { FocusRequester() }
-        LaunchedEffect(Unit) {
-            delay(180)
-            if (runCatching { currentFocus.requestFocus() }.isFailure) runCatching { groupFocus.requestFocus() }
+
+        // The remote goes to the groups when they appear, and back to the channels when they close.
+        LaunchedEffect(showGroups) {
+            repeat(8) {
+                delay(45)
+                val ok = if (showGroups) {
+                    runCatching { groupFocus.requestFocus() }.isSuccess
+                } else {
+                    runCatching { currentFocus.requestFocus() }.isSuccess || runCatching { firstFocus.requestFocus() }.isSuccess
+                }
+                if (ok) return@LaunchedEffect
+            }
         }
 
-        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onClose() } }) {
+        // Tapping the picture (outside the list) closes the browser.
+        BoxWithConstraints(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onClose() } }) {
+            val portrait = maxHeight > maxWidth
+            val top = if (portrait) maxWidth * 9f / 16f else 0.dp
+            val groupsWidth = (if (portrait) BrowserLayout.PORTRAIT_GROUPS_DP else BrowserLayout.groupsWidthDp(tv)).dp
             Row(
                 Modifier
+                    .then(if (portrait) Modifier.fillMaxWidth() else Modifier)
+                    .padding(top = top)
                     .fillMaxHeight()
-                    .fillMaxWidth(if (tv) 0.66f else 0.9f)
-                    .background(Brush.horizontalGradient(listOf(Ink.copy(alpha = 0.97f), Ink.copy(alpha = 0.90f))))
+                    .background(Ink.copy(alpha = 0.97f))
                     .pointerInput(Unit) { detectTapGestures { } },
             ) {
-                // Groups
-                Column(Modifier.width(if (tv) 260.dp else 150.dp).fillMaxHeight().padding(top = 22.dp)) {
-                    Box(Modifier.padding(start = 18.dp, bottom = 8.dp)) { Kicker("Groups", color = Muted) }
-                    val groupNames = remember(groups) { groups.keys.toList() }
-                    val groupState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = (groupNames.indexOf(group) - 3).coerceAtLeast(0),
-                    )
-                    LazyColumn(state = groupState, contentPadding = PaddingValues(bottom = 24.dp)) {
-                        itemsIndexed(groupNames, key = { _, g -> g }) { _, g ->
-                            val sel = g == group
-                            val shape = RoundedCornerShape(6.dp)
-                            val own = remember { FocusRequester() }
-                            Text(
-                                g,
-                                fontFamily = Sans,
-                                fontSize = 14.sp,
-                                fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (sel) Paper else Muted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp)
-                                    .focusRequester(if (sel) groupFocus else own)
-                                    .onFocusChanged { if (it.isFocused) group = g }
-                                    .focusRing(shape)
-                                    .clip(shape)
-                                    .background(if (sel) Ink3 else Color.Transparent)
-                                    .clickable {
-                                        group = g
-                                        shown = g
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                // Groups: only when asked for.
+                AnimatedVisibility(
+                    visible = showGroups,
+                    enter = expandHorizontally(tween(180)) + fadeIn(tween(180)),
+                    exit = shrinkHorizontally(tween(160)) + fadeOut(tween(120)),
+                ) {
+                    Row(Modifier.fillMaxHeight()) {
+                        Column(Modifier.width(groupsWidth).fillMaxHeight().padding(top = 22.dp)) {
+                            Box(Modifier.padding(start = 18.dp, bottom = 8.dp)) { Kicker("Groups", color = Muted) }
+                            val groupNames = remember(groups) { groups.keys.toList() }
+                            val groupState = rememberLazyListState(
+                                initialFirstVisibleItemIndex = (groupNames.indexOf(group) - 3).coerceAtLeast(0),
                             )
+                            LazyColumn(
+                                state = groupState,
+                                contentPadding = PaddingValues(bottom = 24.dp),
+                                // Right (or OK) goes back to the channels of the group the remote is on.
+                                modifier = Modifier.onPreviewKeyEvent { e ->
+                                    if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
+                                        shown = group
+                                        onShowGroups(false)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                            ) {
+                                itemsIndexed(groupNames, key = { _, g -> g }) { _, g ->
+                                    val sel = g == group
+                                    val shape = RoundedCornerShape(6.dp)
+                                    val own = remember { FocusRequester() }
+                                    Text(
+                                        g,
+                                        fontFamily = Sans,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (sel) Paper else Muted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp)
+                                            .focusRequester(if (sel) groupFocus else own)
+                                            .onFocusChanged { if (it.isFocused) group = g }
+                                            .rowFocus(shape, if (sel) Ink3 else Color.Transparent)
+                                            .clickable {
+                                                group = g
+                                                shown = g
+                                                onShowGroups(false)
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    )
+                                }
+                            }
                         }
+                        Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
                     }
                 }
-                Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
+
                 // Channels of the selected group
-                Column(Modifier.weight(1f).fillMaxHeight().padding(top = 22.dp)) {
-                    Row(Modifier.padding(start = 18.dp, bottom = 8.dp, end = 18.dp)) {
-                        Text(shown.orEmpty(), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Paper, maxLines = 1)
-                        Spacer(Modifier.weight(1f))
+                Column(
+                    Modifier
+                        .then(if (portrait) Modifier.weight(1f) else Modifier.width(BrowserLayout.channelsWidthDp(tv).dp))
+                        .fillMaxHeight()
+                        .padding(top = 16.dp),
+                ) {
+                    Row(Modifier.padding(start = 8.dp, bottom = 6.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (!showGroups) {
+                            val shape = RoundedCornerShape(50)
+                            Row(
+                                Modifier
+                                    .rowFocus(shape, Ink3)
+                                    .clickable { onShowGroups(true) }
+                                    .padding(start = 4.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
+                                Text("Groups", fontFamily = Sans, fontSize = 12.sp, color = Muted)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                        } else {
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Text(
+                            shown.orEmpty(),
+                            fontFamily = Serif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            color = Paper,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Text("${channels.size}", style = Tabular.copy(fontSize = 13.sp), color = Faint)
                     }
                     val listState = rememberLazyListState(
@@ -163,10 +255,14 @@ fun ChannelBrowser(
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = 24.dp),
-                        // Left always returns to the selected group, not whichever group is level with the row.
+                        // Left brings in the groups.
                         modifier = Modifier.onPreviewKeyEvent { e ->
-                            e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft &&
-                                runCatching { groupFocus.requestFocus() }.isSuccess
+                            if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
+                                onShowGroups(true)
+                                true
+                            } else {
+                                false
+                            }
                         },
                     ) {
                         itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
@@ -178,10 +274,14 @@ fun ChannelBrowser(
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp)
-                                    .focusRequester(if (playing) currentFocus else own)
-                                    .focusRing(shape)
-                                    .clip(shape)
-                                    .background(if (playing) Signal.copy(alpha = 0.14f) else Color.Transparent)
+                                    .focusRequester(
+                                        when {
+                                            playing -> currentFocus
+                                            i == 0 -> firstFocus
+                                            else -> own
+                                        },
+                                    )
+                                    .rowFocus(shape, if (playing) Signal.copy(alpha = 0.16f) else Color.Transparent)
                                     .clickable { onPick(channels, ch) }
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -232,4 +332,15 @@ fun ChannelBrowser(
             }
         }
     }
+}
+
+/** The row the remote is on: a light fill and a paper outline, easy to see from the sofa. */
+@Composable
+private fun Modifier.rowFocus(shape: Shape, base: Color): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    return this
+        .onFocusChanged { focused = it.isFocused }
+        .clip(shape)
+        .background(if (focused) Paper.copy(alpha = 0.16f) else base)
+        .then(if (focused) Modifier.border(2.dp, Paper, shape) else Modifier)
 }

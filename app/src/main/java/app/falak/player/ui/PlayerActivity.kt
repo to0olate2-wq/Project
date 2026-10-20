@@ -119,6 +119,8 @@ class PlayerActivity : ComponentActivity() {
 
     // In-player channel & group browser
     private var browserOpen by mutableStateOf(false)
+    /** The list of groups is showing beside the channels. */
+    private var browserShowGroups by mutableStateOf(false)
     private var browserGroups by mutableStateOf<Map<String, List<Channel>>>(emptyMap())
     private var currentChannelId by mutableStateOf<String?>(null)
     /** The key that opened/closed the browser: its release must not reach the newly shown views. */
@@ -363,9 +365,11 @@ class PlayerActivity : ComponentActivity() {
                 FalakTheme(app.settings.theme, app.settings.layout) {
                     ChannelBrowser(
                         open = browserOpen,
+                        showGroups = browserShowGroups,
                         groups = browserGroups,
                         currentId = currentChannelId,
                         epg = epg,
+                        onShowGroups = { setBrowserGroups(it) },
                         onPick = { list, ch -> pickFromBrowser(list, ch) },
                         onClose = { closeBrowser() },
                     )
@@ -375,6 +379,10 @@ class PlayerActivity : ComponentActivity() {
         root.addView(browserView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         setContentView(root)
+        // A phone turned while the browser is open: fit the picture into the new free space.
+        root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, oldR, ob ->
+            if (r - l != oldR - ol || b - t != ob - ot) handler.post { applyVideoArea() }
+        }
         hideSystemBars()
         playerView.requestFocus()
     }
@@ -513,7 +521,7 @@ class PlayerActivity : ComponentActivity() {
         root.addView(layout, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         playerView.videoSurfaceView?.visibility = View.GONE
         v.attach(layout)
-        v.setScale(aspect)
+        v.setScale(if (browserOpen) 0 else aspect)
         v.addListener(listener)
         v.onTracksChanged = {
             updateTrackButtons()
@@ -523,6 +531,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.player = ZapPlayer(v)
         vlcLayout = layout
         vlc = v
+        applyVideoArea()
     }
 
     /** Releases whichever engine is running (keeps the activity's views). */
@@ -825,25 +834,48 @@ class PlayerActivity : ComponentActivity() {
         if (groups.isEmpty()) return
         browserGroups = groups
         handler.removeCallbacks(hideBrowserView)
+        // The controls stay away while browsing (they would also pull the remote's focus to themselves).
         playerView.hideController()
+        playerView.useController = false
         bannerView.visibility = View.GONE
         browserView.visibility = View.VISIBLE
+        browserShowGroups = false
         browserOpen = true
+        applyVideoArea()
         browserView.requestFocus()
     }
 
     private fun closeBrowser() {
         if (!browserOpen) return
         browserOpen = false
+        browserShowGroups = false
         handler.postDelayed(hideBrowserView, 320)
+        playerView.useController = !inPip
+        applyVideoArea()
         playerView.requestFocus()
     }
 
+    private fun setBrowserGroups(show: Boolean) {
+        if (!browserOpen || browserShowGroups == show) return
+        browserShowGroups = show
+        applyVideoArea()
+    }
+
+    /**
+     * Live channels: the picked channel plays in the picture beside the list and the list stays
+     * open; picking the one already playing goes back to full screen. Films and episodes open
+     * full screen straight away.
+     */
     private fun pickFromBrowser(list: List<Channel>, ch: Channel) {
-        closeBrowser()
-        if (ch.id == queue.getOrNull(index)?.id) return
+        val current = queue.getOrNull(index)
+        if (ch.id == current?.id) {
+            closeBrowser()
+            showBanner(ch)
+            return
+        }
         val at = list.indexOfFirst { it.id == ch.id }
         if (at < 0) return
+        if (ch.kind != Kind.LIVE) closeBrowser()
         saveProgress()
         // Zapping now follows the group the channel was picked from.
         queue = list
@@ -852,7 +884,35 @@ class PlayerActivity : ComponentActivity() {
         retried = false
         resumePositionMs = C.TIME_UNSET
         if (ch.kind != Kind.SERIES) repo.currentPlaylist?.let { repo.addRecent(it.id, ch.id) }
-        playCurrent(showInfo = true)
+        playCurrent(showInfo = !browserOpen)
+    }
+
+    /**
+     * Where the picture goes. Full screen normally; while the browser is open it fits into the free
+     * space beside the list (above it on a phone held upright), always whole (Fit), never hidden.
+     */
+    private fun applyVideoArea() {
+        if (!::root.isInitialized) return
+        val w = root.width
+        val h = root.height
+        val m = when {
+            !browserOpen || w == 0 || h == 0 -> intArrayOf(0, 0, 0, 0)
+            h > w -> intArrayOf(0, 0, 0, (h - w * 9 / 16).coerceAtLeast(0))
+            else -> {
+                val panel = dp(BrowserLayout.panelWidthDp(tvLayout, browserShowGroups))
+                val gap = dp(if (tvLayout) 24 else 12)
+                intArrayOf((panel + gap).coerceAtMost(w - dp(120)), gap, gap, gap)
+            }
+        }
+        for (v in listOfNotNull<View>(playerView, vlcLayout, messageView)) {
+            val lp = v.layoutParams as? FrameLayout.LayoutParams ?: continue
+            if (lp.leftMargin != m[0] || lp.topMargin != m[1] || lp.rightMargin != m[2] || lp.bottomMargin != m[3]) {
+                lp.setMargins(m[0], m[1], m[2], m[3])
+                v.layoutParams = lp
+            }
+        }
+        playerView.resizeMode = if (browserOpen) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[aspect]
+        vlc?.setScale(if (browserOpen) 0 else aspect)
     }
 
     // ---- remote control keys ----
@@ -866,7 +926,8 @@ class PlayerActivity : ComponentActivity() {
         if (browserOpen && event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
         ) {
-            closeBrowser()
+            // Back closes the groups first, then the browser.
+            if (browserShowGroups) setBrowserGroups(false) else closeBrowser()
             swallowUpKey = event.keyCode
             return true
         }
@@ -1021,6 +1082,8 @@ class PlayerActivity : ComponentActivity() {
         if (isInPictureInPictureMode) {
             if (browserOpen) {
                 browserOpen = false
+                browserShowGroups = false
+                applyVideoArea()
                 browserView.visibility = View.GONE
             }
             bannerView.visibility = View.GONE
@@ -1512,7 +1575,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showBanner(ch: Channel) {
-        if (inPip) return
+        if (inPip || browserOpen) return
         renderBanner(ch)
         bannerView.visibility = View.VISIBLE
         handler.removeCallbacks(hideBanner)
