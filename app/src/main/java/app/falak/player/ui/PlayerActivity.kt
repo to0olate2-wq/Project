@@ -29,6 +29,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -86,12 +92,11 @@ class PlayerActivity : ComponentActivity() {
                 .setSampleMimeType(MimeTypes.APPLICATION_CEA608)
                 .setAccessibilityChannel(1)
                 .build(),
-            androidx.media3.common.Format.Builder()
-                .setSampleMimeType(MimeTypes.APPLICATION_CEA708)
-                .setAccessibilityChannel(1)
-                .setInitializationData(androidx.media3.common.util.CodecSpecificDataUtil.buildCea708InitializationData(false))
-                .build(),
         )
+
+        /** A caption track we added ourselves (not declared by the stream): only real once text arrives. */
+        fun isUnverified(f: androidx.media3.common.Format): Boolean =
+            f.sampleMimeType == MimeTypes.APPLICATION_CEA608 && f.language == null
     }
 
     private lateinit var playerView: PlayerView
@@ -101,6 +106,16 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var audioButton: TextView
     private lateinit var ccButton: TextView
     private lateinit var toolbar: LinearLayout
+    private lateinit var browseButton: TextView
+    private lateinit var browserView: ComposeView
+
+    // In-player channel & group browser
+    private var browserOpen by mutableStateOf(false)
+    private var browserGroups by mutableStateOf<Map<String, List<Channel>>>(emptyMap())
+    private var currentChannelId by mutableStateOf<String?>(null)
+    /** The key that opened/closed the browser: its release must not reach the newly shown views. */
+    private var swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
+    private val hideBrowserView = Runnable { if (!browserOpen) browserView.visibility = View.GONE }
     private val trackNames by lazy { DefaultTrackNameProvider(resources) }
     private var autoSubtitlesDone = false
     private var bannerFor: Channel? = null
@@ -191,11 +206,13 @@ class PlayerActivity : ComponentActivity() {
         ccButton = pill("CC  Subtitles") { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
         aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
         val externalButton = pill("↗  VLC") { openExternally() }
+        browseButton = pill("☰  Channels") { openBrowser() }
         toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
             val gap = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { marginEnd = dp(8) }
+            addView(browseButton, LinearLayout.LayoutParams(gap))
             addView(audioButton, gap)
             addView(ccButton, LinearLayout.LayoutParams(gap))
             addView(aspectButton, LinearLayout.LayoutParams(gap))
@@ -211,6 +228,26 @@ class PlayerActivity : ComponentActivity() {
                 toolbar.visibility = if (inPip) View.GONE else visibility
             },
         )
+
+        browserView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            visibility = View.GONE
+            setContent {
+                val app by repo.state.collectAsState()
+                val epg by repo.epg.collectAsState()
+                FalakTheme(app.settings.theme) {
+                    ChannelBrowser(
+                        open = browserOpen,
+                        groups = browserGroups,
+                        currentId = currentChannelId,
+                        epg = epg,
+                        onPick = { list, ch -> pickFromBrowser(list, ch) },
+                        onClose = { closeBrowser() },
+                    )
+                }
+            }
+        }
+        root.addView(browserView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         setContentView(root)
         hideSystemBars()
@@ -308,6 +345,14 @@ class PlayerActivity : ComponentActivity() {
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
+        currentChannelId = ch.id
+        // Remembered so the list can put the selection back on this item after the player closes.
+        if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
+        browseButton.text = when (ch.kind) {
+            Kind.LIVE -> "☰  Channels"
+            Kind.MOVIE -> "☰  Films"
+            Kind.SERIES -> "☰  Episodes"
+        }
         val settings = repo.state.value.settings
         val url = overrideUrl
             ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
@@ -353,6 +398,10 @@ class PlayerActivity : ComponentActivity() {
             DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(item)
         }
         autoSubtitlesDone = false
+        probeDone = false
+        captionsDetected = false
+        captionsShown = repo.state.value.settings.subtitlesOn
+        applyCaptionVisibility()
 
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
@@ -426,12 +475,17 @@ class PlayerActivity : ComponentActivity() {
             if (cueGroup.cues.isNotEmpty()) {
                 captionsSeen = true
                 handler.removeCallbacks(captionWatch)
+                if (!captionsDetected) {
+                    captionsDetected = true
+                    updateTrackButtons()
+                }
             }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
             updateTrackButtons()
             maybeAutoSubtitles()
+            probeCaptions()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
 
@@ -467,14 +521,99 @@ class PlayerActivity : ComponentActivity() {
         override fun seekToPreviousMediaItem() = zap(-1)
     }
 
+    // ---- channel & group browser ----
+
+    /** Groups for the browser: favourites first, then the playlist's visible groups of the same kind. */
+    private fun browserGroupsFor(ch: Channel): Map<String, List<Channel>> {
+        val idx = repo.currentIndex
+        val out = LinkedHashMap<String, List<Channel>>()
+        if (ch.kind == Kind.SERIES || ch.id.startsWith("cu:") || idx.all.isEmpty()) {
+            out[if (ch.kind == Kind.SERIES) "Episodes" else "Now playing"] = queue
+            return out
+        }
+        val excluded = repo.excludedGroups
+        val pl = repo.currentPlaylist
+        if (pl != null) {
+            val favs = repo.state.value.favorites[pl.id].orEmpty()
+                .mapNotNull { idx.byId[it] }
+                .filter { it.kind == ch.kind && it.group !in excluded }
+            if (favs.isNotEmpty()) out["★ Favourites"] = favs
+        }
+        for ((g, list) in idx.groupsOf(ch.kind)) if (g !in excluded) out[g] = list
+        // Played from a list that isn't a group (search, recents…): keep that list too.
+        if (out.values.none { l -> l.any { it.id == ch.id } }) {
+            val withQueue = LinkedHashMap<String, List<Channel>>()
+            withQueue["Now playing"] = queue
+            withQueue.putAll(out)
+            return withQueue
+        }
+        return out
+    }
+
+    private fun openBrowser() {
+        if (inPip) return
+        val ch = queue.getOrNull(index) ?: return
+        val groups = browserGroupsFor(ch)
+        if (groups.isEmpty()) return
+        browserGroups = groups
+        handler.removeCallbacks(hideBrowserView)
+        playerView.hideController()
+        bannerView.visibility = View.GONE
+        browserView.visibility = View.VISIBLE
+        browserOpen = true
+        browserView.requestFocus()
+    }
+
+    private fun closeBrowser() {
+        if (!browserOpen) return
+        browserOpen = false
+        handler.postDelayed(hideBrowserView, 320)
+        playerView.requestFocus()
+    }
+
+    private fun pickFromBrowser(list: List<Channel>, ch: Channel) {
+        closeBrowser()
+        if (ch.id == queue.getOrNull(index)?.id) return
+        val at = list.indexOfFirst { it.id == ch.id }
+        if (at < 0) return
+        saveProgress()
+        // Zapping now follows the group the channel was picked from.
+        queue = list
+        repo.playQueue = list
+        index = at
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        if (ch.kind != Kind.SERIES) repo.currentPlaylist?.let { repo.addRecent(it.id, ch.id) }
+        playCurrent(showInfo = true)
+    }
+
     // ---- remote control keys ----
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!::playerView.isInitialized) return super.dispatchKeyEvent(event)
+        if (event.action == KeyEvent.ACTION_UP && event.keyCode == swallowUpKey) {
+            swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
+            return true
+        }
+        if (browserOpen && event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
+        ) {
+            closeBrowser()
+            swallowUpKey = event.keyCode
+            return true
+        }
+        // While the browser is open, the remote moves through it instead of zapping.
+        if (browserOpen) return super.dispatchKeyEvent(event)
         val live = queue.getOrNull(index)?.kind == Kind.LIVE
         val controlsShown = playerView.isControllerFullyVisible
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
+                    if (live && !controlsShown && event.repeatCount == 0) {
+                        openBrowser()
+                        swallowUpKey = event.keyCode
+                        return true
+                    }
                 KeyEvent.KEYCODE_CHANNEL_UP -> { zap(1); return true }
                 KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_UP -> if (live && !controlsShown) { zap(1); return true }
@@ -524,6 +663,10 @@ class PlayerActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
         playerView.useController = !isInPictureInPictureMode
         if (isInPictureInPictureMode) {
+            if (browserOpen) {
+                browserOpen = false
+                browserView.visibility = View.GONE
+            }
             bannerView.visibility = View.GONE
             toolbar.visibility = View.GONE
             hideMessage()
@@ -579,8 +722,10 @@ class PlayerActivity : ComponentActivity() {
         val p = player ?: return emptyList()
         val out = ArrayList<TrackOption>()
         if (type == C.TRACK_TYPE_TEXT) {
-            val anyOn = p.currentTracks.groups.any { it.type == type && it.isSelected }
+            val anyOn = captionsShown && p.currentTracks.groups.any { it.type == type && it.isSelected }
             out += TrackOption("Off", !anyOn) {
+                captionsShown = false
+                applyCaptionVisibility()
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .clearOverridesOfType(type)
                     .setTrackTypeDisabled(type, true)
@@ -592,11 +737,16 @@ class PlayerActivity : ComponentActivity() {
             if (g.type != type) continue
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
+                if (type == C.TRACK_TYPE_TEXT && isUnverified(g.getTrackFormat(i)) && !captionsDetected) continue
                 val base = trackLabel(g.getTrackFormat(i))
                 val n = (seen[base] ?: 0) + 1
                 seen[base] = n
                 val label = if (n > 1) "$base ($n)" else base
-                out += TrackOption(label, g.isTrackSelected(i)) {
+                out += TrackOption(label, g.isTrackSelected(i) && (type != C.TRACK_TYPE_TEXT || captionsShown)) {
+                    if (type == C.TRACK_TYPE_TEXT) {
+                        captionsShown = true
+                        applyCaptionVisibility()
+                    }
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
@@ -655,7 +805,38 @@ class PlayerActivity : ComponentActivity() {
 
     private fun countTracks(type: Int): Int {
         val groups = player?.currentTracks?.groups ?: return 0
-        return groups.filter { it.type == type }.sumOf { g -> (0 until g.length).count { g.isTrackSupported(it) } }
+        return groups.filter { it.type == type }.sumOf { g ->
+            (0 until g.length).count { i ->
+                g.isTrackSupported(i) &&
+                    (type != C.TRACK_TYPE_TEXT || captionsDetected || !isUnverified(g.getTrackFormat(i)))
+            }
+        }
+    }
+
+    // ---- caption verification ----
+    // Many streams carry no captions even though a CC track can be offered. We quietly decode
+    // CC1 with the subtitle view hidden; the CC button appears only once real text arrives.
+    private var captionsDetected = false
+    private var captionsShown = false
+    private var probeDone = false
+
+    private fun applyCaptionVisibility() {
+        playerView.subtitleView?.visibility = if (captionsShown) View.VISIBLE else View.INVISIBLE
+    }
+
+    private fun probeCaptions() {
+        val p = player ?: return
+        if (probeDone) return
+        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (groups.isEmpty()) return
+        probeDone = true
+        if (groups.any { it.isSelected }) return
+        val cc = groups.firstOrNull { g -> (0 until g.length).any { isUnverified(g.getTrackFormat(it)) } } ?: return
+        applyCaptionVisibility()
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(TrackSelectionOverride(cc.mediaTrackGroup, 0))
+            .build()
     }
 
     private fun showTrackDialog(type: Int) {
@@ -771,9 +952,13 @@ class PlayerActivity : ComponentActivity() {
     private fun maybeAutoSubtitles() {
         val p = player ?: return
         if (autoSubtitlesDone || !repo.state.value.settings.subtitlesOn) return
-        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        val groups = p.currentTracks.groups.filter { g ->
+            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { !isUnverified(g.getTrackFormat(it)) }
+        }
         if (groups.isEmpty()) return
         autoSubtitlesDone = true
+        captionsShown = true
+        applyCaptionVisibility()
         if (groups.any { it.isSelected }) return
         val lang = repo.state.value.settings.subtitleLang
         val pick = groups.firstOrNull { g -> lang.isNotEmpty() && (0 until g.length).any { g.getTrackFormat(it).language?.startsWith(lang) == true } }

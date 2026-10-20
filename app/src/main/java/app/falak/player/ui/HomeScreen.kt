@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -245,24 +248,59 @@ private fun FeatureCarousel(
                     tween(if (pager.settledPage == page) SLIDE_MS + 900 else 300, easing = LinearEasing),
                     label = "kenBurns",
                 )
-                AsyncImage(
-                    model = art[item.id]?.takeIf { it.isNotBlank() } ?: item.logo,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = zoom
-                        scaleY = zoom
-                    },
-                )
+                val backdrop = art[item.id]?.takeIf { it.isNotBlank() }
+                if (backdrop != null) {
+                    // Wide artwork: fill the frame with a slow zoom.
+                    AsyncImage(
+                        model = backdrop,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                        },
+                    )
+                } else {
+                    // Portrait poster only: blurred poster behind, the whole poster sharp on the right.
+                    Box(Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = item.logo,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .blur(30.dp)
+                                .graphicsLayer {
+                                    alpha = 0.45f
+                                    scaleX = 1.2f * zoom
+                                    scaleY = 1.2f * zoom
+                                },
+                        )
+                        AsyncImage(
+                            model = item.logo,
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = if (tv) 48.dp else 18.dp, top = 18.dp, bottom = 18.dp)
+                                .fillMaxHeight()
+                                .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
+                                .clip(RoundedCornerShape(8.dp))
+                                .graphicsLayer {
+                                    scaleX = 0.98f + (zoom - 1f) * 0.3f
+                                    scaleY = 0.98f + (zoom - 1f) * 0.3f
+                                },
+                        )
+                    }
+                }
             }
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xF2111010), 0.55f to Color(0x99111010), 1f to Color.Transparent)))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xE6111010))))
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.95f), 0.55f to Ink.copy(alpha = 0.65f), 1f to Color.Transparent)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Ink.copy(alpha = 0.92f))))
 
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(if (tv) 0.55f else 0.85f)
+                    .fillMaxWidth(if (tv) 0.55f else 0.62f)
                     .padding(horizontal = 22.dp, vertical = 20.dp),
             ) {
                 AnimatedContent(
@@ -314,7 +352,7 @@ private fun FeatureCarousel(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     repeat(size) { i ->
-                        Box(Modifier.width(22.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x4DFFFFFF))) {
+                        Box(Modifier.width(22.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Paper.copy(alpha = 0.3f))) {
                             val fill = when {
                                 i < active -> 1f
                                 i == active -> progress.value

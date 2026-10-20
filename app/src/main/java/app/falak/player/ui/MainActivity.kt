@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -96,10 +97,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            FalakTheme {
+            val state by vm.state.collectAsStateWithLifecycle()
+            val theme = state.settings.theme
+            FalakTheme(theme) {
+                // Status-bar icons follow the theme (dark icons on the light theme).
+                val dark = LocalPalette.current.dark
+                LaunchedEffect(dark) {
+                    val transparent = android.graphics.Color.TRANSPARENT
+                    enableEdgeToEdge(
+                        statusBarStyle = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent),
+                        navigationBarStyle = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent),
+                    )
+                }
                 Backdrop()
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
-                    val state by vm.state.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
                         AnimatedContent(
@@ -124,6 +135,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.DETAILS -> DetailsScreen(vm, state, onPlay = ::play)
                                 Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
                                 Screen.SETTINGS -> SettingsScreen(vm, state)
+                                Screen.GROUPS -> GroupsScreen(vm, state)
                             }
                         }
                     }
@@ -135,12 +147,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        vm.onReturnFromPlayer()
+    }
+
     /** How deep a page sits, so transitions know which way to slide. */
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE -> 2
         Screen.SETTINGS -> 3
+        Screen.GROUPS -> 4
     }
 
     private fun play(list: List<Channel>, channel: Channel) {

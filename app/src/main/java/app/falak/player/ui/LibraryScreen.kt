@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -104,7 +105,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val recentIds = state.recents[p.id].orEmpty()
     val favSet = remember(favIds) { favIds.toHashSet() }
     val locked = rememberLockedGroups(vm, state)
+    val hidden = remember(state.settings.hiddenGroups, p.id) { state.settings.hiddenGroups[p.id].orEmpty().toHashSet() }
+    val excluded = remember(locked, hidden) { if (hidden.isEmpty()) locked else locked + hidden }
     var pinForGroup by remember { mutableStateOf<String?>(null) }
+    var groupMenu by remember { mutableStateOf<String?>(null) }
     val selectGroup: (String?) -> Unit = { g ->
         if (g != null && g in locked) {
             pinForGroup = g
@@ -138,15 +142,16 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         Section.RECENT -> remember(recentIds, index) { recentIds.mapNotNull { index.byId[it] } }
         else -> index.ofKind(kind!!)
     }
-    val groupMap: Map<String, List<Channel>> = if (kind != null) index.groupsOf(kind) else emptyMap()
+    val allGroups: Map<String, List<Channel>> = if (kind != null) index.groupsOf(kind) else emptyMap()
+    val groupMap = remember(allGroups, hidden) { if (hidden.isEmpty()) allGroups else allGroups.filterKeys { it !in hidden } }
 
     // Filtering and sorting run on a background thread, so taps stay instant on big playlists.
-    val visible by produceState<List<Channel>?>(null, base, group, q, sort, locked, groupMap) {
+    val visible by produceState<List<Channel>?>(null, base, group, q, sort, excluded, groupMap) {
         if (q.isNotEmpty()) delay(160)
         value = withContext(Dispatchers.Default) {
             val src = if (q.isEmpty() && group != null) groupMap[group].orEmpty() else base
-            val out = if (locked.isEmpty() && q.isEmpty()) src else src.filter { ch ->
-                (locked.isEmpty() || ch.group !in locked) && (q.isEmpty() || ch.name.contains(q, ignoreCase = true))
+            val out = if (excluded.isEmpty() && q.isEmpty()) src else src.filter { ch ->
+                (excluded.isEmpty() || ch.group !in excluded) && (q.isEmpty() || ch.name.contains(q, ignoreCase = true))
             }
             when (sort) {
                 Sort.DEFAULT -> out
@@ -177,6 +182,20 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             gridState.scrollToItem(0)
         }
         vm.lastListKey = key
+    }
+    // Coming back from the player: scroll to (and on TV focus) what was playing.
+    val focusId = vm.focusId
+    LaunchedEffect(focusId, visible) {
+        val id = focusId ?: return@LaunchedEffect
+        val items = visible ?: return@LaunchedEffect
+        val idx = items.indexOfFirst { it.id == id }
+        if (idx < 0) {
+            if (section != Section.HOME) vm.focusId = null
+            return@LaunchedEffect
+        }
+        if (isVod) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2).coerceAtLeast(0))
+        delay(400)
+        vm.focusId = null
     }
     val openItem: (Channel) -> Unit = { ch ->
         when {
@@ -283,7 +302,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 modifier = Modifier.fillMaxSize().padding(top = 8.dp),
             ) { (shown, noQuery) ->
                 if (shown == Section.HOME && noQuery) {
-                    HomeContent(vm, state, locked, epg, now, onPlay)
+                    HomeContent(vm, state, excluded, epg, now, onPlay)
                 } else {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         val wide = maxWidth >= 720.dp
@@ -300,24 +319,24 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                             sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
                                         }
                                     }
-                                    PosterGrid(list, vm.gridStateFor(shown), state.progress, p.id, openItem, Modifier.weight(1f).fillMaxWidth())
+                                    PosterGrid(list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem, Modifier.weight(1f).fillMaxWidth())
                                 }
                                 else -> ChannelList(
                                     list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                     progress = state.progress, playlistId = p.id,
-                                    onOpen = openItem, onFav = { ch -> vm.toggleFavorite(ch) }, modifier = m,
+                                    onOpen = openItem, onFav = { ch -> vm.toggleFavorite(ch) }, focusId = focusId, modifier = m,
                                 )
                             }
                         }
                         if (wide && groupsVisible) {
                             Row(Modifier.fillMaxSize()) {
-                                GroupColumn(groupMap, base.size, group, locked, selectGroup, Modifier.width(250.dp).fillMaxHeight())
+                                GroupColumn(groupMap, base.size, group, locked, selectGroup, { groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
                                 Spacer(Modifier.width(20.dp))
                                 content(Modifier.weight(1f).fillMaxHeight())
                             }
                         } else {
                             Column(Modifier.fillMaxSize()) {
-                                if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup)
+                                if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { groupMenu = it }) { vm.screen = Screen.GROUPS }
                                 content(Modifier.weight(1f).fillMaxWidth())
                             }
                         }
@@ -325,6 +344,20 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 }
             }
         }
+    }
+
+    groupMenu?.let { g ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { groupMenu = null },
+            title = { Text(g, fontFamily = Serif) },
+            text = { Text("Hidden groups disappear from lists, Home, the guide and the player. You can bring them back in Show & hide groups.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { vm.toggleHiddenGroup(g); groupMenu = null }) { Text("Hide group") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { groupMenu = null; vm.screen = Screen.GROUPS }) { Text("Show & hide groups…") }
+            },
+        )
     }
 
     pinForGroup?.let { g ->
@@ -398,19 +431,36 @@ private fun GroupColumn(
     selected: String?,
     locked: Set<String>,
     onSelect: (String?) -> Unit,
+    onOptions: (String) -> Unit,
+    onManage: () -> Unit,
     modifier: Modifier,
 ) {
     val names = remember(groups) { groups.keys.toList() }
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = 32.dp)) {
-        item(key = "__all") { GroupLine("All", total, selected == null, false) { onSelect(null) } }
+        item(key = "__all") { GroupLine("All", total, selected == null, false, {}) { onSelect(null) } }
         items(names, key = { "g:$it" }) { g ->
-            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked) { onSelect(g) }
+            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked, { onOptions(g) }) { onSelect(g) }
+        }
+        item(key = "__manage") {
+            Text(
+                "Show & hide groups",
+                fontFamily = Sans,
+                fontSize = 13.sp,
+                color = Muted,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .focusRing(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(onClick = onManage)
+                    .padding(horizontal = 13.dp, vertical = 8.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boolean, onClick: () -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boolean, onLongClick: () -> Unit, onClick: () -> Unit) {
     val shape = RoundedCornerShape(6.dp)
     Row(
         Modifier
@@ -418,7 +468,7 @@ private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boole
             .focusRing(shape)
             .clip(shape)
             .background(if (selected) Ink3 else Color.Transparent)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -448,15 +498,27 @@ private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boole
 }
 
 @Composable
-private fun GroupChips(groups: Map<String, List<Channel>>, selected: String?, locked: Set<String>, onSelect: (String?) -> Unit) {
+private fun GroupChips(
+    groups: Map<String, List<Channel>>,
+    selected: String?,
+    locked: Set<String>,
+    onSelect: (String?) -> Unit,
+    onOptions: (String) -> Unit,
+    onManage: () -> Unit,
+) {
     val names = remember(groups) { listOf<String?>(null) + groups.keys }
     LazyRow(
         Modifier.fillMaxWidth().padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(names, key = { it ?: "__all" }) { g ->
-            TagChip(if (g != null && g in locked) "🔒 $g" else g ?: "All", selected == g) { onSelect(g) }
+            TagChip(
+                if (g != null && g in locked) "🔒 $g" else g ?: "All",
+                selected == g,
+                onLongClick = if (g != null) ({ onOptions(g) }) else null,
+            ) { onSelect(g) }
         }
+        item(key = "__manage") { TagChip("Edit groups", false, onClick = onManage) }
     }
 }
 
@@ -466,6 +528,7 @@ private fun PosterGrid(
     state: LazyGridState,
     progress: Map<String, Watch>,
     playlistId: String,
+    focusId: String?,
     onOpen: (Channel) -> Unit,
     modifier: Modifier,
 ) {
@@ -482,7 +545,7 @@ private fun PosterGrid(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         gridItems(list, key = { it.id }) { ch ->
-            PosterCard(ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null)
+            PosterCard(ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null, focusMe = ch.id == focusId)
         }
     }
 }
@@ -498,6 +561,7 @@ private fun ChannelList(
     playlistId: String,
     onOpen: (Channel) -> Unit,
     onFav: (Channel) -> Unit,
+    focusId: String?,
     modifier: Modifier,
 ) {
     if (list.isEmpty()) {
@@ -508,7 +572,7 @@ private fun ChannelList(
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, Modifier.animateItem())
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, ch.id == focusId, Modifier.animateItem())
             Rule()
         }
     }
@@ -525,13 +589,23 @@ private fun ChannelRow(
     now: Long,
     onClick: () -> Unit,
     onFav: () -> Unit,
+    focusMe: Boolean,
     modifier: Modifier,
 ) {
     val shape = RoundedCornerShape(6.dp)
     val isLive = ch.kind == Kind.LIVE
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(focusMe) {
+        if (focusMe) {
+            delay(120)
+            runCatching { focus.requestFocus() }
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
+            .background(if (focusMe) Signal.copy(alpha = 0.10f) else Color.Transparent, shape)
+            .focusRequester(focus)
             .focusRing(shape)
             .clip(shape)
             .clickable(onClick = onClick)
@@ -615,7 +689,7 @@ private fun ChannelRow(
             Icon(
                 Icons.Filled.Star,
                 contentDescription = if (isFav) "Remove from saved" else "Save",
-                tint = if (isFav) Amber else Color(0x33FFFFFF),
+                tint = if (isFav) Amber else Faint.copy(alpha = 0.45f),
                 modifier = Modifier.size(20.dp),
             )
         }

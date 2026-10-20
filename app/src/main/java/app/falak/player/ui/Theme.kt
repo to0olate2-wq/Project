@@ -10,6 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,16 +37,76 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.falak.player.R
 
-// ---- "Screening room" palette: warm ink, paper text, one signal-red accent ----
-val Ink = Color(0xFF111010)
-val Ink2 = Color(0xFF181615)
-val Ink3 = Color(0xFF221F1D)
-val Hairline = Color(0x1FFFFFFF)
-val Paper = Color(0xFFF3EEE6)
-val Muted = Color(0xFFA39C92)
-val Faint = Color(0xFF6E6862)
-val Signal = Color(0xFFFF4F2E)
-val Amber = Color(0xFFF2B84B)
+// ---- Themes: every colour on screen comes from the active palette ----
+@Immutable
+class Palette(
+    val name: String,
+    val dark: Boolean,
+    /** page background */
+    val ink: Color,
+    /** raised surface */
+    val ink2: Color,
+    /** cards, tiles */
+    val ink3: Color,
+    val hairline: Color,
+    /** main text */
+    val paper: Color,
+    /** secondary text */
+    val muted: Color,
+    /** tertiary text */
+    val faint: Color,
+    /** accent: live, progress, selection */
+    val signal: Color,
+    /** ratings */
+    val amber: Color,
+    /** film grain strength 0..1 */
+    val grain: Float,
+)
+
+val Palettes = listOf(
+    Palette(
+        "Screening room", true,
+        ink = Color(0xFF121110), ink2 = Color(0xFF1B1918), ink3 = Color(0xFF282523), hairline = Color(0x29FFFFFF),
+        paper = Color(0xFFF7F3EC), muted = Color(0xFFD2CBC1), faint = Color(0xFFA0988E),
+        signal = Color(0xFFFF5A3C), amber = Color(0xFFF4BF55), grain = 0.35f,
+    ),
+    Palette(
+        "Midnight", true,
+        ink = Color(0xFF0B1120), ink2 = Color(0xFF121A2C), ink3 = Color(0xFF1B2539), hairline = Color(0x2EFFFFFF),
+        paper = Color(0xFFF1F5FC), muted = Color(0xFFC3CDDF), faint = Color(0xFF8F9BB3),
+        signal = Color(0xFF5BB8FF), amber = Color(0xFFFFCB5C), grain = 0.2f,
+    ),
+    Palette(
+        "Pure black", true,
+        ink = Color(0xFF000000), ink2 = Color(0xFF0F0F0F), ink3 = Color(0xFF1C1C1C), hairline = Color(0x33FFFFFF),
+        paper = Color(0xFFFFFFFF), muted = Color(0xFFD6D6D6), faint = Color(0xFFA3A3A3),
+        signal = Color(0xFFFF453A), amber = Color(0xFFFFD60A), grain = 0f,
+    ),
+    Palette(
+        "Emerald", true,
+        ink = Color(0xFF0C1714), ink2 = Color(0xFF13211D), ink3 = Color(0xFF1C2E28), hairline = Color(0x2EFFFFFF),
+        paper = Color(0xFFF0F7F3), muted = Color(0xFFC2D6CC), faint = Color(0xFF8DA69A),
+        signal = Color(0xFF34D399), amber = Color(0xFFF5C451), grain = 0.2f,
+    ),
+    Palette(
+        "Daylight", false,
+        ink = Color(0xFFF5F1E9), ink2 = Color(0xFFFFFFFF), ink3 = Color(0xFFEAE4D9), hairline = Color(0x24000000),
+        paper = Color(0xFF15120F), muted = Color(0xFF433C35), faint = Color(0xFF6E665D),
+        signal = Color(0xFFE0391A), amber = Color(0xFFA86F12), grain = 0.12f,
+    ),
+)
+
+val LocalPalette = staticCompositionLocalOf { Palettes[0] }
+
+val Ink: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.ink
+val Ink2: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.ink2
+val Ink3: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.ink3
+val Hairline: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.hairline
+val Paper: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.paper
+val Muted: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.muted
+val Faint: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.faint
+val Signal: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.signal
+val Amber: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.amber
 
 val Serif = FontFamily(
     Font(R.font.lora_semibold, FontWeight.SemiBold),
@@ -59,25 +124,23 @@ val Sans = FontFamily(
 /** Tabular numerals so clocks and channel numbers don't jitter. */
 val Tabular = TextStyle(fontFamily = Sans, fontFeatureSettings = "tnum")
 
-private val Colors = darkColorScheme(
-    primary = Paper,
-    onPrimary = Ink,
-    secondary = Signal,
-    onSecondary = Paper,
-    tertiary = Amber,
-    background = Ink,
-    onBackground = Paper,
-    surface = Ink2,
-    onSurface = Paper,
-    surfaceVariant = Ink3,
-    onSurfaceVariant = Muted,
-    surfaceContainerHigh = Color(0xFF1F1C1A),
-    surfaceContainerHighest = Color(0xFF282422),
-    surfaceContainer = Ink2,
-    outline = Color(0x40FFFFFF),
-    outlineVariant = Hairline,
-    error = Color(0xFFFF7A66),
-)
+private fun schemeFor(p: Palette) = if (p.dark) {
+    darkColorScheme(
+        primary = p.paper, onPrimary = p.ink, secondary = p.signal, onSecondary = Color.White, tertiary = p.amber,
+        background = p.ink, onBackground = p.paper, surface = p.ink2, onSurface = p.paper,
+        surfaceVariant = p.ink3, onSurfaceVariant = p.muted,
+        surfaceContainer = p.ink2, surfaceContainerHigh = p.ink3, surfaceContainerHighest = p.ink3,
+        outline = p.faint, outlineVariant = p.hairline, error = Color(0xFFFF7A66),
+    )
+} else {
+    lightColorScheme(
+        primary = p.paper, onPrimary = p.ink, secondary = p.signal, onSecondary = Color.White, tertiary = p.amber,
+        background = p.ink, onBackground = p.paper, surface = p.ink2, onSurface = p.paper,
+        surfaceVariant = p.ink3, onSurfaceVariant = p.muted,
+        surfaceContainer = p.ink2, surfaceContainerHigh = p.ink2, surfaceContainerHighest = p.ink3,
+        outline = p.faint, outlineVariant = p.hairline, error = Color(0xFFC62828),
+    )
+}
 
 private val Type = Typography().let { t ->
     t.copy(
@@ -98,8 +161,11 @@ private val Type = Typography().let { t ->
 }
 
 @Composable
-fun FalakTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = Colors, typography = Type, content = content)
+fun FalakTheme(theme: Int = 0, content: @Composable () -> Unit) {
+    val palette = Palettes.getOrElse(theme) { Palettes[0] }
+    CompositionLocalProvider(LocalPalette provides palette) {
+        MaterialTheme(colorScheme = schemeFor(palette), typography = Type, content = content)
+    }
 }
 
 /** True on Android TV / Google TV. */
@@ -108,6 +174,7 @@ fun isTv(): Boolean =
     (LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
 
 /** Quiet surface: a step lighter than the page, with a hairline edge. */
+@Composable
 fun Modifier.panel(shape: Shape, raised: Boolean = false): Modifier = this
     .clip(shape)
     .background(if (raised) Ink3 else Ink2)

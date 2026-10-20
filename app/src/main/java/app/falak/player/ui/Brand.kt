@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,21 +60,23 @@ import app.falak.player.R
 import kotlinx.coroutines.delay
 import java.util.Date
 
-/** The page: warm ink with a faint film grain and a soft pool of light at the top. */
+/** The page: theme background, a soft pool of light at the top, and a faint film grain. */
 @Composable
 fun Backdrop(modifier: Modifier = Modifier) {
+    val pal = LocalPalette.current
     val grain = ImageBitmap.imageResource(R.drawable.grain)
     val brush = remember(grain) { ShaderBrush(ImageShader(grain, TileMode.Repeated, TileMode.Repeated)) }
+    val glow = if (pal.dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.7f)
     Canvas(modifier.fillMaxSize()) {
-        drawRect(Ink)
+        drawRect(pal.ink)
         drawRect(
             Brush.radialGradient(
-                listOf(Color(0xFF2A2420), Color.Transparent),
+                listOf(glow, Color.Transparent),
                 center = Offset(size.width * 0.25f, 0f),
                 radius = maxOf(size.width, size.height) * 0.75f,
             ),
         )
-        drawRect(brush, alpha = 0.55f)
+        if (pal.grain > 0f) drawRect(brush, alpha = pal.grain)
     }
 }
 
@@ -217,7 +220,7 @@ fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
         modifier
             .focusRing(shape)
             .clip(shape)
-            .border(1.dp, Color(0x55FFFFFF), shape)
+            .border(1.dp, Paper.copy(alpha = 0.35f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -230,9 +233,10 @@ fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
     }
 }
 
-/** Filter chip: outline, or filled paper when selected. */
+/** Filter chip: outline, or filled paper when selected. Long-press for options. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun TagChip(text: String, selected: Boolean, onClick: () -> Unit) {
+fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val bg by animateColorAsState(if (selected) Paper else Color.Transparent, tween(220), label = "chipBg")
     val fg by animateColorAsState(if (selected) Ink else Paper, tween(220), label = "chipFg")
@@ -247,8 +251,8 @@ fun TagChip(text: String, selected: Boolean, onClick: () -> Unit) {
             .focusRing(shape)
             .clip(shape)
             .background(bg)
-            .border(1.dp, if (selected) Color.Transparent else Color(0x40FFFFFF), shape)
-            .clickable(onClick = onClick)
+            .border(1.dp, if (selected) Color.Transparent else Paper.copy(alpha = 0.28f), shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 7.dp),
     )
 }

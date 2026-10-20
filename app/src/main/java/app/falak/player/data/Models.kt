@@ -138,6 +138,10 @@ data class Settings(
     val lockAdult: Boolean = true,
     /** playlistId -> locked group names */
     val lockedGroups: Map<String, List<String>> = emptyMap(),
+    /** playlistId -> group names the user doesn't want to see */
+    val hiddenGroups: Map<String, List<String>> = emptyMap(),
+    /** Index into the theme list (Screening room, Midnight, Pure black, Emerald, Daylight). */
+    val theme: Int = 0,
 )
 
 /** Watch progress of a movie or episode. */

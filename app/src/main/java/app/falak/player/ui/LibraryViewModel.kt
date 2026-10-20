@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS }
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -367,6 +367,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun prepareQueue(list: List<Channel>, ch: Channel) {
         repo.playQueue = list
         repo.currentPlaylist = playlist
+        repo.currentIndex = index
+        repo.excludedGroups = currentExclusions()
         repo.currentSeries = if (screen == Screen.SERIES) series else null
         // For episodes, remember the series itself in "Recent".
         val recentId = if (screen == Screen.SERIES) series?.id ?: ch.id else ch.id
@@ -392,6 +394,56 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
+
+    // ---- hidden groups ----
+
+    fun toggleHiddenGroup(group: String) {
+        val p = playlist ?: return
+        repo.updateSettings { s ->
+            val cur = s.hiddenGroups[p.id].orEmpty()
+            s.copy(hiddenGroups = s.hiddenGroups + (p.id to if (group in cur) cur - group else cur + group))
+        }
+        if (this.group == group) this.group = null
+    }
+
+    fun setGroupsHidden(groups: Collection<String>, hidden: Boolean) {
+        val p = playlist ?: return
+        repo.updateSettings { s ->
+            val cur = s.hiddenGroups[p.id].orEmpty().toMutableSet()
+            if (hidden) cur += groups else cur -= groups.toSet()
+            s.copy(hiddenGroups = s.hiddenGroups + (p.id to cur.toList()))
+        }
+    }
+
+    /** Hidden groups plus PIN-locked ones (while locked). */
+    fun currentExclusions(): Set<String> {
+        val p = playlist ?: return emptySet()
+        val s = state.value.settings
+        val out = s.hiddenGroups[p.id].orEmpty().toHashSet()
+        if (s.pin.isNotEmpty() && !unlocked) {
+            val explicit = s.lockedGroups[p.id].orEmpty()
+            for (kind in Kind.entries) {
+                index.groupsOf(kind).keys.filterTo(out) { g -> g in explicit || (s.lockAdult && app.falak.player.data.ADULT_GROUP.containsMatchIn(g)) }
+            }
+        }
+        return out
+    }
+
+    // ---- coming back from the player ----
+
+    /** The item to scroll to and focus after returning from the player. */
+    var focusId by mutableStateOf<String?>(null)
+
+    fun onReturnFromPlayer() {
+        val id = repo.lastPlayedId ?: return
+        repo.lastPlayedId = null
+        focusId = id
+        // If the user zapped into another group inside the player, follow them there.
+        val ch = index.byId[id] ?: return
+        if (screen == Screen.LIBRARY && section.kind == ch.kind && ch.kind != Kind.SERIES && group != null && group != ch.group) {
+            group = ch.group
+        }
+    }
 
     fun toggleLockedGroup(group: String) {
         val p = playlist ?: return

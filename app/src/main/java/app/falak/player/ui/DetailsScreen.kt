@@ -79,7 +79,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         )
         Box(
             Modifier.fillMaxWidth().height(320.dp)
-                .background(Brush.verticalGradient(listOf(Color(0x550B0A14), colors.background))),
+                .background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.35f), colors.background))),
         )
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),

@@ -4,6 +4,10 @@ package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +83,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 Text("Settings", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+
+        item { SectionTitle("Appearance") }
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
+                items(Palettes.indices.toList(), key = { it }) { i ->
+                    ThemeCard(Palettes[i], selected = s.theme == i) { vm.updateSettings { it.copy(theme = i) } }
+                }
             }
         }
 
@@ -199,6 +212,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         item { SectionTitle("General") }
+        if (p != null) {
+            item {
+                ClickRow("Show & hide groups", "Hide groups you never watch, or bring them back") { vm.screen = Screen.GROUPS }
+            }
+        }
         item {
             SwitchRow("Open last playlist on start", null, s.openLast) {
                 vm.updateSettings { it.copy(openLast = !it.openLast) }
@@ -318,6 +336,34 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 @Composable
 private fun SectionTitle(text: String) {
     Box(Modifier.padding(top = 26.dp, bottom = 6.dp)) { Kicker(text) }
+}
+
+/** A small preview of a theme: its background, text and accent. */
+@Composable
+private fun ThemeCard(p: Palette, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier
+            .width(128.dp)
+            .focusRing(shape)
+            .clip(shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) Signal else Hairline, shape)
+            .clickable(onClick = onClick)
+            .background(p.ink)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Aa", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = p.paper)
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.size(10.dp).background(p.signal, androidx.compose.foundation.shape.CircleShape))
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(p.ink3))
+        Spacer(Modifier.height(5.dp))
+        Box(Modifier.fillMaxWidth(0.6f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(p.ink3))
+        Spacer(Modifier.height(10.dp))
+        Text(p.name, fontFamily = Sans, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = p.muted, maxLines = 1)
+    }
 }
 
 private const val EPG_SHARE = "https://epgshare01.online/epgshare01/epg_ripper_"

@@ -20,6 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,13 +69,22 @@ fun PosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp? = 120.dp,
+    focusMe: Boolean = false,
 ) {
     val shape = RoundedCornerShape(8.dp)
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(focusMe) {
+        if (focusMe) {
+            delay(120)
+            runCatching { focus.requestFocus() }
+        }
+    }
     Column(if (width != null) modifier.width(width) else modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
+                .focusRequester(focus)
                 .cardFocus(shape)
                 .clip(shape)
                 .background(Ink3)

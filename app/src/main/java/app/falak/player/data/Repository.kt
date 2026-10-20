@@ -41,6 +41,12 @@ class Repository(private val context: Context) {
     @Volatile var currentPlaylist: Playlist? = null
     /** The series whose episodes are in [playQueue], if any (for "Continue watching"). */
     @Volatile var currentSeries: Channel? = null
+    /** The whole open playlist, so the player can browse groups without going back. */
+    @Volatile var currentIndex: LibraryIndex = LibraryIndex.EMPTY
+    /** Groups the user hid or that are PIN-locked right now; the player hides them too. */
+    @Volatile var excludedGroups: Set<String> = emptySet()
+    /** Last channel/video shown in the player, so the lists can return to it. */
+    @Volatile var lastPlayedId: String? = null
 
     /** Returns (and clears) the crash saved by FalakApp on the previous run, if any. */
     fun takeCrashReport(): String? {

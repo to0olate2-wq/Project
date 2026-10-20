@@ -178,7 +178,7 @@ private fun EpisodeRow(ep: Channel, watched: Watch?, onClick: () -> Unit) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(96.dp, 54.dp).clip(RoundedCornerShape(6.dp))
-                    .background(Color.White.copy(alpha = 0.06f)),
+                    .background(Ink3),
             )
         } else {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(32.dp))

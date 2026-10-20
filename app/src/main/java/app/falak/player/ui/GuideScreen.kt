@@ -99,10 +99,12 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val windowEnd = windowStart + if (day == 0) 28 * HALF_HOUR else 48 * HALF_HOUR
     val totalWidth = xOf(windowEnd, windowStart)
     val locked = rememberLockedGroups(vm, state)
+    val hidden = vm.playlist?.let { state.settings.hiddenGroups[it.id] }.orEmpty()
     val group = vm.group
     val all = vm.channels
-    val channels = remember(all, group, locked) {
-        all.filter { it.kind == Kind.LIVE && it.group !in locked && (group == null || it.group == group) }
+    val channels = remember(all, group, locked, hidden) {
+        val hiddenSet = hidden.toHashSet()
+        all.filter { it.kind == Kind.LIVE && it.group !in locked && it.group !in hiddenSet && (group == null || it.group == group) }
     }
     val hScroll = rememberScrollState()
     val density = LocalDensity.current
@@ -304,7 +306,7 @@ private fun GuideRow(
                                 .focusRing(shape)
                                 .clip(shape)
                                 .background(
-                                    if (live) Color(0xFF2E2622) else Ink2,
+                                    if (live) Signal.copy(alpha = 0.16f) else Ink2,
                                 )
                                 .clickable { onProgram(prog) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
