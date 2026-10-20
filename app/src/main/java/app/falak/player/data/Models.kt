@@ -256,6 +256,8 @@ data class Settings(
     val hiddenGroups: Map<String, List<String>> = emptyMap(),
     /** Index into the theme list (Screening room, Midnight, Pure black, Emerald, Daylight). */
     val theme: Int = 0,
+    /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
+    val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */
     val autoRefreshHours: Int = 12,
     /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */

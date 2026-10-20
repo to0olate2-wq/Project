@@ -63,15 +63,23 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.DefaultExtractorsFactory
-import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
 import app.falak.player.R
+import app.falak.player.player.CaptionSniffer
+import app.falak.player.player.Captions
+import app.falak.player.player.Engine
+import app.falak.player.player.EngineAdvisor
+import app.falak.player.player.SniffingExtractorsFactory
+import app.falak.player.player.SniffingHlsExtractorFactory
+import app.falak.player.player.VlcPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
@@ -87,16 +95,11 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_INDEX = "index"
 
-        private val CAPTION_FORMATS = listOf(
-            androidx.media3.common.Format.Builder()
-                .setSampleMimeType(MimeTypes.APPLICATION_CEA608)
-                .setAccessibilityChannel(1)
-                .build(),
-        )
+        /** Automatic mode: items ExoPlayer couldn't open this session; they go straight to VLC. */
+        private val needsVlc = HashSet<String>()
 
-        /** A caption track we added ourselves (not declared by the stream): only real once text arrives. */
-        fun isUnverified(f: androidx.media3.common.Format): Boolean =
-            f.sampleMimeType == MimeTypes.APPLICATION_CEA608 && f.language == null
+        /** Player picked in the player for this session (overrides Settings until the app restarts). */
+        private var sessionEngine: Engine? = null
     }
 
     private lateinit var playerView: PlayerView
@@ -107,7 +110,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var ccButton: TextView
     private lateinit var toolbar: LinearLayout
     private lateinit var browseButton: TextView
+    private lateinit var engineButton: TextView
     private lateinit var browserView: ComposeView
+    private lateinit var root: FrameLayout
 
     // In-player channel & group browser
     private var browserOpen by mutableStateOf(false)
@@ -121,8 +126,18 @@ class PlayerActivity : ComponentActivity() {
     private var bannerFor: Channel? = null
     private var currentItem: MediaItem? = null
     private var currentDataSource: DataSource.Factory? = null
-    private var currentExtractors = DefaultExtractorsFactory()
-    private var player: ExoPlayer? = null
+    private var currentExtractors: ExtractorsFactory? = null
+
+    // Two engines behind the same Player interface: ExoPlayer, or VLC through VlcPlayer.
+    private var exo: ExoPlayer? = null
+    private var vlc: VlcPlayer? = null
+    private val player: Player? get() = exo ?: vlc
+    private var engine = Engine.EXO
+    private var vlcLayout: VLCVideoLayout? = null
+    /** Watches the captions of the current item (see Captions.kt). */
+    private var sniffer = CaptionSniffer { onCaptionsChanged() }
+    /** Teletext asked for from the CC menu: pick a VLC subtitle track once VLC lists them. */
+    private var wantVlcSubtitles = false
 
     private var queue: List<Channel> = emptyList()
     private var index = 0
@@ -152,8 +167,11 @@ class PlayerActivity : ComponentActivity() {
         }
         index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
 
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         playerView = PlayerView(this).apply {
+            // VLC draws underneath this view, so nothing here may paint the background.
+            setShutterBackgroundColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)
             keepScreenOn = true
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             controllerShowTimeoutMs = 3500
@@ -205,7 +223,7 @@ class PlayerActivity : ComponentActivity() {
         audioButton = pill("🔊  Audio") { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
         ccButton = pill("CC  Subtitles") { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
         aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
-        val externalButton = pill("↗  VLC") { openExternally() }
+        engineButton = pill("▶  Player") { showEngineDialog() }
         browseButton = pill("☰  Channels") { openBrowser() }
         toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -216,7 +234,7 @@ class PlayerActivity : ComponentActivity() {
             addView(audioButton, gap)
             addView(ccButton, LinearLayout.LayoutParams(gap))
             addView(aspectButton, LinearLayout.LayoutParams(gap))
-            addView(externalButton)
+            addView(engineButton)
         }
         root.addView(
             toolbar,
@@ -293,6 +311,30 @@ class PlayerActivity : ComponentActivity() {
 
     private fun initPlayer() {
         if (player != null) return
+        playCurrent(showInfo = true)
+    }
+
+    /** Settings' choice, the in-player choice, or (Automatic) what suits this TV and this channel. */
+    private fun desiredEngine(ch: Channel): Engine {
+        sessionEngine?.let { if (it != Engine.EXTERNAL) return it }
+        val setting = repo.state.value.settings.player
+        val auto = Engine.of(setting) == null
+        val base = EngineAdvisor.resolve(this, setting).let { if (it == Engine.EXTERNAL) EngineAdvisor.advise(this).engine else it }
+        return if (auto && ch.id in needsVlc) Engine.VLC else base
+    }
+
+    private val isAutomatic: Boolean
+        get() = sessionEngine == null && Engine.of(repo.state.value.settings.player) == null
+
+    private fun startEngine(e: Engine) {
+        releaseEngine()
+        engine = e
+        if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT)
+        engineButton.text = "▶  ${e.short}"
+    }
+
+    private fun createExo(software: Boolean) {
+        val s = repo.state.value.settings
         val audio = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -302,34 +344,80 @@ class PlayerActivity : ComponentActivity() {
         val renderers = DefaultRenderersFactory(this)
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(
-                if (repo.state.value.settings.softwareAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                if (s.softwareAudio || software) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON,
             )
+        if (software) {
+            // Software decoding: slower, but avoids broken hardware decoders (green or frozen picture).
+            renderers.setMediaCodecSelector(
+                MediaCodecSelector { mime, secure, tunneling ->
+                    MediaCodecUtil.getDecoderInfos(mime, secure, tunneling).sortedBy { if (it.softwareOnly) 0 else 1 }
+                },
+            )
+        }
         val builder = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(audio, true)
             .setHandleAudioBecomingNoisy(true)
-        if (repo.state.value.settings.bigBuffer) {
+        if (s.bigBuffer) {
             builder.setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(30_000, 120_000, 4_000, 8_000)
                     .build(),
             )
         }
-        val exo = builder.build()
+        val p = builder.build()
         // Language preferences from Settings.
-        val s = repo.state.value.settings
-        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon().apply {
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().apply {
             if (s.audioLang.isNotEmpty()) setPreferredAudioLanguage(s.audioLang)
             if (s.subtitlesOn) {
                 setPreferredTextLanguage(s.subtitleLang.ifEmpty { null })
                 setSelectUndeterminedTextLanguage(true)
             }
         }.build()
-        exo.addListener(listener)
-        exo.playWhenReady = true
-        player = exo
-        playerView.player = ZapPlayer(exo)
-        playCurrent(showInfo = true)
+        p.addListener(listener)
+        p.playWhenReady = true
+        playerView.videoSurfaceView?.visibility = View.VISIBLE
+        playerView.player = ZapPlayer(p)
+        exo = p
+    }
+
+    private fun createVlc() {
+        val caching = if (repo.state.value.settings.bigBuffer) 5_000 else 1_500
+        val v = VlcPlayer(this, caching)
+        val layout = VLCVideoLayout(this)
+        // Underneath the controls; ExoPlayer's own picture surface steps aside.
+        root.addView(layout, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        playerView.videoSurfaceView?.visibility = View.GONE
+        v.attach(layout)
+        v.setScale(aspect)
+        v.addListener(listener)
+        v.onTracksChanged = {
+            updateTrackButtons()
+            pickVlcSubtitle()
+            if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
+        }
+        playerView.player = ZapPlayer(v)
+        vlcLayout = layout
+        vlc = v
+    }
+
+    /** Releases whichever engine is running (keeps the activity's views). */
+    private fun releaseEngine() {
+        playerView.player = null
+        exo?.let {
+            it.removeListener(listener)
+            it.release()
+        }
+        exo = null
+        vlc?.let {
+            it.removeListener(listener)
+            it.detach()
+            it.release()
+        }
+        vlc = null
+        vlcLayout?.let { root.removeView(it) }
+        vlcLayout = null
+        playerView.videoSurfaceView?.visibility = View.VISIBLE
     }
 
     private fun releasePlayer() {
@@ -337,14 +425,46 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
         val ch = queue.getOrNull(index)
         resumePositionMs = if (ch != null && ch.kind != Kind.LIVE) p.currentPosition else C.TIME_UNSET
-        playerView.player = null
-        p.release()
-        player = null
+        releaseEngine()
+    }
+
+    /** Switch player for this session, keeping the position of films and episodes. */
+    private fun switchEngine(e: Engine) {
+        val ch = queue.getOrNull(index) ?: return
+        if (e == Engine.EXTERNAL) {
+            openExternally()
+            return
+        }
+        player?.let { p -> if (ch.kind != Kind.LIVE) resumePositionMs = p.currentPosition }
+        saveProgress()
+        sessionEngine = e
+        retried = false
+        startEngine(e)
+        playCurrent(showInfo = false)
+        toast("Playing with ${e.short}")
+    }
+
+    private fun showEngineDialog() {
+        val choices = listOf(Engine.EXO, Engine.EXO_SOFT, Engine.VLC, Engine.EXTERNAL)
+        val advice = EngineAdvisor.advise(this)
+        val labels = choices.map { e ->
+            e.label + if (e == advice.engine) "  (best for this TV)" else ""
+        }.toTypedArray()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Play with")
+            .setSingleChoiceItems(labels, choices.indexOf(engine)) { d, which ->
+                d.dismiss()
+                val e = choices[which]
+                if (e != engine || e == Engine.EXTERNAL) switchEngine(e)
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
-        val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
+        val wanted = desiredEngine(ch)
+        if (player == null || wanted != engine) startEngine(wanted)
         currentChannelId = ch.id
         // Remembered so the list can put the selection back on this item after the player closes.
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
@@ -365,16 +485,37 @@ class PlayerActivity : ComponentActivity() {
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
 
+        // A fresh caption watcher for every item.
+        sniffer = CaptionSniffer { onCaptionsChanged() }
+        autoSubtitlesDone = false
+        hideMessage()
+        // Resume movies/episodes where they were left (this session first, then saved progress).
+        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(pl.id, ch.id)]?.pos }
+        val resume = when {
+            ch.kind == Kind.LIVE -> C.TIME_UNSET
+            resumePositionMs > 0 -> resumePositionMs
+            saved != null -> saved
+            else -> C.TIME_UNSET
+        }
+        resumePositionMs = C.TIME_UNSET
+
+        val v = vlc
+        if (v != null) {
+            currentItem = null
+            currentDataSource = null
+            v.load(url, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = true)
+            updateTrackButtons()
+            if (showInfo) showBanner(ch)
+            return
+        }
+        val p = exo ?: return
         val httpSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua)
         if (ch.referrer.isNotBlank()) httpSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
         // DefaultDataSource adds local files (downloaded subtitles) on top of the network source.
         val dataSource = DefaultDataSource.Factory(this, httpSource)
         // Media3 only exposes captions embedded in the video when the stream declares them, and
-        // IPTV restreams almost never do. Like other IPTV players, always offer CC1 (CEA-608) and
-        // CEA-708; a stream that does declare its captions still takes priority.
-        val extractors = DefaultExtractorsFactory()
-            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
-            .setTsSubtitleFormats(CAPTION_FORMATS)
+        // IPTV restreams almost never do: offer CC1–CC3 and CEA-708 and show the ones that carry text.
+        val extractors = SniffingExtractorsFactory(sniffer)
         currentDataSource = dataSource
         currentExtractors = extractors
 
@@ -390,32 +531,15 @@ class PlayerActivity : ComponentActivity() {
         val source = if (url.contains("m3u8", ignoreCase = true)) {
             // Expose closed captions (CEA-608) carried inside HLS video even when the playlist doesn't declare them.
             HlsMediaSource.Factory(dataSource)
-                .setExtractorFactory(
-                    DefaultHlsExtractorFactory(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES, true),
-                )
+                .setExtractorFactory(SniffingHlsExtractorFactory(sniffer))
                 .createMediaSource(item)
         } else {
             DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(item)
         }
-        autoSubtitlesDone = false
-        probeDone = false
-        captionsDetected = false
-        captionsShown = repo.state.value.settings.subtitlesOn
-        applyCaptionVisibility()
-
-        hideMessage()
-        // Resume movies/episodes where they were left (this session first, then saved progress).
-        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(pl.id, ch.id)]?.pos }
-        val resume = when {
-            ch.kind == Kind.LIVE -> C.TIME_UNSET
-            resumePositionMs > 0 -> resumePositionMs
-            saved != null -> saved
-            else -> C.TIME_UNSET
-        }
-        resumePositionMs = C.TIME_UNSET
         if (overrideUrl == null && resume > 0) p.setMediaSource(source, resume) else p.setMediaSource(source)
         p.prepare()
         p.playWhenReady = true
+        updateTrackButtons()
         if (showInfo) showBanner(ch)
     }
 
@@ -431,7 +555,7 @@ class PlayerActivity : ComponentActivity() {
     private val listener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             val p = player ?: return
-            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            if (exo != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 p.seekToDefaultPosition()
                 p.prepare()
                 return
@@ -454,8 +578,17 @@ class PlayerActivity : ComponentActivity() {
                 }
                 return
             }
+            // Automatic mode: what ExoPlayer can't open (unusual codecs, odd streams) often plays in VLC.
+            if (engine != Engine.VLC && isAutomatic) {
+                needsVlc += ch.id
+                retried = false
+                showMessage("Trying VLC…")
+                handler.post { playCurrent(showInfo = false) } // not from inside ExoPlayer's own callback
+                return
+            }
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
-            showMessage("Can't play this $what right now\n${error.errorCodeName}")
+            val hint = if (engine != Engine.VLC) "\nTry ▶ Player → VLC" else ""
+            showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -475,17 +608,12 @@ class PlayerActivity : ComponentActivity() {
             if (cueGroup.cues.isNotEmpty()) {
                 captionsSeen = true
                 handler.removeCallbacks(captionWatch)
-                if (!captionsDetected) {
-                    captionsDetected = true
-                    updateTrackButtons()
-                }
             }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
             updateTrackButtons()
             maybeAutoSubtitles()
-            probeCaptions()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
 
@@ -711,6 +839,7 @@ class PlayerActivity : ComponentActivity() {
     private fun cycleAspect() {
         aspect = (aspect + 1) % resizeModes.size
         playerView.resizeMode = resizeModes[aspect]
+        vlc?.setScale(aspect)
         aspectButton.text = "⛶  ${aspectNames[aspect]}"
         Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
         repo.updateSettings { it.copy(aspect = aspect) }
@@ -722,14 +851,17 @@ class PlayerActivity : ComponentActivity() {
 
     private class TrackOption(val label: String, val selected: Boolean, val select: () -> Unit)
 
+    /** A caption track we added that turned out to carry text, or any track the stream declared. */
+    private fun isReal(f: androidx.media3.common.Format): Boolean =
+        !Captions.isProbe(f) || (sniffer.found and Captions.bitOf(f)) != 0
+
     private fun trackOptions(type: Int): List<TrackOption> {
-        val p = player ?: return emptyList()
+        vlc?.let { return vlcTrackOptions(it, type) }
+        val p = exo ?: return emptyList()
         val out = ArrayList<TrackOption>()
         if (type == C.TRACK_TYPE_TEXT) {
-            val anyOn = captionsShown && p.currentTracks.groups.any { it.type == type && it.isSelected }
+            val anyOn = p.currentTracks.groups.any { it.type == type && it.isSelected }
             out += TrackOption("Off", !anyOn) {
-                captionsShown = false
-                applyCaptionVisibility()
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .clearOverridesOfType(type)
                     .setTrackTypeDisabled(type, true)
@@ -741,16 +873,12 @@ class PlayerActivity : ComponentActivity() {
             if (g.type != type) continue
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
-                if (type == C.TRACK_TYPE_TEXT && isUnverified(g.getTrackFormat(i)) && !captionsDetected) continue
+                if (type == C.TRACK_TYPE_TEXT && !isReal(g.getTrackFormat(i))) continue
                 val base = trackLabel(g.getTrackFormat(i))
                 val n = (seen[base] ?: 0) + 1
                 seen[base] = n
                 val label = if (n > 1) "$base ($n)" else base
-                out += TrackOption(label, g.isTrackSelected(i) && (type != C.TRACK_TYPE_TEXT || captionsShown)) {
-                    if (type == C.TRACK_TYPE_TEXT) {
-                        captionsShown = true
-                        applyCaptionVisibility()
-                    }
+                out += TrackOption(label, g.isTrackSelected(i)) {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
@@ -759,8 +887,53 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
+        // Teletext subtitles: Media3 can't draw them, VLC can.
+        if (type == C.TRACK_TYPE_TEXT) {
+            for (lang in sniffer.teletext) {
+                out += TrackOption("Teletext subtitles · ${languageName(lang) ?: lang.uppercase()}  (plays with VLC)", false) {
+                    wantVlcSubtitles = true
+                    switchEngine(Engine.VLC)
+                }
+            }
+        }
         return out
     }
+
+    private fun vlcTrackOptions(v: VlcPlayer, type: Int): List<TrackOption> {
+        val out = ArrayList<TrackOption>()
+        if (type == C.TRACK_TYPE_TEXT) {
+            out += TrackOption("Off", v.selectedSubtitle < 0) { v.selectSubtitle(-1) }
+            for (t in v.subtitleTracks()) out += TrackOption(t.name.ifBlank { "Subtitles ${t.id}" }, t.id == v.selectedSubtitle) { v.selectSubtitle(t.id) }
+        } else if (type == C.TRACK_TYPE_AUDIO) {
+            for (t in v.audioTracks()) out += TrackOption(t.name.ifBlank { "Audio ${t.id}" }, t.id == v.selectedAudio) { v.selectAudio(t.id) }
+        }
+        return out
+    }
+
+    /** VLC lists subtitles a moment after starting: turn them on when asked to (teletext) or by Settings. */
+    private fun pickVlcSubtitle() {
+        val v = vlc ?: return
+        val subtitlesOn = repo.state.value.settings.subtitlesOn
+        if (!wantVlcSubtitles && (!subtitlesOn || autoSubtitlesDone)) return
+        val tracks = v.subtitleTracks()
+        if (tracks.isEmpty()) return
+        if (v.selectedSubtitle >= 0) {
+            wantVlcSubtitles = false
+            autoSubtitlesDone = true
+            return
+        }
+        val lang = repo.state.value.settings.subtitleLang
+        val langName = languageName(lang)
+        val pick = tracks.firstOrNull { t -> langName != null && t.name.contains(langName, ignoreCase = true) }
+            ?: tracks.firstOrNull { it.name.contains("teletext", ignoreCase = true) && wantVlcSubtitles }
+            ?: tracks.first()
+        v.selectSubtitle(pick.id)
+        wantVlcSubtitles = false
+        autoSubtitlesDone = true
+    }
+
+    private fun languageName(code: String): String? =
+        code.takeIf { it.isNotBlank() && it != "und" }?.let { java.util.Locale(it).displayLanguage.replaceFirstChar(Char::uppercase) }
 
     /** Names that say what a track really is (CC vs DVB subtitles), with the language. */
     private fun trackLabel(f: androidx.media3.common.Format): String {
@@ -769,10 +942,10 @@ class PlayerActivity : ComponentActivity() {
         return when (f.sampleMimeType) {
             MimeTypes.APPLICATION_CEA608 -> buildString {
                 append("Closed captions")
-                if (f.accessibilityChannel != androidx.media3.common.Format.NO_VALUE) append(" CC").append(f.accessibilityChannel)
+                if (f.accessibilityChannel != androidx.media3.common.Format.NO_VALUE) append(" (CC").append(f.accessibilityChannel).append(")")
                 if (lang != null) append(" · ").append(lang)
             }
-            MimeTypes.APPLICATION_CEA708 -> "Closed captions (708)" + (lang?.let { " · $it" } ?: "")
+            MimeTypes.APPLICATION_CEA708 -> "Closed captions (digital)" + (lang?.let { " · $it" } ?: "")
             MimeTypes.APPLICATION_DVBSUBS -> "Subtitles" + (lang?.let { " · $it" } ?: "") + " (DVB)"
             else -> trackNames.getTrackName(f)
         }
@@ -780,9 +953,9 @@ class PlayerActivity : ComponentActivity() {
 
     private var captionsSeen = false
     private val captionWatch = Runnable {
-        val textOn = player?.currentTracks?.groups?.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected } == true
+        val textOn = exo?.currentTracks?.groups?.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected } == true
         if (!captionsSeen && textOn) {
-            toast("This channel isn't sending captions right now. Try another track, or ↗ Open with VLC.")
+            toast("This channel isn't sending captions right now. Try another track, or ▶ Player → VLC.")
         }
     }
 
@@ -808,39 +981,24 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun countTracks(type: Int): Int {
-        val groups = player?.currentTracks?.groups ?: return 0
-        return groups.filter { it.type == type }.sumOf { g ->
+        vlc?.let { v ->
+            return if (type == C.TRACK_TYPE_AUDIO) v.audioTracks().size else v.subtitleTracks().size
+        }
+        val groups = exo?.currentTracks?.groups ?: return 0
+        val real = groups.filter { it.type == type }.sumOf { g ->
             (0 until g.length).count { i ->
-                g.isTrackSupported(i) &&
-                    (type != C.TRACK_TYPE_TEXT || captionsDetected || !isUnverified(g.getTrackFormat(i)))
+                g.isTrackSupported(i) && (type != C.TRACK_TYPE_TEXT || isReal(g.getTrackFormat(i)))
             }
         }
+        return real + if (type == C.TRACK_TYPE_TEXT) sniffer.teletext.size else 0
     }
 
-    // ---- caption verification ----
-    // Many streams carry no captions even though a CC track can be offered. We quietly decode
-    // CC1 with the subtitle view hidden; the CC button appears only once real text arrives.
-    private var captionsDetected = false
-    private var captionsShown = false
-    private var probeDone = false
-
-    private fun applyCaptionVisibility() {
-        playerView.subtitleView?.visibility = if (captionsShown) View.VISIBLE else View.INVISIBLE
-    }
-
-    private fun probeCaptions() {
-        val p = player ?: return
-        if (probeDone) return
-        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        if (groups.isEmpty()) return
-        probeDone = true
-        if (groups.any { it.isSelected }) return
-        val cc = groups.firstOrNull { g -> (0 until g.length).any { isUnverified(g.getTrackFormat(it)) } } ?: return
-        applyCaptionVisibility()
-        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .setOverrideForType(TrackSelectionOverride(cc.mediaTrackGroup, 0))
-            .build()
+    /** The caption watcher found text (or teletext): refresh the CC button, maybe turn captions on. */
+    private fun onCaptionsChanged() {
+        if (exo == null) return
+        updateTrackButtons()
+        maybeAutoSubtitles()
+        if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
     }
 
     private fun showTrackDialog(type: Int) {
@@ -930,7 +1088,12 @@ class PlayerActivity : ComponentActivity() {
 
     /** Re-prepares the current video with the downloaded subtitle, keeping the position. */
     private fun attachSubtitle(file: java.io.File, lang: String) {
-        val p = player ?: return
+        vlc?.let {
+            it.addSubtitleFile(file)
+            toast("Subtitles added")
+            return
+        }
+        val p = exo ?: return
         val item = currentItem ?: return
         val dataSource = currentDataSource ?: return
         val sub = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
@@ -940,7 +1103,7 @@ class PlayerActivity : ComponentActivity() {
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .build()
         val withSub = item.buildUpon().setSubtitleConfigurations(listOf(sub)).build()
-        val source = DefaultMediaSourceFactory(dataSource, currentExtractors).createMediaSource(withSub)
+        val source = DefaultMediaSourceFactory(dataSource, currentExtractors ?: return).createMediaSource(withSub)
         val pos = p.currentPosition
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
@@ -954,15 +1117,13 @@ class PlayerActivity : ComponentActivity() {
 
     /** With "Show subtitles automatically" on, turn on the first matching subtitle track. */
     private fun maybeAutoSubtitles() {
-        val p = player ?: return
+        val p = exo ?: return
         if (autoSubtitlesDone || !repo.state.value.settings.subtitlesOn) return
         val groups = p.currentTracks.groups.filter { g ->
-            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { !isUnverified(g.getTrackFormat(it)) }
+            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { isReal(g.getTrackFormat(it)) }
         }
         if (groups.isEmpty()) return
         autoSubtitlesDone = true
-        captionsShown = true
-        applyCaptionVisibility()
         if (groups.any { it.isSelected }) return
         val lang = repo.state.value.settings.subtitleLang
         val pick = groups.firstOrNull { g -> lang.isNotEmpty() && (0 until g.length).any { g.getTrackFormat(it).language?.startsWith(lang) == true } }
@@ -976,10 +1137,11 @@ class PlayerActivity : ComponentActivity() {
 
     /** e.g. "Audio: Arabic, English · Subtitles: 2" */
     private fun trackSummary(): String {
-        val p = player ?: return ""
-        val audios = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-            .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { trackNames.getTrackName(g.getTrackFormat(it)) } }
-            .distinct()
+        val audios = vlc?.audioTracks()?.map { it.name }?.distinct()
+            ?: exo?.currentTracks?.groups?.filter { it.type == C.TRACK_TYPE_AUDIO }
+                ?.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { trackNames.getTrackName(g.getTrackFormat(it)) } }
+                ?.distinct()
+            ?: return ""
         val subs = countTracks(C.TRACK_TYPE_TEXT)
         val parts = ArrayList<String>()
         if (audios.size > 1) parts += "Audio: " + audios.take(4).joinToString(", ")

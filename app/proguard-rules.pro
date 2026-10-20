@@ -15,3 +15,7 @@
 
 # Line numbers in crash reports.
 -keepattributes SourceFile,LineNumberTable
+
+# LibVLC: the native library creates and calls these Java classes by name.
+-keep class org.videolan.libvlc.** { *; }
+-dontwarn org.videolan.**

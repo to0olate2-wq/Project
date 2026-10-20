@@ -177,6 +177,18 @@ class MainActivity : ComponentActivity() {
     private fun play(list: List<Channel>, channel: Channel) {
         vm.prepareQueue(list, channel)
         val index = list.indexOf(channel).coerceAtLeast(0)
+        if (vm.state.value.settings.player == app.falak.player.player.Engine.EXTERNAL.key) {
+            // "Another app" chosen in Settings: hand the stream straight to it.
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(android.net.Uri.parse(channel.url), "video/*")
+                .putExtra("title", channel.name)
+            try {
+                startActivity(Intent.createChooser(intent, "Play with"))
+                return
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this, "No other video player is installed; using the built-in one.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, index))
     }
 }

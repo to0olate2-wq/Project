@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,10 +105,13 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val hidden = vm.playlist?.let { state.settings.hiddenGroups[it.id] }.orEmpty()
     val group = vm.group
     val all = vm.channels
-    val channels = remember(all, group, locked, hidden) {
+    // Only channels that actually have programmes: empty rows were just noise.
+    val guided = remember(all, locked, hidden, epg) {
         val hiddenSet = hidden.toHashSet()
-        all.filter { it.kind == Kind.LIVE && it.group !in locked && it.group !in hiddenSet && (group == null || it.group == group) }
+        all.filter { it.kind == Kind.LIVE && it.group !in locked && it.group !in hiddenSet && !epg[it.epgKey].isNullOrEmpty() }
     }
+    val guideGroups = remember(guided) { guided.mapTo(LinkedHashSet()) { it.group }.toList() }
+    val channels = remember(guided, group) { if (group == null) guided else guided.filter { it.group == group } }
     val hScroll = rememberScrollState()
     val density = LocalDensity.current
     LaunchedEffect(day) {
@@ -181,8 +186,36 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
             }
         }
 
+        if (guideGroups.size > 1) {
+            LazyRow(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "__all") { TagChip("All · ${guided.size}", group == null) { vm.group = null } }
+                items(guideGroups, key = { "g:$it" }) { g -> TagChip(g, group == g) { vm.group = g } }
+            }
+        }
+
         if (channels.isEmpty()) {
-            Centered { Text("No channels in this group.") }
+            Centered {
+                when {
+                    vm.guideLoading || (epg.isEmpty() && vm.guideStatus.isEmpty()) -> {
+                        CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Loading the TV guide…", color = Muted)
+                    }
+                    guided.isNotEmpty() -> {
+                        Text("No guide information for ${group.orEmpty()}.", color = Muted)
+                        Spacer(Modifier.height(12.dp))
+                        PaperButton("Show all channels with a guide") { vm.group = null }
+                    }
+                    else -> Text(
+                        "No guide information yet. Add guide sources in Settings → TV guide.",
+                        color = Muted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 items(channels, key = { it.id }) { ch ->

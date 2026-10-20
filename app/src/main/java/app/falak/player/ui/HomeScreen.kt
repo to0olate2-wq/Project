@@ -59,6 +59,10 @@ import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import app.falak.player.data.progressKey
 import coil.compose.AsyncImage
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.delay
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +71,7 @@ import androidx.compose.ui.draw.drawBehind
 
 /** The start page: feature carousel, then shelves for live, films and series. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun HomeContent(
     vm: LibraryViewModel,
     state: AppState,
@@ -139,7 +144,21 @@ fun HomeContent(
     }
     val watched = { ch: Channel -> state.progress[progressKey(p.id, ch.id)] }
 
-    LazyColumn(Modifier.fillMaxSize(), state = vm.homeState, contentPadding = PaddingValues(bottom = 40.dp)) {
+    val tvHome = isTv()
+    val scope = rememberCoroutineScope()
+    val inheritedSpec = LocalBringIntoViewSpec.current
+    val scroller = remember(vm.homeState, tvHome) {
+        if (tvHome) HomeScroller(vm.homeState, scope, inheritedSpec) else null
+    }
+    CompositionLocalProvider(
+        LocalHomeScroller provides scroller,
+        LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
+    ) {
+    LazyColumn(
+        Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
+        state = vm.homeState,
+        contentPadding = PaddingValues(bottom = 40.dp),
+    ) {
         if (hero.isNotEmpty()) {
             item(key = "hero") {
                 FeatureCarousel(
@@ -220,6 +239,7 @@ fun HomeContent(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -274,7 +294,7 @@ private fun FeatureCarousel(
     val current = items[(pager.currentPage % size.coerceAtLeast(1)).coerceIn(0, items.lastIndex)]
     val context = LocalContext.current
 
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
         val height = (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
         Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)).background(Ink2)) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->

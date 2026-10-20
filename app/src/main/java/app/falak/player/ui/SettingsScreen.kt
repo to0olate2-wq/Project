@@ -4,6 +4,7 @@ package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
@@ -102,6 +103,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
             }
         }
+
+        item { SectionTitle("Player") }
+        item { PlayerChoice(vm, s.player) }
 
         item { SectionTitle("Playback") }
         item {
@@ -326,7 +330,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item { SectionTitle("About") }
         item {
             Text(
-                "The Player ${BuildConfig.VERSION_NAME}",
+                "The Player ${BuildConfig.VERSION_NAME} · uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL)",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -436,6 +440,57 @@ private fun ThemeCard(p: Palette, selected: Boolean, onClick: () -> Unit) {
         Box(Modifier.fillMaxWidth(0.6f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(p.ink3))
         Spacer(Modifier.height(10.dp))
         Text(p.name, fontFamily = Sans, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = p.muted, maxLines = 1)
+    }
+}
+
+/** Which video player to use; Automatic shows what it picked for this TV and why. */
+@Composable
+private fun PlayerChoice(vm: LibraryViewModel, current: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val advice by androidx.compose.runtime.produceState<app.falak.player.player.EngineAdvice?>(null) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            app.falak.player.player.EngineAdvisor.advise(context)
+        }
+    }
+    val selected = app.falak.player.player.Engine.of(current)
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Text("Video player", style = MaterialTheme.typography.bodyLarge, color = Paper)
+        Text(
+            when {
+                selected == null -> advice?.let { "Automatic: ${it.engine.label}. ${it.reason}" } ?: "Automatic: checking this TV…"
+                selected == app.falak.player.player.Engine.EXTERNAL -> "Channels and films open in another player app you choose."
+                selected == app.falak.player.player.Engine.VLC -> "VLC plays almost any stream and shows teletext subtitles."
+                selected == app.falak.player.player.Engine.EXO_SOFT -> "Software decoding: use it if the picture freezes or shows green blocks."
+                else -> "Hardware decoding: smooth and light on the TV."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TagChip("Automatic", selected == null) { vm.updateSettings { it.copy(player = "auto") } }
+            listOf(
+                app.falak.player.player.Engine.EXO,
+                app.falak.player.player.Engine.EXO_SOFT,
+                app.falak.player.player.Engine.VLC,
+                app.falak.player.player.Engine.EXTERNAL,
+            ).forEach { e ->
+                TagChip(e.short, selected == e) { vm.updateSettings { it.copy(player = e.key) } }
+            }
+        }
+        advice?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it.device, fontSize = 11.sp, color = Faint)
+        }
+        Text(
+            "In the player, ▶ switches player for the channel you're watching.",
+            fontSize = 11.sp,
+            color = Faint,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 

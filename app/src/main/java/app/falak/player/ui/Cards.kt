@@ -17,6 +17,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -210,13 +221,57 @@ fun minutesLeft(p: Program, now: Long): String {
 
 /** A titled horizontal shelf. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun Shelf(title: String, count: Int? = null, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 22.dp)) {
+    val scroller = LocalHomeScroller.current
+    Column(Modifier.fillMaxWidth().pinToTop().padding(top = 22.dp)) {
         SectionHeader(title, count, onSeeAll)
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
-            content = content,
-        )
+        // The page itself scrolls whole rows into place (see HomeScroller); the row keeps the
+        // normal sideways behaviour.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                content = content,
+            )
+        }
     }
+}
+
+/**
+ * TV Home scrolling: a row that takes focus slides to the top of the screen, and the slideshow
+ * shows whole when it takes focus, so nothing is ever left half on screen.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+class HomeScroller(
+    val state: LazyListState,
+    val scope: kotlinx.coroutines.CoroutineScope,
+    /** The normal bring-into-view behaviour, restored inside rows. */
+    val inner: BringIntoViewSpec,
+) {
+    var viewport: LayoutCoordinates? = null
+
+    /** Used by the page list: never scroll by itself, rows place themselves instead. */
+    val manual = object : BringIntoViewSpec {
+        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
+    }
+}
+
+val LocalHomeScroller = staticCompositionLocalOf<HomeScroller?> { null }
+
+/** Scrolls the page so this element's top sits at the top of the screen when it gains focus. */
+@Composable
+fun Modifier.pinToTop(): Modifier {
+    val scroller = LocalHomeScroller.current ?: return this
+    val holder = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    return this
+        .onGloballyPositioned { holder[0] = it }
+        .onFocusChanged { st ->
+            if (!st.hasFocus) return@onFocusChanged
+            val me = holder[0] ?: return@onFocusChanged
+            val viewport = scroller.viewport ?: return@onFocusChanged
+            if (!me.isAttached || !viewport.isAttached) return@onFocusChanged
+            val delta = viewport.localPositionOf(me, Offset.Zero).y
+            if (kotlin.math.abs(delta) > 1f) scroller.scope.launch { scroller.state.animateScrollBy(delta) }
+        }
 }
