@@ -302,3 +302,23 @@ fun stableId(s: String): String {
     }
     return java.lang.Long.toUnsignedString(h, 36)
 }
+
+/**
+ * Some providers list the same stream twice. Lists key their rows by id and crash on duplicates,
+ * so later copies get "_2", "_3"… (the first keeps its id, so favourites stay put).
+ */
+fun ensureUniqueIds(list: List<Channel>): List<Channel> {
+    val seen = HashSet<String>(list.size * 2)
+    var out: ArrayList<Channel>? = null
+    for ((i, ch) in list.withIndex()) {
+        if (seen.add(ch.id)) {
+            out?.add(ch)
+            continue
+        }
+        if (out == null) out = ArrayList<Channel>(list.size).apply { addAll(list.subList(0, i)) }
+        var n = 2
+        while (!seen.add("${ch.id}_$n")) n++
+        out.add(ch.copy(id = "${ch.id}_$n"))
+    }
+    return out ?: list
+}

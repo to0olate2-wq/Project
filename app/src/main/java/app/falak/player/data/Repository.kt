@@ -2,7 +2,10 @@ package app.falak.player.data
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +17,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 
 @OptIn(ExperimentalSerializationApi::class)
 class Repository(private val context: Context) {
@@ -62,14 +68,49 @@ class Repository(private val context: Context) {
         AppState()
     }
 
-    @Synchronized
+    /** Changes apply instantly in memory; the file is written shortly after on a background thread. */
     fun update(transform: (AppState) -> AppState) {
-        val s = transform(_state.value)
-        _state.value = s
-        val tmp = File(stateFile.path + ".tmp")
-        tmp.writeText(json.encodeToString(AppState.serializer(), s))
-        tmp.renameTo(stateFile)
+        synchronized(this) { _state.value = transform(_state.value) }
+        scheduleWrite()
     }
+
+    private val writer = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "state-writer").apply { priority = Thread.MIN_PRIORITY }
+    }
+    private val writePending = AtomicBoolean(false)
+
+    private fun scheduleWrite() {
+        if (!writePending.compareAndSet(false, true)) return
+        writer.execute {
+            try {
+                Thread.sleep(300) // several quick taps -> one write
+            } catch (e: InterruptedException) {
+                // write now
+            }
+            writePending.set(false)
+            try {
+                val tmp = File(stateFile.path + ".tmp")
+                tmp.writeText(json.encodeToString(AppState.serializer(), _state.value))
+                if (!tmp.renameTo(stateFile)) {
+                    stateFile.delete()
+                    tmp.renameTo(stateFile)
+                }
+            } catch (e: Throwable) {
+                // a full disk must never crash the app; the next change tries again
+            }
+        }
+    }
+
+    /**
+     * One low-priority thread for heavy background work (guide downloads, quiet playlist refreshes):
+     * jobs run one at a time and never compete with the screen for the CPU.
+     */
+    val background: CoroutineDispatcher = Executors.newSingleThreadExecutor { r ->
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            r.run()
+        }, "background-work")
+    }.asCoroutineDispatcher()
 
     fun addPlaylist(p: Playlist) = update { it.copy(playlists = it.playlists + p, lastPlaylistId = p.id) }
 
@@ -238,7 +279,8 @@ class Repository(private val context: Context) {
     }
 
     /** Returns the cached list unless [refresh] is true or there is no cache yet. */
-    suspend fun loadChannels(p: Playlist, refresh: Boolean): PlaylistCache = withContext(Dispatchers.IO) {
+    suspend fun loadChannels(p: Playlist, refresh: Boolean, quietly: Boolean = false): PlaylistCache =
+        withContext(if (quietly) background else Dispatchers.IO) {
         if (!refresh) cachedChannels(p)?.let { return@withContext it }
         val result = when (p.type) {
             SourceType.M3U_URL -> loadXtreamStyleLink(p) ?: downloadM3u(p)
@@ -305,7 +347,7 @@ class Repository(private val context: Context) {
      * Uses the disk cache unless [force] or it is older than 8 hours. Returns a short status line.
      */
     suspend fun loadGuide(p: Playlist, channels: List<Channel>, providerUrl: String, force: Boolean): String =
-        withContext(Dispatchers.IO) {
+        withContext(background) {
             val file = File(cacheDir, "${p.id}.guide.bin")
             File(cacheDir, "${p.id}.guide.json").delete() // pre-3.2 format
             val now = System.currentTimeMillis()
@@ -316,7 +358,7 @@ class Repository(private val context: Context) {
                     null
                 }
                 if (cached != null) {
-                    rawGuide = cached.programs
+                    setRawGuide(cached.programs)
                     guideChannels = cached.channels
                     publishGuide(p.epgShiftMinutes)
                     if (!force && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
@@ -330,21 +372,26 @@ class Repository(private val context: Context) {
             val merged = HashMap<String, List<Program>>()
             val listed = ArrayList<GuideChannel>()
             val failed = ArrayList<String>()
+            val job = coroutineContext[kotlinx.coroutines.Job]
             for (url in sources) {
                 val host = url.substringAfter("://").substringBefore('/')
+                coroutineContext.ensureActive()
                 try {
                     val req = Request.Builder().url(url).header("User-Agent", p.userAgent.ifBlank { DEFAULT_UA }).build()
                     http.newCall(req).execute().use { res ->
                         val body = res.body
                         if (!res.isSuccessful || body == null) throw IOException("HTTP ${res.code}")
-                        val part = Epg.parse(body.byteStream(), matcher, now, source = sourceLabel(url))
+                        val part = Epg.parse(body.byteStream(), matcher, now, source = sourceLabel(url)) { job?.isActive == false }
+                        coroutineContext.ensureActive() // a newer load replaced this one
                         for ((key, list) in part.programs) if (merged[key].isNullOrEmpty()) merged[key] = list
                         listed += part.channels
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     failed += host
                 }
-                rawGuide = HashMap(merged) // show what we have so far
+                setRawGuide(HashMap(merged)) // show what we have so far
                 publishGuide(p.epgShiftMinutes)
             }
             guideChannels = listed
@@ -368,15 +415,25 @@ class Repository(private val context: Context) {
         s.copy(guideOverrides = s.guideOverrides + (playlistId to next))
     }
 
+    /** The guide in memory, already moved by [rawShift] ms. Only one copy is kept (guides are big). */
     @Volatile private var rawGuide: Map<String, List<Program>> = emptyMap()
+    @Volatile private var rawShift = 0L
+
+    @Synchronized
+    private fun setRawGuide(programs: Map<String, List<Program>>) {
+        rawGuide = programs
+        rawShift = 0L
+    }
 
     /** Applies the playlist's guide time correction without downloading again. */
+    @Synchronized
     fun publishGuide(shiftMinutes: Int) {
-        val raw = rawGuide
-        val shift = shiftMinutes * 60_000L
-        _epg.value = if (shift == 0L) raw else raw.mapValues { (_, list) ->
-            list.map { it.copy(start = it.start + shift, stop = it.stop + shift) }
+        val delta = shiftMinutes * 60_000L - rawShift
+        if (delta != 0L) {
+            rawGuide = rawGuide.mapValues { (_, list) -> list.map { it.copy(start = it.start + delta, stop = it.stop + delta) } }
+            rawShift += delta
         }
+        _epg.value = rawGuide
     }
 
     private fun guideStatus(c: GuideCache): String {
@@ -395,7 +452,7 @@ class Repository(private val context: Context) {
     }
 
     fun clearEpg() {
-        rawGuide = emptyMap()
+        setRawGuide(emptyMap())
         guideChannels = emptyList()
         _epg.value = emptyMap()
     }

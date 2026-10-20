@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
@@ -124,21 +125,33 @@ val Sans = FontFamily(
 /** Tabular numerals so clocks and channel numbers don't jitter. */
 val Tabular = TextStyle(fontFamily = Sans, fontFeatureSettings = "tnum")
 
-private fun schemeFor(p: Palette) = if (p.dark) {
-    darkColorScheme(
-        primary = p.paper, onPrimary = p.ink, secondary = p.signal, onSecondary = Color.White, tertiary = p.amber,
-        background = p.ink, onBackground = p.paper, surface = p.ink2, onSurface = p.paper,
+/**
+ * Every Material role mapped to the palette, so built-in parts (chips, switches, dialogs, text
+ * fields) never fall back to Material's default purple or to black text on a dark page.
+ */
+private fun schemeFor(p: Palette): androidx.compose.material3.ColorScheme {
+    val selected = p.signal.copy(alpha = if (p.dark) 0.26f else 0.16f).compositeOver(p.ink2)
+    val base = if (p.dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = p.paper, onPrimary = p.ink,
+        primaryContainer = selected, onPrimaryContainer = p.paper,
+        inversePrimary = p.ink,
+        secondary = p.signal, onSecondary = Color.White,
+        secondaryContainer = selected, onSecondaryContainer = p.paper,
+        tertiary = p.amber, onTertiary = p.ink,
+        tertiaryContainer = p.ink3, onTertiaryContainer = p.paper,
+        background = p.ink, onBackground = p.paper,
+        surface = p.ink2, onSurface = p.paper,
         surfaceVariant = p.ink3, onSurfaceVariant = p.muted,
+        surfaceTint = Color.Transparent,
+        inverseSurface = p.paper, inverseOnSurface = p.ink,
+        surfaceBright = p.ink3, surfaceDim = p.ink,
+        surfaceContainerLowest = p.ink, surfaceContainerLow = p.ink2,
         surfaceContainer = p.ink2, surfaceContainerHigh = p.ink3, surfaceContainerHighest = p.ink3,
-        outline = p.faint, outlineVariant = p.hairline, error = Color(0xFFFF7A66),
-    )
-} else {
-    lightColorScheme(
-        primary = p.paper, onPrimary = p.ink, secondary = p.signal, onSecondary = Color.White, tertiary = p.amber,
-        background = p.ink, onBackground = p.paper, surface = p.ink2, onSurface = p.paper,
-        surfaceVariant = p.ink3, onSurfaceVariant = p.muted,
-        surfaceContainer = p.ink2, surfaceContainerHigh = p.ink2, surfaceContainerHighest = p.ink3,
-        outline = p.faint, outlineVariant = p.hairline, error = Color(0xFFC62828),
+        outline = p.faint, outlineVariant = p.hairline,
+        scrim = Color.Black,
+        error = if (p.dark) Color(0xFFFF8A75) else Color(0xFFC62828),
+        onError = if (p.dark) Color.Black else Color.White,
     )
 }
 
@@ -163,8 +176,16 @@ private val Type = Typography().let { t ->
 @Composable
 fun FalakTheme(theme: Int = 0, content: @Composable () -> Unit) {
     val palette = Palettes.getOrElse(theme) { Palettes[0] }
+    val scheme = remember(palette) { schemeFor(palette) }
     CompositionLocalProvider(LocalPalette provides palette) {
-        MaterialTheme(colorScheme = schemeFor(palette), typography = Type, content = content)
+        MaterialTheme(colorScheme = scheme, typography = Type) {
+            // Text and icons without an explicit colour use the theme's text colour
+            // (Compose's default is black, which disappeared on the dark themes).
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides palette.paper,
+                content = content,
+            )
+        }
     }
 }
 

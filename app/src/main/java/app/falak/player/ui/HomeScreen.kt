@@ -43,7 +43,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,6 +59,11 @@ import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import app.falak.player.data.progressKey
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 
 /** The start page: feature carousel, then shelves for live, films and series. */
 @Composable
@@ -256,15 +260,19 @@ private fun FeatureCarousel(
     val start = remember(size) { if (size <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % size } }
     val pager = rememberPagerState(initialPage = start, pageCount = { if (size <= 1) size else Int.MAX_VALUE })
     val progress = remember { Animatable(0f) }
+    val tv = isTv()
+    // On TV boxes, continuous animations keep the graphics chip busy and make every other screen
+    // feel slow, so there the slideshow just changes slides (no slow zoom, no running bars).
+    val motion = !tv
     LaunchedEffect(pager.settledPage, size) {
         progress.snapTo(0f)
         if (size > 1) {
-            progress.animateTo(1f, tween(SLIDE_MS, easing = LinearEasing))
-            pager.animateScrollToPage(pager.settledPage + 1, animationSpec = tween(900, easing = FastOutSlowInEasing))
+            if (motion) progress.animateTo(1f, tween(SLIDE_MS, easing = LinearEasing)) else delay(SLIDE_MS.toLong())
+            pager.animateScrollToPage(pager.settledPage + 1, animationSpec = tween(if (motion) 900 else 600, easing = FastOutSlowInEasing))
         }
     }
     val current = items[(pager.currentPage % size.coerceAtLeast(1)).coerceIn(0, items.lastIndex)]
-    val tv = isTv()
+    val context = LocalContext.current
 
     BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         val height = (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
@@ -272,7 +280,7 @@ private fun FeatureCarousel(
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 val item = items[page % size]
                 val zoom by animateFloatAsState(
-                    if (pager.settledPage == page) 1.08f else 1f,
+                    if (motion && pager.settledPage == page) 1.08f else 1f,
                     tween(if (pager.settledPage == page) SLIDE_MS + 900 else 300, easing = LinearEasing),
                     label = "kenBurns",
                 )
@@ -289,20 +297,23 @@ private fun FeatureCarousel(
                         },
                     )
                 } else {
-                    // Portrait poster only: blurred poster behind, the whole poster sharp on the right.
+                    // Portrait poster only: a soft wash of the poster behind, the whole poster sharp on the right.
+                    // The wash is the poster decoded tiny and stretched: it looks blurred but costs nothing
+                    // per frame (a real blur is recalculated on every frame of the animation).
+                    val wash = remember(item.logo) {
+                        ImageRequest.Builder(context)
+                            .data(item.logo)
+                            .size(24, 36)
+                            .memoryCacheKey(item.logo + "#wash")
+                            .build()
+                    }
                     Box(Modifier.fillMaxSize()) {
                         AsyncImage(
-                            model = item.logo,
+                            model = wash,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(30.dp)
-                                .graphicsLayer {
-                                    alpha = 0.45f
-                                    scaleX = 1.2f * zoom
-                                    scaleY = 1.2f * zoom
-                                },
+                            alpha = 0.5f,
+                            modifier = Modifier.fillMaxSize(),
                         )
                         AsyncImage(
                             model = item.logo,
@@ -379,15 +390,24 @@ private fun FeatureCarousel(
                     Modifier.align(Alignment.BottomEnd).padding(horizontal = 20.dp, vertical = 26.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
+                    val paper = Paper
                     repeat(size) { i ->
-                        Box(Modifier.width(22.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Paper.copy(alpha = 0.3f))) {
-                            val fill = when {
-                                i < active -> 1f
-                                i == active -> progress.value
-                                else -> 0f
-                            }
-                            Box(Modifier.fillMaxWidth(fill).height(3.dp).background(Paper))
-                        }
+                        Box(
+                            Modifier
+                                .width(22.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(paper.copy(alpha = 0.3f))
+                                // Read in the draw phase: the bar moves without recomposing the carousel.
+                                .drawBehind {
+                                    val fill = when {
+                                        i < active -> 1f
+                                        i == active -> if (motion) progress.value else 1f
+                                        else -> 0f
+                                    }
+                                    if (fill > 0f) drawRect(paper, size = Size(this.size.width * fill, this.size.height))
+                                },
+                        )
                     }
                 }
             }

@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,7 +68,14 @@ fun Backdrop(modifier: Modifier = Modifier) {
     val grain = ImageBitmap.imageResource(R.drawable.grain)
     val brush = remember(grain) { ShaderBrush(ImageShader(grain, TileMode.Repeated, TileMode.Repeated)) }
     val glow = if (pal.dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.7f)
-    Canvas(modifier.fillMaxSize()) {
+    // The grain is a full-screen layer drawn on every frame: skip it where the graphics chip is weak.
+    val context = LocalContext.current
+    val tv = isTv()
+    val withGrain = remember(tv, pal) {
+        val am = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        pal.grain > 0f && !tv && !am.isLowRamDevice
+    }
+    Canvas(modifier.fillMaxSize().graphicsLayer()) {
         drawRect(pal.ink)
         drawRect(
             Brush.radialGradient(
@@ -76,7 +84,7 @@ fun Backdrop(modifier: Modifier = Modifier) {
                 radius = maxOf(size.width, size.height) * 0.75f,
             ),
         )
-        if (pal.grain > 0f) drawRect(brush, alpha = pal.grain)
+        if (withGrain) drawRect(brush, alpha = pal.grain)
     }
 }
 

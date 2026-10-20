@@ -2,6 +2,7 @@ package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -302,8 +303,13 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             else -> AnimatedContent(
                 targetState = section to (q.isEmpty()),
                 transitionSpec = {
-                    (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(320)) { it / 40 })
-                        .togetherWith(fadeOut(tween(140)))
+                    if (tv) {
+                        // TV: one quick fade; the old page goes at once (no two full pages drawn together).
+                        fadeIn(tween(150)).togetherWith(ExitTransition.None)
+                    } else {
+                        (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(320)) { it / 40 })
+                            .togetherWith(fadeOut(tween(140)))
+                    }
                 },
                 label = "section",
                 modifier = Modifier.fillMaxSize().padding(top = 8.dp),
@@ -612,7 +618,7 @@ private fun ChannelList(
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier.animateItem())
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier)
             Rule()
         }
     }

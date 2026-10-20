@@ -40,7 +40,8 @@ class GuideMatcher(channels: List<Channel>, overrides: Map<String, String> = emp
             val l = looseName(ch.name)
             if (l.length >= 3) byLoose.getOrPut(l) { HashSet() } += key
             if (key !in countryOfKey) countryOfKey[key] = countryOf(ch.name, ch.group)
-            val past = if (ch.catchupDays > 0) ch.catchupDays.coerceAtMost(7) * 86_400_000L else 4 * 3_600_000L
+            // The guide shows up to 3 days back; keeping more only costs memory.
+            val past = if (ch.catchupDays > 0) ch.catchupDays.coerceAtMost(3) * 86_400_000L else 4 * 3_600_000L
             if (past > (pastMs[key] ?: 0L)) pastMs[key] = past
         }
         keys = all
@@ -119,7 +120,14 @@ object Epg {
      * Streams an XMLTV file (plain or .gz) and returns programmes for matched channels plus the
      * list of every channel the file offers. [shiftMs] corrects guides with a wrong time zone.
      */
-    fun parse(input: InputStream, matcher: GuideMatcher, now: Long, source: String = "", shiftMs: Long = 0): ParsedGuide {
+    fun parse(
+        input: InputStream,
+        matcher: GuideMatcher,
+        now: Long,
+        source: String = "",
+        shiftMs: Long = 0,
+        cancelled: () -> Boolean = { false },
+    ): ParsedGuide {
         val buffered = BufferedInputStream(input, 64 * 1024)
         buffered.mark(4)
         val b1 = buffered.read()
@@ -134,6 +142,14 @@ object Epg {
         var routes: HashMap<String, MutableSet<String>>? = null
         val late = HashMap<String, Set<String>>()
         var taken: HashSet<String>? = null
+        // Many programmes repeat the same title/description: keep one copy of each.
+        val pool = HashMap<String, String>()
+        fun shared(s: String): String = pool.getOrPut(s) { s }
+        var events = 0
+        // Descriptions are only shown for what's on around now; elsewhere they'd just fill memory.
+        var keepDesc = false
+        val descFrom = now - 6 * 3_600_000L
+        val descTo = now + 24 * 3_600_000L
         try {
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
@@ -146,6 +162,7 @@ object Epg {
             var desc = ""
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
+                if ((++events and 4095) == 0 && cancelled()) break
                 if (event == XmlPullParser.START_TAG) {
                     when (parser.name) {
                         "channel" -> channelId = parser.getAttributeValue(null, "id")?.also { id ->
@@ -167,21 +184,26 @@ object Epg {
                                 val t = taken!!
                                 matcher.candidates(id, emptyList()).keys.filterTo(HashSet()) { it !in t }.also { t += it }
                             }
-                            start = Epg.parseTime(parser.getAttributeValue(null, "start"))
-                            stop = Epg.parseTime(parser.getAttributeValue(null, "stop"))
-                            if (stop <= start) stop = start + 30 * 60_000L
-                            start += shiftMs
-                            stop += shiftMs
-                            targets = if (keys.isNotEmpty() && start > shiftMs && start < future) {
-                                keys.filterTo(HashSet()) { k -> stop > now - (matcher.pastMs[k] ?: 0L) }
+                            targets = if (keys.isEmpty()) {
+                                emptySet() // most programmes: skip without parsing anything
                             } else {
-                                emptySet()
+                                start = Epg.parseTime(parser.getAttributeValue(null, "start"))
+                                stop = Epg.parseTime(parser.getAttributeValue(null, "stop"))
+                                if (stop <= start) stop = start + 30 * 60_000L
+                                start += shiftMs
+                                stop += shiftMs
+                                keepDesc = start in descFrom..descTo
+                                if (start > shiftMs && start < future) {
+                                    keys.filterTo(HashSet()) { k -> stop > now - (matcher.pastMs[k] ?: 0L) }
+                                } else {
+                                    emptySet()
+                                }
                             }
                             title = ""
                             desc = ""
                         }
-                        "title" -> if (targets.isNotEmpty() && title.isEmpty()) title = parser.nextText()
-                        "desc" -> if (targets.isNotEmpty() && desc.isEmpty()) desc = parser.nextText().take(400)
+                        "title" -> if (targets.isNotEmpty() && title.isEmpty()) title = shared(parser.nextText().trim())
+                        "desc" -> if (keepDesc && targets.isNotEmpty() && desc.isEmpty()) desc = shared(parser.nextText().trim().take(240))
                     }
                 } else if (event == XmlPullParser.END_TAG && parser.name == "programme") {
                     if (targets.isNotEmpty()) {
@@ -207,27 +229,61 @@ object Epg {
         return ParsedGuide(out, listed)
     }
 
-    fun current(list: List<Program>?, now: Long): Program? =
-        list?.firstOrNull { now >= it.start && now < it.stop }
+    /** Index of the last programme starting at or before [now] (lists are sorted by start), or -1. */
+    private fun lastStartedAt(list: List<Program>, now: Long): Int {
+        var lo = 0
+        var hi = list.size - 1
+        var found = -1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (list[mid].start <= now) {
+                found = mid
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        return found
+    }
 
-    fun next(list: List<Program>?, now: Long): Program? =
-        list?.firstOrNull { it.start > now }
+    /** What's on now. Binary search: rows call this constantly, and replay channels keep days of programmes. */
+    fun current(list: List<Program>?, now: Long): Program? {
+        if (list.isNullOrEmpty()) return null
+        val i = lastStartedAt(list, now)
+        if (i < 0) return null
+        for (j in i downTo maxOf(0, i - 3)) { // a few guides overlap entries
+            val p = list[j]
+            if (now >= p.start && now < p.stop) return p
+        }
+        return null
+    }
 
-    /** XMLTV time like "20261020143000 +0400" → epoch millis (0 if invalid). */
+    fun next(list: List<Program>?, now: Long): Program? {
+        if (list.isNullOrEmpty()) return null
+        return list.getOrNull(lastStartedAt(list, now) + 1)
+    }
+
+    /** XMLTV time like "20261020143000 +0400" → epoch millis (0 if invalid). Allocation-free. */
     fun parseTime(s: String?): Long {
         if (s == null || s.length < 14) return 0
+        fun d(i: Int): Int {
+            val c = s[i] - '0'
+            if (c < 0 || c > 9) throw NumberFormatException()
+            return c
+        }
         return try {
-            val y = s.substring(0, 4).toInt()
-            val mo = s.substring(4, 6).toInt()
-            val d = s.substring(6, 8).toInt()
-            val h = s.substring(8, 10).toInt()
-            val mi = s.substring(10, 12).toInt()
-            val se = s.substring(12, 14).toInt()
-            var t = ((daysFromCivil(y, mo, d) * 24 + h) * 60 + mi) * 60 + se
-            val tz = s.substring(14).trim()
-            if (tz.length >= 5 && (tz[0] == '+' || tz[0] == '-')) {
-                val off = tz.substring(1, 3).toInt() * 3600 + tz.substring(3, 5).toInt() * 60
-                t -= if (tz[0] == '+') off else -off
+            val y = d(0) * 1000 + d(1) * 100 + d(2) * 10 + d(3)
+            val mo = d(4) * 10 + d(5)
+            val day = d(6) * 10 + d(7)
+            val h = d(8) * 10 + d(9)
+            val mi = d(10) * 10 + d(11)
+            val se = d(12) * 10 + d(13)
+            var t = ((daysFromCivil(y, mo, day) * 24 + h) * 60 + mi) * 60 + se
+            var i = 14
+            while (i < s.length && s[i] == ' ') i++
+            if (i + 4 < s.length && (s[i] == '+' || s[i] == '-')) {
+                val off = (d(i + 1) * 10 + d(i + 2)) * 3600 + (d(i + 3) * 10 + d(i + 4)) * 60
+                t -= if (s[i] == '+') off else -off
             }
             t * 1000
         } catch (e: Exception) {

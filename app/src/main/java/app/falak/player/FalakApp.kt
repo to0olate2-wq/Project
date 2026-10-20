@@ -3,12 +3,19 @@ package app.falak.player
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import android.app.ActivityManager
 import app.falak.player.data.Repository
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import java.io.File
 
-class FalakApp : Application() {
+class FalakApp : Application(), ImageLoaderFactory {
     lateinit var repo: Repository
         private set
+
+    override fun newImageLoader(): ImageLoader = imageLoaderFor(this)
 
     override fun onCreate() {
         super.onCreate()
@@ -27,6 +34,28 @@ class FalakApp : Application() {
             previous?.uncaughtException(thread, error)
         }
     }
+}
+
+/**
+ * Pictures (logos, posters) are the app's biggest memory user. Keep the in-memory cache small and
+ * fixed (TV boxes have little RAM shared with video decoding), keep a disk cache, and cache logos
+ * even when the provider says not to, so lists don't re-download them on every scroll.
+ */
+private fun imageLoaderFor(app: Application): ImageLoader {
+    val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val share = if (am.isLowRamDevice) 0.10 else 0.15
+    val bytes = (am.memoryClass * 1024.0 * 1024.0 * share).toLong().coerceIn(16L shl 20, 64L shl 20).toInt()
+    return ImageLoader.Builder(app)
+        .memoryCache { MemoryCache.Builder(app).maxSizeBytes(bytes).build() }
+        .diskCache {
+            DiskCache.Builder()
+                .directory(app.cacheDir.resolve("images"))
+                .maxSizeBytes(250L * 1024 * 1024)
+                .build()
+        }
+        .allowRgb565(true)
+        .respectCacheHeaders(false)
+        .build()
 }
 
 val Context.repo: Repository

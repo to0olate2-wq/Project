@@ -17,7 +17,7 @@ android {
         targetSdk = 35
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "3.2"
+        versionName = "3.3"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
     }
 
@@ -33,7 +33,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 optimises the code (Compose runs noticeably smoother) and drops unused parts.
+            // Names are kept (see proguard-rules.pro) so crash reports stay readable.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
     }

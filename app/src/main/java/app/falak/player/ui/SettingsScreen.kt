@@ -40,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +76,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
     val back: () -> Unit = { vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS }
-    val groups = remember(vm.channels) { vm.channels.mapTo(LinkedHashSet()) { it.group }.toList() }
+    // Group names come from the pre-built index (walking every channel here made Settings slow to open).
+    val index = vm.index
+    val groups = remember(index) {
+        LinkedHashSet<String>().apply { app.falak.player.data.Kind.entries.forEach { addAll(index.groupsOf(it).keys) } }.toList()
+    }
+    LaunchedEffect(index, p?.extraEpg) { vm.refreshGuideSuggestions() }
     val lockedHere = if (p != null) s.lockedGroups[p.id].orEmpty() else emptyList()
 
     BackHandler { back() }
@@ -83,8 +89,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                Text("Settings", style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
+                Text("Settings", style = MaterialTheme.typography.titleLarge, color = Paper)
             }
         }
 
@@ -100,15 +106,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item { SectionTitle("Playback") }
         item {
             Column(Modifier.padding(vertical = 8.dp)) {
-                Text("Picture size", style = MaterialTheme.typography.bodyLarge)
+                Text("Picture size", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Fit", "Fill", "Zoom").forEachIndexed { i, label ->
-                        FilterChip(
-                            selected = s.aspect == i,
-                            onClick = { vm.updateSettings { it.copy(aspect = i) } },
-                            label = { Text(label) },
-                        )
+                        TagChip(label, s.aspect == i) { vm.updateSettings { it.copy(aspect = i) } }
                     }
                 }
             }
@@ -167,7 +169,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             item {
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Guide time correction", style = MaterialTheme.typography.bodyLarge)
+                        Text("Guide time correction", style = MaterialTheme.typography.bodyLarge, color = Paper)
                         Text(
                             "If shows appear earlier or later than they air",
                             style = MaterialTheme.typography.bodySmall,
@@ -175,12 +177,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         )
                     }
                     val shift = p.epgShiftMinutes
-                    TextButton(onClick = { vm.updatePlaylist(p.copy(epgShiftMinutes = (shift - 30).coerceAtLeast(-720)), false) }) { Text("−30m") }
+                    TextButton(onClick = { vm.shiftGuide(-30) }) { Text("−30m") }
                     Text(formatShift(shift), style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { vm.updatePlaylist(p.copy(epgShiftMinutes = (shift + 30).coerceAtMost(720)), false) }) { Text("+30m") }
+                    TextButton(onClick = { vm.shiftGuide(30) }) { Text("+30m") }
                 }
             }
-            val suggestions = vm.guideSuggestions()
+            val suggestions = vm.guideSuggestions.filter { it.source.url !in p.extraEpg }
             if (suggestions.isNotEmpty()) {
                 item {
                     Column(
@@ -203,19 +205,19 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                                     Text(sug.source.name, fontSize = 15.sp, color = Paper)
                                     Text("about ${sug.channels} of your channels", fontSize = 12.sp, color = Faint)
                                 }
-                                TextButton(onClick = { vm.updatePlaylist(p.copy(extraEpg = p.extraEpg + sug.source.url), true) }) { Text("Add") }
+                                TextButton(onClick = { vm.addGuideSources(listOf(sug.source.url)) }) { Text("Add") }
                             }
                         }
                         if (suggestions.size > 1) {
                             Spacer(Modifier.height(6.dp))
                             PaperButton("Add all ${suggestions.size}") {
-                                vm.updatePlaylist(p.copy(extraEpg = (p.extraEpg + suggestions.map { it.source.url }).distinct()), true)
+                                vm.addGuideSources(suggestions.map { it.source.url })
                             }
                         }
                     }
                 }
             }
-            items(p.extraEpg, key = { "epg:$it" }) { url ->
+            items(p.extraEpg.distinct(), key = { "epg:$it" }) { url ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         guideSourceName(url),
@@ -223,7 +225,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { vm.updatePlaylist(p.copy(extraEpg = p.extraEpg - url), true) }) { Text("Remove") }
+                    TextButton(onClick = { vm.removeGuideSource(url) }) { Text("Remove") }
                 }
             }
             item {
@@ -278,7 +280,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
         item {
             Column(Modifier.padding(vertical = 8.dp)) {
-                Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge)
+                Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
                     "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
                         if (p != null && vm.loadedAt > 0) " · last updated ${ageText(vm.loadedAt)}" else "",
@@ -288,11 +290,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
-                        FilterChip(
-                            selected = s.autoRefreshHours == h,
-                            onClick = { vm.updateSettings { it.copy(autoRefreshHours = h) } },
-                            label = { Text(label) },
-                        )
+                        TagChip(label, s.autoRefreshHours == h) { vm.updateSettings { it.copy(autoRefreshHours = h) } }
                     }
                 }
             }
@@ -390,7 +388,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             onDismiss = { addGuide = false },
             onAdd = { url ->
                 addGuide = false
-                if (url !in p.extraEpg) vm.updatePlaylist(p.copy(extraEpg = p.extraEpg + url), true)
+                vm.addGuideSources(listOf(url))
             },
         )
     }
@@ -515,14 +513,14 @@ private val LANGUAGES = listOf(
 @Composable
 private fun LanguageRow(title: String, subtitle: String?, selected: String, onSelect: (String) -> Unit) {
     Column(Modifier.padding(vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
         if (subtitle != null) {
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(LANGUAGES, key = { it.first }) { (code, name) ->
-                FilterChip(selected = selected == code, onClick = { onSelect(code) }, label = { Text(name) })
+                TagChip(name, selected == code) { onSelect(code) }
             }
         }
     }
@@ -536,13 +534,24 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onTogg
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = null)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = androidx.compose.ui.graphics.Color.White,
+                checkedTrackColor = Signal,
+                checkedBorderColor = Signal,
+                uncheckedThumbColor = Muted,
+                uncheckedTrackColor = Ink3,
+                uncheckedBorderColor = Faint,
+            ),
+        )
     }
 }
 
@@ -552,7 +561,7 @@ private fun ClickRow(title: String, subtitle: String, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -564,9 +573,17 @@ private fun CheckRow(title: String, checked: Boolean, onToggle: () -> Unit) {
         Modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onToggle).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = null)
+        Checkbox(
+            checked = checked,
+            onCheckedChange = null,
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = Signal,
+                uncheckedColor = Faint,
+                checkmarkColor = androidx.compose.ui.graphics.Color.White,
+            ),
+        )
         Spacer(Modifier.width(8.dp))
-        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 12.dp))
+        Text(title, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 12.dp))
     }
 }
 

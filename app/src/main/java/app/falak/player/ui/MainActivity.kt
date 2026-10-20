@@ -15,6 +15,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -113,18 +114,24 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
+                        val tv = isTv()
                         AnimatedContent(
                             targetState = vm.screen,
                             transitionSpec = {
-                                val forward = depth(targetState) >= depth(initialState)
-                                val dir = if (forward) 1 else -1
-                                (
-                                    fadeIn(tween(280, delayMillis = 40)) +
-                                        slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it / 10 }
-                                    ).togetherWith(
-                                    fadeOut(tween(180)) +
-                                        slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 14 },
-                                )
+                                if (tv) {
+                                    // TV boxes: a short fade only; sliding two full pages at once stutters there.
+                                    fadeIn(tween(160)).togetherWith(ExitTransition.None)
+                                } else {
+                                    val forward = depth(targetState) >= depth(initialState)
+                                    val dir = if (forward) 1 else -1
+                                    (
+                                        fadeIn(tween(280, delayMillis = 40)) +
+                                            slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it / 10 }
+                                        ).togetherWith(
+                                        fadeOut(tween(180)) +
+                                            slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 14 },
+                                    )
+                                }
                             },
                             label = "screens",
                         ) { screen ->

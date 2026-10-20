@@ -81,8 +81,17 @@ fun ChannelBrowser(
         val startGroup = remember {
             groups.entries.firstOrNull { e -> e.value.any { it.id == currentId } }?.key ?: groups.keys.firstOrNull()
         }
+        // `group` follows the remote instantly; the channel list follows once it rests for a moment,
+        // so holding up/down through many groups stays smooth.
         var group by remember { mutableStateOf(startGroup) }
-        val channels = groups[group].orEmpty()
+        var shown by remember { mutableStateOf(startGroup) }
+        LaunchedEffect(group) {
+            if (group != shown) {
+                delay(160)
+                shown = group
+            }
+        }
+        val channels = groups[shown].orEmpty()
         val now = remember { System.currentTimeMillis() }
         val currentFocus = remember { FocusRequester() }
         val groupFocus = remember { FocusRequester() }
@@ -127,7 +136,10 @@ fun ChannelBrowser(
                                     .focusRing(shape)
                                     .clip(shape)
                                     .background(if (sel) Ink3 else Color.Transparent)
-                                    .clickable { group = g }
+                                    .clickable {
+                                        group = g
+                                        shown = g
+                                    }
                                     .padding(horizontal = 10.dp, vertical = 10.dp),
                             )
                         }
@@ -137,14 +149,14 @@ fun ChannelBrowser(
                 // Channels of the selected group
                 Column(Modifier.weight(1f).fillMaxHeight().padding(top = 22.dp)) {
                     Row(Modifier.padding(start = 18.dp, bottom = 8.dp, end = 18.dp)) {
-                        Text(group.orEmpty(), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Paper, maxLines = 1)
+                        Text(shown.orEmpty(), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Paper, maxLines = 1)
                         Spacer(Modifier.weight(1f))
                         Text("${channels.size}", style = Tabular.copy(fontSize = 13.sp), color = Faint)
                     }
                     val listState = rememberLazyListState(
                         initialFirstVisibleItemIndex = (channels.indexOfFirst { it.id == currentId } - 3).coerceAtLeast(0),
                     )
-                    LaunchedEffect(group) {
+                    LaunchedEffect(shown) {
                         val i = channels.indexOfFirst { it.id == currentId }
                         listState.scrollToItem((if (i >= 0) i - 3 else 0).coerceAtLeast(0))
                     }

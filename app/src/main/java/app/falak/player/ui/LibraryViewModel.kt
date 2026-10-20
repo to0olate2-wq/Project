@@ -30,6 +30,7 @@ import app.falak.player.update.Updater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -272,8 +273,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun show(data: app.falak.player.data.PlaylistCache) {
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(data.channels) }
-        channels = data.channels
+        val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list) }
+        channels = list
         providerEpg = data.epgUrl
         serverTz = data.serverTz
         loadedAt = data.savedAt
@@ -292,9 +294,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun backgroundRefresh(p: Playlist, token: Any) {
+        // Let the app settle and the guide finish first: one heavy job at a time keeps things smooth.
+        delay(20_000)
+        guideJob?.join()
+        if (loadToken !== token || playlist?.id != p.id) return
         refreshing = true
         try {
-            val fresh = repo.loadChannels(p, refresh = true)
+            val fresh = repo.loadChannels(p, refresh = true, quietly = true)
             if (loadToken !== token || playlist?.id != p.id) return
             show(fresh)
             // New channels pick up the guide on its next load; don't restart one that's running.
@@ -365,34 +371,66 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         private set
     private var guideJob: Job? = null
 
-    fun loadGuide(force: Boolean) {
-        val p = playlist ?: return
-        val list = channels
-        if (list.isEmpty()) return
+    private var guideRun = 0
+
+    /**
+     * (Re)loads the guide. [delayMs] lets several quick changes (adding sources one by one)
+     * end up as a single download instead of one per tap.
+     */
+    fun loadGuide(force: Boolean, delayMs: Long = 0) {
+        val p0 = playlist ?: return
+        if (channels.isEmpty()) return
         guideJob?.cancel()
         guideLoading = true
+        val run = ++guideRun
         guideJob = viewModelScope.launch {
             try {
-                guideStatus = repo.loadGuide(p, list, p.epgUrl.ifBlank { providerEpg }, force)
+                if (delayMs > 0) delay(delayMs)
+                val p = playlist?.takeIf { it.id == p0.id } ?: return@launch
+                guideStatus = repo.loadGuide(p, channels, p.epgUrl.ifBlank { providerEpg }, force)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 guideStatus = "Guide failed to load: ${e.message}"
             } catch (e: OutOfMemoryError) {
-                guideStatus = "The guide is too large for this device."
+                repo.clearEpg()
+                guideStatus = "The guide is too large for this device. Remove some guide sources."
             } finally {
-                guideLoading = false
+                if (run == guideRun) guideLoading = false
             }
         }
     }
 
     /** Saves playlist changes; new guide sources reload the guide, a time correction applies instantly. */
-    fun updatePlaylist(p: Playlist, reloadGuide: Boolean) {
+    fun updatePlaylist(p0: Playlist, reloadGuide: Boolean) {
+        val p = p0.copy(extraEpg = p0.extraEpg.map { it.trim() }.filter { it.isNotEmpty() }.distinct())
         repo.updatePlaylist(p)
         if (playlist?.id == p.id) {
             playlist = p
-            if (reloadGuide) loadGuide(force = true) else repo.publishGuide(p.epgShiftMinutes)
+            if (reloadGuide) {
+                loadGuide(force = true, delayMs = 1_500)
+            } else {
+                // Shifting thousands of programmes is real work: keep it off the main thread.
+                viewModelScope.launch(Dispatchers.Default) { repo.publishGuide(p.epgShiftMinutes) }
+            }
         }
+    }
+
+    /** Uses the playlist as it is now (not as a screen last saw it), so quick taps never undo each other. */
+    fun addGuideSources(urls: List<String>) {
+        val p = playlist ?: return
+        val next = (p.extraEpg + urls).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (next != p.extraEpg) updatePlaylist(p.copy(extraEpg = next), true)
+    }
+
+    fun shiftGuide(minutes: Int) {
+        val p = playlist ?: return
+        updatePlaylist(p.copy(epgShiftMinutes = (p.epgShiftMinutes + minutes).coerceIn(-720, 720)), false)
+    }
+
+    fun removeGuideSource(url: String) {
+        val p = playlist ?: return
+        updatePlaylist(p.copy(extraEpg = p.extraEpg - url), true)
     }
 
     fun replay(ch: Channel, prog: Program, now: Long): Channel? {
@@ -533,20 +571,27 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun setGuideFor(ch: Channel, guideId: String?) {
         val p = playlist ?: return
         repo.setGuideOverride(p.id, ch.epgKey, guideId)
-        loadGuide(force = true)
+        loadGuide(force = true, delayMs = 1_500)
     }
 
     fun guideOverrideFor(ch: Channel): String? = playlist?.let { state.value.settings.guideOverrides[it.id]?.get(ch.epgKey) }
 
-    /** Free guide sources that fit the countries in this playlist, best first. */
-    fun guideSuggestions(): List<GuideSuggestion> {
-        val p = playlist ?: return emptyList()
-        val key = index to p.extraEpg
-        suggestionCache?.let { if (it.first == key) return it.second }
-        return suggestGuides(index.live, p.extraEpg).also { suggestionCache = key to it }
-    }
+    /** Free guide sources that fit the countries in this playlist, best first (worked out off the main thread). */
+    var guideSuggestions by mutableStateOf<List<GuideSuggestion>>(emptyList())
+        private set
+    private var suggestionKey: Any? = null
 
-    private var suggestionCache: Pair<Any, List<GuideSuggestion>>? = null
+    fun refreshGuideSuggestions() {
+        val p = playlist ?: return
+        val key = index to p.extraEpg
+        if (key == suggestionKey) return
+        suggestionKey = key
+        val live = index.live
+        val extra = p.extraEpg
+        viewModelScope.launch {
+            guideSuggestions = withContext(Dispatchers.Default) { suggestGuides(live, extra) }
+        }
+    }
 
     // ---- coming back from the player ----
 
