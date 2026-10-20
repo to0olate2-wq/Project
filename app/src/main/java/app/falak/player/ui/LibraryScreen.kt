@@ -549,7 +549,7 @@ private fun GroupChips(
         Modifier.fillMaxWidth().padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(names, key = { it ?: "__all" }) { g ->
+        items(names, key = { if (it == null) "__all" else "g:$it" }) { g ->
             TagChip(
                 if (g != null && g in locked) "🔒 $g" else g ?: "All",
                 selected == g,

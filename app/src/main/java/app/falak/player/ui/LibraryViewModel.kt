@@ -195,8 +195,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val info = update ?: return
         val ctx = getApplication<Application>()
         if (!Updater.canInstall(ctx)) {
-            Updater.openInstallPermission(ctx)
-            updateMessage = "Allow The Player to install apps, then come back and tap Update again."
+            updateMessage = if (Updater.openInstallPermission(ctx)) {
+                "Allow The Player to install apps, then come back and tap Update again."
+            } else {
+                "Allow installing apps from unknown sources for The Player in your TV's settings (Security / Apps), then tap Update again."
+            }
             return
         }
         if (updateProgress != null) return
@@ -274,7 +277,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun show(data: app.falak.player.data.PlaylistCache) {
         val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list) }
+        index = withContext(Dispatchers.Default) {
+            LibraryIndex.build(list).also { idx ->
+                // Work out every live channel's guide key now, off the main thread, so the guide
+                // and channel lists don't do it while drawing (it made the TV guide slow to open).
+                for (ch in idx.live) ch.epgKey
+            }
+        }
         channels = list
         providerEpg = data.epgUrl
         serverTz = data.serverTz
@@ -411,7 +420,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 loadGuide(force = true, delayMs = 1_500)
             } else {
                 // Shifting thousands of programmes is real work: keep it off the main thread.
-                viewModelScope.launch(Dispatchers.Default) { repo.publishGuide(p.epgShiftMinutes) }
+                viewModelScope.launch(Dispatchers.Default) { runCatching { repo.publishGuide(p.epgShiftMinutes) } }
             }
         }
     }
@@ -434,7 +443,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun replay(ch: Channel, prog: Program, now: Long): Channel? {
-        val url = Catchup.url(ch, prog, serverTz, now) ?: return null
+        val url = try {
+            Catchup.url(ch, prog, serverTz, now)
+        } catch (e: Exception) {
+            null
+        } ?: return null
         return Catchup.asItem(ch, prog, url)
     }
 
@@ -589,7 +602,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val live = index.live
         val extra = p.extraEpg
         viewModelScope.launch {
-            guideSuggestions = withContext(Dispatchers.Default) { suggestGuides(live, extra) }
+            guideSuggestions = try {
+                withContext(Dispatchers.Default) { suggestGuides(live, extra) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
         }
     }
 

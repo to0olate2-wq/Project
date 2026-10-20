@@ -23,7 +23,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
  * zapping and progress saving work with either engine. VLC draws the picture and its own
  * subtitles (closed captions, teletext, DVB…) into a [VLCVideoLayout].
  */
-class VlcPlayer(context: Context, cachingMs: Int) : SimpleBasePlayer(Looper.getMainLooper()) {
+class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     private val libVlc = LibVLC(
         context.applicationContext,
@@ -33,7 +33,10 @@ class VlcPlayer(context: Context, cachingMs: Int) : SimpleBasePlayer(Looper.getM
             "--audio-time-stretch",
             "--network-caching=$cachingMs",
             "--live-caching=$cachingMs",
-        ),
+        ).apply {
+            // VLC's own volume normaliser evens out loud and quiet channels.
+            if (levelVolume) addAll(listOf("--audio-filter=normvol", "--norm-buff-size=20", "--norm-max-level=2.0"))
+        },
     )
     private val vlc = MediaPlayer(libVlc)
     private val main = Handler(Looper.getMainLooper())

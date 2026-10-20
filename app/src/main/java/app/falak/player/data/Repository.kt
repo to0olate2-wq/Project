@@ -351,6 +351,7 @@ class Repository(private val context: Context) {
             val file = File(cacheDir, "${p.id}.guide.bin")
             File(cacheDir, "${p.id}.guide.json").delete() // pre-3.2 format
             val now = System.currentTimeMillis()
+            var hadGuide = false
             if (file.exists()) {
                 val cached = try {
                     Store.readGuide(file)
@@ -358,6 +359,7 @@ class Repository(private val context: Context) {
                     null
                 }
                 if (cached != null) {
+                    hadGuide = cached.programs.isNotEmpty()
                     setRawGuide(cached.programs)
                     guideChannels = cached.channels
                     publishGuide(p.epgShiftMinutes)
@@ -391,7 +393,15 @@ class Repository(private val context: Context) {
                 } catch (e: Exception) {
                     failed += if (url == providerUrl.trim()) "provider guide" else sourceLabel(url)
                 }
-                setRawGuide(HashMap(merged)) // show what we have so far
+                if (!hadGuide) {
+                    // First guide ever: show what we have so far. Otherwise keep showing the saved
+                    // guide until the new one is complete (no half-empty guide while refreshing).
+                    setRawGuide(HashMap(merged))
+                    publishGuide(p.epgShiftMinutes)
+                }
+            }
+            if (hadGuide && merged.isNotEmpty()) {
+                setRawGuide(merged)
                 publishGuide(p.epgShiftMinutes)
             }
             guideChannels = listed

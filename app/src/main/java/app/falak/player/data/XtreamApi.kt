@@ -96,8 +96,8 @@ class XtreamApi(
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
                 )
             }
-        } catch (e: IOException) {
-            // ignore
+        } catch (e: Exception) {
+            // ignore: films and series are optional (some servers time out or send broken lists)
         }
 
         // Series list; episodes are fetched when a series is opened.
@@ -118,8 +118,8 @@ class XtreamApi(
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
                 )
             }
-        } catch (e: IOException) {
-            // ignore
+        } catch (e: Exception) {
+            // ignore: films and series are optional (some servers time out or send broken lists)
         }
         return out
     }
@@ -134,10 +134,11 @@ class XtreamApi(
         val info = root["info"] as? JsonObject
         val seriesPrefix = prefix("series")
         val seasons = java.util.TreeMap<Int, MutableList<Pair<Int, Channel>>>()
+        val seen = HashSet<String>()
 
         fun add(seasonKey: String?, o: JsonObject) {
             val id = o.str("id")
-            if (id.isEmpty()) return
+            if (id.isEmpty() || !seen.add(id)) return // some panels list an episode twice
             val season = o.str("season").toIntOrNull() ?: seasonKey?.toIntOrNull() ?: 1
             val num = o.str("episode_num").toIntOrNull() ?: 0
             val ext = o.str("container_extension").ifBlank { "mp4" }
@@ -224,7 +225,7 @@ class XtreamApi(
                 val id = o["category_id"] ?: return@forEachObject
                 map[id] = o["category_name"].orEmpty().ifBlank { "Uncategorized" }
             }
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             // categories are cosmetic
         }
         return map

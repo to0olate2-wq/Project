@@ -67,6 +67,9 @@ import app.falak.player.data.Channel
 import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.util.Date
 
 private val MinuteWidth = 4.dp
@@ -105,11 +108,21 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val hidden = vm.playlist?.let { state.settings.hiddenGroups[it.id] }.orEmpty()
     val group = vm.group
     val all = vm.channels
-    // Only channels that actually have programmes: empty rows were just noise.
-    val guided = remember(all, locked, hidden, epg) {
-        val hiddenSet = hidden.toHashSet()
-        all.filter { it.kind == Kind.LIVE && it.group !in locked && it.group !in hiddenSet && !epg[it.epgKey].isNullOrEmpty() }
+    // Only channels that actually have programmes (empty rows were just noise); worked out off
+    // the main thread so the guide opens at once even with thousands of channels.
+    val guidedOrNull by produceState<List<Channel>?>(null, all, locked, hidden, epg) {
+        value = try {
+            withContext(Dispatchers.Default) {
+                val hiddenSet = hidden.toHashSet()
+                all.filter { it.kind == Kind.LIVE && it.group !in locked && it.group !in hiddenSet && !epg[it.epgKey].isNullOrEmpty() }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
+    val guided = guidedOrNull.orEmpty()
     val guideGroups = remember(guided) { guided.mapTo(LinkedHashSet()) { it.group }.toList() }
     val channels = remember(guided, group) { if (group == null) guided else guided.filter { it.group == group } }
     val hScroll = rememberScrollState()
@@ -199,7 +212,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
         if (channels.isEmpty()) {
             Centered {
                 when {
-                    vm.guideLoading || (epg.isEmpty() && vm.guideStatus.isEmpty()) -> {
+                    guidedOrNull == null || vm.guideLoading || (epg.isEmpty() && vm.guideStatus.isEmpty()) -> {
                         CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
                         Spacer(Modifier.height(12.dp))
                         Text("Loading the TV guide…", color = Muted)
@@ -329,7 +342,7 @@ private fun GuideRow(
                     )
                 }
                 for (prog in inWindow) {
-                    key(prog.start) {
+                    key(prog.start, prog.stop, prog.title) {
                         val start = maxOf(prog.start, windowStart)
                         val end = minOf(prog.stop, windowEnd)
                         val live = now >= prog.start && now < prog.stop

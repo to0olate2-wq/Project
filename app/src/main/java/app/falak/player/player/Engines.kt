@@ -40,6 +40,8 @@ object EngineAdvisor {
         val device = "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · " +
             String.format(java.util.Locale.US, "%.1f GB RAM", ramGb) + " · hardware: $codecs"
         val advice = when {
+            // Couldn't read the decoder list at all: ExoPlayer is the safe default.
+            hw.isEmpty() -> EngineAdvice(Engine.EXO, "ExoPlayer is the default; channels it can't open are retried with VLC.", device)
             !has("video/avc") -> EngineAdvice(
                 Engine.VLC,
                 "No hardware H.264 decoder was found, so VLC (which decodes well in software) plays best here.",

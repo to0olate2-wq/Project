@@ -21,7 +21,7 @@ object M3uParser {
 
         reader.useLines { lines ->
             for (raw in lines) {
-                val line = raw.trim()
+                val line = raw.trim().removePrefix("\uFEFF").trim() // some files start with a BOM
                 when {
                     line.isEmpty() -> Unit
                     line.startsWith("#EXTM3U", ignoreCase = true) -> {

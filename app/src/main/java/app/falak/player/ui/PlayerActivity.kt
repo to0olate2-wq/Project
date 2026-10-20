@@ -110,7 +110,8 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
     private lateinit var ccButton: TextView
-    private lateinit var toolbar: LinearLayout
+    private lateinit var toolbar: android.widget.HorizontalScrollView
+    private lateinit var rotateButton: TextView
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
     private lateinit var browserView: ComposeView
@@ -168,6 +169,11 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
+        tvLayout = when (repo.state.value.settings.layout) {
+            "tv" -> true
+            "phone" -> false
+            else -> detectTv(this)
+        }
 
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         playerView = PlayerView(this).apply {
@@ -179,7 +185,8 @@ class PlayerActivity : ComponentActivity() {
             controllerShowTimeoutMs = 3500
             setShowNextButton(true)
             setShowPreviousButton(true)
-            setShowSubtitleButton(true)
+            // Our CC button lists only captions that really carry text; the built-in one would list them all.
+            setShowSubtitleButton(false)
         }
         aspect = repo.state.value.settings.aspect.coerceIn(0, 2)
         playerView.resizeMode = resizeModes[aspect]
@@ -227,27 +234,35 @@ class PlayerActivity : ComponentActivity() {
         aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
         engineButton = pill("▶  Player") { showEngineDialog() }
         browseButton = pill("☰  Channels") { openBrowser() }
-        toolbar = LinearLayout(this).apply {
+        rotateButton = pill(rotationLabel()) { cycleRotation() }.apply { visibility = if (tvLayout) View.GONE else View.VISIBLE }
+        val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
             val gap = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { marginEnd = dp(8) }
             addView(browseButton, LinearLayout.LayoutParams(gap))
-            addView(audioButton, gap)
+            addView(audioButton, LinearLayout.LayoutParams(gap))
             addView(ccButton, LinearLayout.LayoutParams(gap))
             addView(aspectButton, LinearLayout.LayoutParams(gap))
+            addView(rotateButton, LinearLayout.LayoutParams(gap))
             addView(engineButton)
+        }
+        // At the bottom, just above the seek bar, and scrollable sideways on narrow phones.
+        toolbar = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+            addView(buttons)
         }
         root.addView(
             toolbar,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
-                .apply { setMargins(dp(20), dp(20), dp(20), dp(20)) },
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                .apply { setMargins(dp(16), 0, dp(16), dp(if (tvLayout) 112 else 100)) },
         )
         playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
                 toolbar.visibility = if (inPip) View.GONE else visibility
             },
         )
+        applyRotation()
         // Seek bar: 10 seconds per press of the remote (Media3's default is 1/20 of the film).
         playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
             ?.setKeyTimeIncrement(SEEK_STEP_MS)
@@ -418,7 +433,22 @@ class PlayerActivity : ComponentActivity() {
             .build()
         // FFmpeg takes over audio the device can't decode (AC-3, E-AC-3, DTS, MP2…),
         // or all audio when "Software audio" is on.
-        val renderers = DefaultRenderersFactory(this)
+        val level = s.levelVolume
+        val renderers = object : DefaultRenderersFactory(this) {
+            // Volume levelling runs inside the audio output, for every decoder (hardware or FFmpeg).
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): androidx.media3.exoplayer.audio.AudioSink? {
+                if (!level) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false) // the leveller works on 16-bit sound
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(app.falak.player.player.VolumeLeveler()))
+                    .build()
+            }
+        }
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(
                 if (s.softwareAudio || software) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
@@ -462,7 +492,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun createVlc() {
         val caching = if (repo.state.value.settings.bigBuffer) 5_000 else 1_500
-        val v = VlcPlayer(this, caching)
+        val v = VlcPlayer(this, caching, repo.state.value.settings.levelVolume)
         val layout = VLCVideoLayout(this)
         // Underneath the controls; ExoPlayer's own picture surface steps aside.
         root.addView(layout, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -1000,6 +1030,37 @@ class PlayerActivity : ComponentActivity() {
             meta,
             show?.seriesId.orEmpty(),
         )
+    }
+
+    // ---- rotation (phone layout) ----
+
+    private var tvLayout = false
+
+    private fun rotationLabel(): String = when (repo.state.value.settings.playerRotation) {
+        "landscape" -> "⟳  Landscape"
+        "portrait" -> "⟳  Portrait"
+        else -> "⟳  Auto-rotate"
+    }
+
+    /** Auto follows the phone as you turn it (even with rotation locked in the system). */
+    private fun applyRotation() {
+        if (tvLayout) return
+        requestedOrientation = when (repo.state.value.settings.playerRotation) {
+            "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "portrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
+    }
+
+    private fun cycleRotation() {
+        val next = when (repo.state.value.settings.playerRotation) {
+            "auto" -> "landscape"
+            "landscape" -> "portrait"
+            else -> "auto"
+        }
+        repo.updateSettings { it.copy(playerRotation = next) }
+        rotateButton.text = rotationLabel()
+        applyRotation()
     }
 
     private fun cycleAspect() {

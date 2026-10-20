@@ -51,7 +51,7 @@ data class Channel(
     val catchupSource: String = "",
 ) {
     /** Guide key: the tvg-id, or the cleaned-up name when the playlist has no id. */
-    val epgKey: String by lazy(LazyThreadSafetyMode.NONE) {
+    val epgKey: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         // Name-only keys carry the country, so "FR: beIN Sports 1" and "AR: beIN Sports 1" stay apart.
         tvgId.lowercase().ifEmpty { "name:" + (countryOf(name, group) ?: "") + ":" + normName(name) }
     }
@@ -258,6 +258,10 @@ data class Settings(
     val theme: Int = 0,
     /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */
     val layout: String = "auto",
+    /** Turn quiet channels up and loud ones down so every channel plays at a similar volume. */
+    val levelVolume: Boolean = true,
+    /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
+    val playerRotation: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
     val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */

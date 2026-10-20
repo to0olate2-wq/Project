@@ -163,6 +163,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) { vm.updateSettings { it.copy(softwareAudio = !it.softwareAudio) } }
         }
         item {
+            SwitchRow(
+                "Even out volume between channels",
+                "Turns quiet channels up and loud ones down to a similar level (not for Dolby sent to a receiver)",
+                s.levelVolume,
+            ) { vm.updateSettings { it.copy(levelVolume = !it.levelVolume) } }
+        }
+        item {
             SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }
