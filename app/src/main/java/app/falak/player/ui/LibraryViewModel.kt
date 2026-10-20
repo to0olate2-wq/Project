@@ -297,7 +297,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             val fresh = repo.loadChannels(p, refresh = true)
             if (loadToken !== token || playlist?.id != p.id) return
             show(fresh)
-            loadGuide(force = false)
+            // New channels pick up the guide on its next load; don't restart one that's running.
+            if (guideJob?.isActive != true) loadGuide(force = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
