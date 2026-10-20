@@ -3,6 +3,7 @@ package com.novatv.player.data
 import android.util.JsonReader
 import android.util.JsonToken
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -85,7 +86,82 @@ class XtreamApi(
         } catch (e: IOException) {
             // ignore
         }
+
+        // Series list; episodes are fetched when a series is opened.
+        try {
+            val seriesCats = categories("get_series_categories")
+            forEachObject("get_series") { o ->
+                val sid = o["series_id"].orEmpty()
+                if (sid.isEmpty() || !ids.add("s$sid")) return@forEachObject
+                out += Channel(
+                    id = "s$sid",
+                    name = o["name"].orEmpty().ifBlank { "Series $sid" },
+                    group = o["category_id"]?.let { seriesCats[it] } ?: "Uncategorized",
+                    url = "",
+                    logo = o["cover"].orEmpty(),
+                    kind = Kind.SERIES,
+                    seriesId = sid,
+                )
+            }
+        } catch (e: IOException) {
+            // ignore
+        }
         return out
+    }
+
+    fun seriesInfo(seriesId: String): SeriesInfo {
+        val text = call("get_series_info", mapOf("series_id" to seriesId)) { it }
+        val root = try {
+            Json.parseToJsonElement(text) as? JsonObject
+        } catch (e: Exception) {
+            null
+        } ?: throw IOException("The server returned no episodes")
+        val info = root["info"] as? JsonObject
+        val seriesPrefix = prefix("series")
+        val seasons = java.util.TreeMap<Int, MutableList<Pair<Int, Channel>>>()
+
+        fun add(seasonKey: String?, o: JsonObject) {
+            val id = o.str("id")
+            if (id.isEmpty()) return
+            val season = o.str("season").toIntOrNull() ?: seasonKey?.toIntOrNull() ?: 1
+            val num = o.str("episode_num").toIntOrNull() ?: 0
+            val ext = o.str("container_extension").ifBlank { "mp4" }
+            val epInfo = o["info"] as? JsonObject
+            val duration = epInfo?.str("duration").orEmpty()
+            val label = buildString {
+                append("S").append(season).append(" · E").append(num)
+                if (duration.isNotBlank()) append(" · ").append(duration)
+            }
+            val ch = Channel(
+                id = "e$id",
+                name = o.str("title").ifBlank { "Episode $num" },
+                group = "Season $season",
+                url = "$seriesPrefix/$id.$ext",
+                logo = epInfo?.str("movie_image").orEmpty(),
+                kind = Kind.SERIES,
+                info = label,
+            )
+            seasons.getOrPut(season) { ArrayList() }.add(num to ch)
+        }
+
+        when (val eps = root["episodes"]) {
+            is JsonObject -> eps.forEach { (key, value) ->
+                (value as? JsonArray)?.forEach { (it as? JsonObject)?.let { o -> add(key, o) } }
+            }
+            is JsonArray -> eps.forEach { el ->
+                when (el) {
+                    is JsonArray -> el.forEach { (it as? JsonObject)?.let { o -> add(null, o) } }
+                    is JsonObject -> add(null, el)
+                    else -> Unit
+                }
+            }
+            else -> Unit
+        }
+        return SeriesInfo(
+            plot = info?.str("plot").orEmpty(),
+            cover = info?.str("cover").orEmpty(),
+            seasons = seasons.map { (n, list) -> Season(n, list.sortedBy { it.first }.map { it.second }) },
+        )
     }
 
     private fun prefix(kind: String): String =
@@ -105,19 +181,22 @@ class XtreamApi(
         return map
     }
 
-    private fun request(action: String?): Request {
+    private fun request(action: String?, extra: Map<String, String> = emptyMap()): Request {
         val url = base.newBuilder().addPathSegment("player_api.php")
             .addQueryParameter("username", user)
             .addQueryParameter("password", pass)
-            .apply { if (action != null) addQueryParameter("action", action) }
+            .apply {
+                if (action != null) addQueryParameter("action", action)
+                extra.forEach { (k, v) -> addQueryParameter(k, v) }
+            }
             .build()
         return Request.Builder().url(url)
             .header("User-Agent", userAgent.ifBlank { Repository.DEFAULT_UA })
             .build()
     }
 
-    private fun <T> call(action: String?, read: (String) -> T): T =
-        http.newCall(request(action)).execute().use { res ->
+    private fun <T> call(action: String?, extra: Map<String, String> = emptyMap(), read: (String) -> T): T =
+        http.newCall(request(action, extra)).execute().use { res ->
             if (!res.isSuccessful) throw IOException("Server returned HTTP ${res.code}")
             read(res.body?.string().orEmpty())
         }

@@ -9,6 +9,14 @@ Stage 1 features
 - Picture-in-picture on phones, full Android TV remote support, TV launcher banner
 - Optional custom User-Agent and EPG link per playlist
 
+Stage 2 (v1.3)
+- **Series** (Xtream): seasons and episodes, next episode plays automatically
+- **TV Guide grid**: timeline of channels and programmes; tap what's on to watch, tap later shows for details
+- **Resume**: movies and episodes continue where you stopped, with progress bars
+- **Settings**: picture size (Fit/Fill/Zoom), larger buffer, prefer HLS for Xtream live, open last playlist
+- **Parental PIN**: lock adult groups automatically and/or pick groups to lock
+- Player: subtitles button, picture-size button (MENU key on TV remotes), audio track and speed in the ⚙ menu
+
 No channels are included: you add your own provider's playlist.
 
 ## Build the APK
@@ -36,5 +44,5 @@ If Android Studio offers to upgrade the Android Gradle Plugin, you can accept or
 - A playlist is cached after the first load; use the refresh button to re-download it.
 - Long lists: use the search button or pick a group first.
 
-## Planned for Stage 2
-Xtream series (seasons/episodes), full TV guide grid, settings (buffer, decoder, aspect ratio), catch-up, parental lock.
+## Ideas for later
+Catch-up / timeshift, multi-screen, recordings, cloud backup of favorites.

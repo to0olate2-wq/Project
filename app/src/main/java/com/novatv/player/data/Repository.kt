@@ -89,6 +89,31 @@ class Repository(private val context: Context) {
         s.copy(favorites = s.favorites + (playlistId to next))
     }
 
+    fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
+
+    /** pos = 0 clears the entry (finished or barely started). Keeps the most recent 300. */
+    fun saveProgress(key: String, pos: Long, dur: Long) = update { s ->
+        val next = LinkedHashMap(s.progress)
+        next.remove(key)
+        if (pos > 0) next[key] = Watch(pos, dur)
+        while (next.size > 300) next.remove(next.keys.first())
+        s.copy(progress = next)
+    }
+
+    /** Xtream access for this playlist: Xtream logins and get.php-style M3U links. */
+    fun xtreamFor(p: Playlist): XtreamApi? = when (p.type) {
+        SourceType.XTREAM -> XtreamApi(http, p.url, p.username, p.password, p.userAgent)
+        SourceType.M3U_URL -> XtreamApi.fromM3uLink(p.url)?.let { (server, user, pass) ->
+            XtreamApi(http, server, user, pass, p.userAgent)
+        }
+        SourceType.M3U_FILE -> null
+    }
+
+    suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = withContext(Dispatchers.IO) {
+        val api = xtreamFor(p) ?: throw IOException("Episodes need an Xtream login for this playlist")
+        api.seriesInfo(seriesId)
+    }
+
     fun addRecent(playlistId: String, channelId: String) = update { s ->
         val cur = s.recents[playlistId].orEmpty()
         s.copy(recents = s.recents + (playlistId to (listOf(channelId) + (cur - channelId)).take(40)))

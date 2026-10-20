@@ -23,6 +23,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import androidx.core.view.WindowCompat
@@ -40,15 +41,18 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.novatv.player.data.Channel
 import com.novatv.player.data.Epg
 import com.novatv.player.data.Kind
 import com.novatv.player.data.Repository
+import com.novatv.player.data.progressKey
 import com.novatv.player.repo
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
@@ -61,6 +65,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var bannerView: TextView
     private lateinit var messageView: TextView
+    private lateinit var aspectButton: TextView
     private var player: ExoPlayer? = null
 
     private var queue: List<Channel> = emptyList()
@@ -68,6 +73,15 @@ class PlayerActivity : ComponentActivity() {
     private var retried = false
     private var resumePositionMs = C.TIME_UNSET
     private var inPip = false
+    private var currentUrl = ""
+    private var aspect = 0
+
+    private val resizeModes = intArrayOf(
+        AspectRatioFrameLayout.RESIZE_MODE_FIT,
+        AspectRatioFrameLayout.RESIZE_MODE_FILL,
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+    )
+    private val aspectNames = arrayOf("Fit", "Fill", "Zoom")
 
     private val handler = Handler(Looper.getMainLooper())
     private val hideBanner = Runnable { bannerView.visibility = View.GONE }
@@ -89,7 +103,10 @@ class PlayerActivity : ComponentActivity() {
             controllerShowTimeoutMs = 3500
             setShowNextButton(true)
             setShowPreviousButton(true)
+            setShowSubtitleButton(true)
         }
+        aspect = repo.state.value.settings.aspect.coerceIn(0, 2)
+        playerView.resizeMode = resizeModes[aspect]
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         bannerView = TextView(this).apply {
@@ -125,6 +142,32 @@ class PlayerActivity : ComponentActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
 
+        // Picture-size button, shown together with the player controls.
+        aspectButton = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            text = "⛶  ${aspectNames[aspect]}"
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(0x99000000.toInt())
+            }
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { cycleAspect() }
+            visibility = View.GONE
+        }
+        root.addView(
+            aspectButton,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
+                .apply { setMargins(dp(20), dp(20), dp(20), dp(20)) },
+        )
+        playerView.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                aspectButton.visibility = if (inPip) View.GONE else visibility
+            },
+        )
+
         setContentView(root)
         hideSystemBars()
         playerView.requestFocus()
@@ -135,6 +178,7 @@ class PlayerActivity : ComponentActivity() {
         setIntent(intent)
         val q = repo.playQueue
         if (q.isEmpty()) return
+        saveProgress()
         queue = q
         index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
         retried = false
@@ -172,10 +216,17 @@ class PlayerActivity : ComponentActivity() {
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
-        val exo = ExoPlayer.Builder(this)
+        val builder = ExoPlayer.Builder(this)
             .setAudioAttributes(audio, true)
             .setHandleAudioBecomingNoisy(true)
-            .build()
+        if (repo.state.value.settings.bigBuffer) {
+            builder.setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(30_000, 120_000, 4_000, 8_000)
+                    .build(),
+            )
+        }
+        val exo = builder.build()
         exo.addListener(listener)
         exo.playWhenReady = true
         player = exo
@@ -185,6 +236,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun releasePlayer() {
         val p = player ?: return
+        saveProgress()
         val ch = queue.getOrNull(index)
         resumePositionMs = if (ch != null && ch.kind != Kind.LIVE) p.currentPosition else C.TIME_UNSET
         playerView.player = null
@@ -195,7 +247,14 @@ class PlayerActivity : ComponentActivity() {
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
-        val url = overrideUrl ?: ch.url
+        val settings = repo.state.value.settings
+        val url = overrideUrl
+            ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
+                ch.url.removeSuffix(".ts") + ".m3u8"
+            } else {
+                ch.url
+            }
+        currentUrl = url
         val ua = ch.userAgent
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
@@ -215,7 +274,14 @@ class PlayerActivity : ComponentActivity() {
         val source = DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(itemBuilder.build())
 
         hideMessage()
-        val resume = resumePositionMs
+        // Resume movies/episodes where they were left (this session first, then saved progress).
+        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(pl.id, ch.id)]?.pos }
+        val resume = when {
+            ch.kind == Kind.LIVE -> C.TIME_UNSET
+            resumePositionMs > 0 -> resumePositionMs
+            saved != null -> saved
+            else -> C.TIME_UNSET
+        }
         resumePositionMs = C.TIME_UNSET
         if (overrideUrl == null && resume > 0) p.setMediaSource(source, resume) else p.setMediaSource(source)
         p.prepare()
@@ -225,6 +291,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun zap(delta: Int) {
         if (queue.size < 2) return
+        saveProgress()
         index = (index + delta).mod(queue.size)
         retried = false
         resumePositionMs = C.TIME_UNSET
@@ -242,9 +309,16 @@ class PlayerActivity : ComponentActivity() {
             val ch = queue.getOrNull(index) ?: return
             if (!retried) {
                 retried = true
-                // Many Xtream servers serve live TV better as HLS: try that once before giving up.
-                if (ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
-                    playCurrent(showInfo = false, overrideUrl = ch.url.removeSuffix(".ts") + ".m3u8")
+                // Xtream live TV comes as .ts or HLS; if one format fails, try the other once.
+                val cur = currentUrl
+                val alt = when {
+                    !cur.contains("/live/") -> null
+                    cur.endsWith(".ts") -> cur.removeSuffix(".ts") + ".m3u8"
+                    cur.endsWith(".m3u8") -> cur.removeSuffix(".m3u8") + ".ts"
+                    else -> null
+                }
+                if (alt != null) {
+                    playCurrent(showInfo = false, overrideUrl = alt)
                 } else {
                     handler.postDelayed({ player?.prepare() }, 1500)
                 }
@@ -258,6 +332,12 @@ class PlayerActivity : ComponentActivity() {
             if (playbackState == Player.STATE_READY) {
                 retried = false
                 hideMessage()
+            }
+            if (playbackState == Player.STATE_ENDED) {
+                saveProgress()
+                val ch = queue.getOrNull(index)
+                // Episodes: go straight to the next one.
+                if (ch != null && ch.kind == Kind.SERIES && index < queue.lastIndex) zap(1)
             }
         }
 
@@ -310,6 +390,7 @@ class PlayerActivity : ComponentActivity() {
                     return true
                 }
                 KeyEvent.KEYCODE_BACK -> if (controlsShown) { playerView.hideController(); return true }
+                KeyEvent.KEYCODE_MENU -> { cycleAspect(); return true }
             }
         }
         if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
@@ -348,10 +429,34 @@ class PlayerActivity : ComponentActivity() {
         playerView.useController = !isInPictureInPictureMode
         if (isInPictureInPictureMode) {
             bannerView.visibility = View.GONE
+            aspectButton.visibility = View.GONE
             hideMessage()
         } else if (lifecycle.currentState == Lifecycle.State.CREATED) {
             finish()
         }
+    }
+
+    // ---- progress & picture size ----
+
+    /** Saves how far a movie/episode got; finished or barely started items are cleared. */
+    private fun saveProgress() {
+        val p = player ?: return
+        val ch = queue.getOrNull(index) ?: return
+        if (ch.kind == Kind.LIVE) return
+        val pl = repo.currentPlaylist ?: return
+        val dur = p.duration
+        if (dur <= 0) return
+        val pos = p.currentPosition
+        val finished = p.playbackState == Player.STATE_ENDED || pos > dur - 120_000
+        repo.saveProgress(progressKey(pl.id, ch.id), if (finished || pos < 30_000) 0 else pos, dur)
+    }
+
+    private fun cycleAspect() {
+        aspect = (aspect + 1) % resizeModes.size
+        playerView.resizeMode = resizeModes[aspect]
+        aspectButton.text = "⛶  ${aspectNames[aspect]}"
+        Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
+        repo.updateSettings { it.copy(aspect = aspect) }
     }
 
     // ---- overlays ----

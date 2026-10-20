@@ -40,6 +40,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -87,6 +88,9 @@ class MainActivity : ComponentActivity() {
                         when (vm.screen) {
                             Screen.PLAYLISTS -> PlaylistsScreen(vm, state)
                             Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
+                            Screen.SERIES -> SeriesScreen(vm, state, onPlay = ::play)
+                            Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
+                            Screen.SETTINGS -> SettingsScreen(vm, state)
                         }
                     }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
@@ -142,6 +146,10 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings")
+            }
+            Spacer(Modifier.width(4.dp))
             Button(onClick = { adding = true }) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))

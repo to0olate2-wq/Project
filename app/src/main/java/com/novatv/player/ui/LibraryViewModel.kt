@@ -5,11 +5,14 @@ import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.novatv.player.data.Channel
 import com.novatv.player.data.Kind
 import com.novatv.player.data.Playlist
+import com.novatv.player.data.SeriesInfo
+import com.novatv.player.data.Settings
 import com.novatv.player.data.SourceType
 import com.novatv.player.data.XtreamApi
 import com.novatv.player.repo
@@ -18,7 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, GUIDE, SETTINGS }
 
 enum class Section(val label: String, val kind: Kind?) {
     LIVE("Live TV", Kind.LIVE),
@@ -49,14 +52,30 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Crash details from the previous run, shown once so the user can copy them. */
     var crashReport by mutableStateOf<String?>(null)
 
+    /** Kept here so the list keeps its position when coming back from a series or the guide. */
+    var listState by mutableStateOf(LazyListState())
+        private set
+    var lastListKey: Any? = null
+
+    /** True once the parental PIN was entered in this session. */
+    var unlocked by mutableStateOf(false)
+
+    var series by mutableStateOf<Channel?>(null)
+        private set
+    var seriesInfo by mutableStateOf<SeriesInfo?>(null)
+        private set
+    var seriesError by mutableStateOf<String?>(null)
+        private set
+
     private var loadJob: Job? = null
+    private var seriesJob: Job? = null
     private var loadToken = Any()
 
     init {
         crashReport = repo.takeCrashReport()
         val s = state.value
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
-        if (crashReport == null) {
+        if (crashReport == null && s.settings.openLast) {
             s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
         }
     }
@@ -70,6 +89,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             group = null
             query = ""
             section = Section.LIVE
+            listState = LazyListState()
+            lastListKey = null
             repo.clearEpg()
         }
         playlist = p
@@ -159,7 +180,44 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun prepareQueue(list: List<Channel>, ch: Channel) {
         repo.playQueue = list
         repo.currentPlaylist = playlist
-        playlist?.let { repo.addRecent(it.id, ch.id) }
+        // For episodes, remember the series itself in "Recent".
+        val recentId = if (screen == Screen.SERIES) series?.id ?: ch.id else ch.id
+        playlist?.let { repo.addRecent(it.id, recentId) }
+    }
+
+    fun openSeries(ch: Channel) {
+        val p = playlist ?: return
+        series = ch
+        seriesInfo = null
+        seriesError = null
+        screen = Screen.SERIES
+        seriesJob?.cancel()
+        seriesJob = viewModelScope.launch {
+            try {
+                seriesInfo = repo.loadSeries(p, ch.seriesId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                seriesError = e.message ?: e.toString()
+            }
+        }
+    }
+
+    fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
+
+    fun toggleLockedGroup(group: String) {
+        val p = playlist ?: return
+        repo.updateSettings { s ->
+            val cur = s.lockedGroups[p.id].orEmpty()
+            s.copy(lockedGroups = s.lockedGroups + (p.id to if (group in cur) cur - group else cur + group))
+        }
+    }
+
+    /** Returns true and unlocks for this session if [pin] is right. */
+    fun tryUnlock(pin: String): Boolean {
+        val ok = pin.isNotEmpty() && pin == state.value.settings.pin
+        if (ok) unlocked = true
+        return ok
     }
 
     private fun hostOf(url: String): String = try {

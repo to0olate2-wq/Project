@@ -30,11 +30,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,11 +67,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.novatv.player.data.ADULT_GROUP
 import com.novatv.player.data.AppState
 import com.novatv.player.data.Channel
 import com.novatv.player.data.Epg
 import com.novatv.player.data.Kind
 import com.novatv.player.data.Program
+import com.novatv.player.data.Watch
+import com.novatv.player.data.progressKey
 import kotlinx.coroutines.delay
 
 @Composable
@@ -86,6 +92,15 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val recentIds = state.recents[p.id].orEmpty()
     val favSet = remember(favIds) { favIds.toHashSet() }
     val kinds = remember(all) { all.mapTo(HashSet()) { it.kind } }
+    val locked = rememberLockedGroups(vm, state)
+    var pinForGroup by remember { mutableStateOf<String?>(null) }
+    val selectGroup: (String?) -> Unit = { g ->
+        if (g != null && g in locked) {
+            pinForGroup = g
+        } else {
+            vm.group = g
+        }
+    }
 
     val sections = Section.entries.filter { s ->
         when (s) {
@@ -105,16 +120,22 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val group = if (showGroups) vm.group else null
     val q = vm.query.trim()
     val counts = remember(base) { base.groupingBy { it.group }.eachCount() }
-    val visible = remember(base, group, q) {
-        base.filter { ch ->
+    // Channels in locked groups stay hidden from "All", search, favorites and recents.
+    val openBase = remember(base, locked) { if (locked.isEmpty()) base else base.filterNot { it.group in locked } }
+    val visible = remember(openBase, group, q) {
+        openBase.filter { ch ->
             if (q.isNotEmpty()) ch.name.contains(q, ignoreCase = true)
             else group == null || ch.group == group
         }
     }
 
-    var searching by rememberSaveable { mutableStateOf(false) }
-    val listState = rememberLazyListState()
-    LaunchedEffect(section, group, q) { listState.scrollToItem(0) }
+    var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
+    val listState = vm.listState
+    LaunchedEffect(section, group, q) {
+        val key = Triple(section, group, q)
+        if (vm.lastListKey != null && vm.lastListKey != key) listState.scrollToItem(0)
+        vm.lastListKey = key
+    }
 
     BackHandler(enabled = searching || group != null) {
         if (searching) {
@@ -138,11 +159,19 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            if (section == Section.LIVE && epg.isNotEmpty()) {
+                IconButton(onClick = { vm.screen = Screen.GUIDE }) {
+                    Icon(Icons.Filled.DateRange, contentDescription = "TV guide")
+                }
+            }
             IconButton(onClick = { searching = true }) {
                 Icon(Icons.Filled.Search, contentDescription = "Search")
             }
             IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh playlist")
+            }
+            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings")
             }
         }
 
@@ -204,30 +233,64 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 val channelList: @Composable (Modifier) -> Unit = { m ->
                     ChannelList(
                         list = visible, favIds = favSet, epg = epg, now = now, state = listState,
-                        onPlay = { ch -> onPlay(visible, ch) },
+                        progress = state.progress, playlistId = p.id,
+                        onPlay = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(visible, ch) },
                         onFav = { ch -> vm.toggleFavorite(ch) },
                         modifier = m,
                     )
                 }
                 if (wide && groupsVisible) {
                     Row(Modifier.fillMaxSize()) {
-                        GroupList(counts, base.size, group, { vm.group = it }, Modifier.width(260.dp).fillMaxHeight())
+                        GroupList(counts, openBase.size, group, locked, selectGroup, Modifier.width(260.dp).fillMaxHeight())
                         Spacer(Modifier.width(8.dp))
                         channelList(Modifier.weight(1f).fillMaxHeight())
                     }
                 } else {
                     Column(Modifier.fillMaxSize()) {
-                        if (groupsVisible) GroupChips(counts, group) { vm.group = it }
+                        if (groupsVisible) GroupChips(counts, group, locked, selectGroup)
                         channelList(Modifier.weight(1f).fillMaxWidth())
                     }
                 }
             }
         }
     }
+
+    pinForGroup?.let { g ->
+        PinDialog(
+            title = "Enter PIN to open “$g”",
+            onDismiss = { pinForGroup = null },
+            onSubmit = { pin ->
+                val ok = vm.tryUnlock(pin)
+                if (ok) {
+                    vm.group = g
+                    pinForGroup = null
+                }
+                ok
+            },
+        )
+    }
+}
+
+/** Groups currently hidden behind the parental PIN for the open playlist. */
+@Composable
+fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
+    val p = vm.playlist
+    val s = state.settings
+    val active = p != null && s.pin.isNotEmpty() && !vm.unlocked
+    val explicit = if (p != null) s.lockedGroups[p.id].orEmpty() else emptyList()
+    val all = vm.channels
+    return remember(all, active, explicit, s.lockAdult) {
+        if (!active) {
+            emptySet()
+        } else {
+            all.mapTo(LinkedHashSet()) { it.group }
+                .filterTo(HashSet()) { g -> g in explicit || (s.lockAdult && ADULT_GROUP.containsMatchIn(g)) }
+        }
+    }
 }
 
 @Composable
-private fun Centered(content: @Composable () -> Unit) {
+internal fun Centered(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) { content() }
     }
@@ -238,18 +301,21 @@ private fun GroupList(
     counts: Map<String, Int>,
     total: Int,
     selected: String?,
+    locked: Set<String>,
     onSelect: (String?) -> Unit,
     modifier: Modifier,
 ) {
     val names = remember(counts) { counts.keys.toList() }
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = 24.dp)) {
-        item(key = "__all") { GroupItem("All", total, selected == null) { onSelect(null) } }
-        items(names, key = { "g:$it" }) { g -> GroupItem(g, counts[g] ?: 0, selected == g) { onSelect(g) } }
+        item(key = "__all") { GroupItem("All", total, selected == null, false) { onSelect(null) } }
+        items(names, key = { "g:$it" }) { g ->
+            GroupItem(g, counts[g] ?: 0, selected == g, g in locked) { onSelect(g) }
+        }
     }
 }
 
 @Composable
-private fun GroupItem(name: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun GroupItem(name: String, count: Int, selected: Boolean, locked: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     val colors = MaterialTheme.colorScheme
     Row(
@@ -270,12 +336,16 @@ private fun GroupItem(name: String, count: Int, selected: Boolean, onClick: () -
             color = if (selected) colors.primary else colors.onBackground,
             modifier = Modifier.weight(1f),
         )
-        Text("$count", color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        if (locked) {
+            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        } else {
+            Text("$count", color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        }
     }
 }
 
 @Composable
-private fun GroupChips(counts: Map<String, Int>, selected: String?, onSelect: (String?) -> Unit) {
+private fun GroupChips(counts: Map<String, Int>, selected: String?, locked: Set<String>, onSelect: (String?) -> Unit) {
     val names = remember(counts) { listOf<String?>(null) + counts.keys }
     LazyRow(
         Modifier.fillMaxWidth().padding(bottom = 6.dp),
@@ -285,7 +355,7 @@ private fun GroupChips(counts: Map<String, Int>, selected: String?, onSelect: (S
             FilterChip(
                 selected = selected == g,
                 onClick = { onSelect(g) },
-                label = { Text(g ?: "All", maxLines = 1) },
+                label = { Text(if (g != null && g in locked) "🔒 $g" else g ?: "All", maxLines = 1) },
             )
         }
     }
@@ -298,6 +368,8 @@ private fun ChannelList(
     epg: Map<String, List<Program>>,
     now: Long,
     state: LazyListState,
+    progress: Map<String, Watch>,
+    playlistId: String,
     onPlay: (Channel) -> Unit,
     onFav: (Channel) -> Unit,
     modifier: Modifier,
@@ -311,7 +383,8 @@ private fun ChannelList(
     LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 24.dp)) {
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
-            ChannelRow(i + 1, ch, current, ch.id in favIds, now, { onPlay(ch) }, { onFav(ch) })
+            val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onPlay(ch) }, { onFav(ch) })
         }
     }
 }
@@ -321,6 +394,7 @@ private fun ChannelRow(
     number: Int,
     ch: Channel,
     current: Program?,
+    watched: Watch?,
     isFav: Boolean,
     now: Long,
     onClick: () -> Unit,
@@ -376,12 +450,18 @@ private fun ChannelRow(
                 )
             } else if (isVod) {
                 Text(
-                    ch.group,
+                    ch.info.ifBlank { if (ch.isSeriesFolder) "Series · ${ch.group}" else ch.group },
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (watched != null && watched.dur > 0) {
+                    LinearProgressIndicator(
+                        progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
+                        modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp),
+                    )
+                }
             }
         }
         IconButton(onClick = onFav) {

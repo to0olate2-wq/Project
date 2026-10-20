@@ -33,14 +33,40 @@ data class Channel(
     val kind: Kind = Kind.LIVE,
     val userAgent: String = "",
     val referrer: String = "",
+    /** Xtream series id: set on series entries, which open an episode list instead of playing. */
+    val seriesId: String = "",
+    /** Extra line shown under the name, e.g. "E3 · 45 min". */
+    val info: String = "",
 ) {
     val epgKey: String get() = tvgId.lowercase()
+    val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
 }
 
 data class Program(val start: Long, val stop: Long, val title: String, val desc: String)
 
+class Season(val number: Int, val episodes: List<Channel>)
+
+class SeriesInfo(val plot: String, val cover: String, val seasons: List<Season>)
+
 @Serializable
 data class PlaylistCache(val channels: List<Channel>, val epgUrl: String = "")
+
+@Serializable
+data class Settings(
+    /** 0 = fit, 1 = fill (stretch), 2 = zoom (crop) */
+    val aspect: Int = 0,
+    val bigBuffer: Boolean = false,
+    val preferHls: Boolean = false,
+    val openLast: Boolean = true,
+    val pin: String = "",
+    val lockAdult: Boolean = true,
+    /** playlistId -> locked group names */
+    val lockedGroups: Map<String, List<String>> = emptyMap(),
+)
+
+/** Watch progress of a movie or episode. */
+@Serializable
+data class Watch(val pos: Long, val dur: Long)
 
 @Serializable
 data class AppState(
@@ -49,7 +75,14 @@ data class AppState(
     val favorites: Map<String, List<String>> = emptyMap(),
     val recents: Map<String, List<String>> = emptyMap(),
     val lastPlaylistId: String? = null,
+    val settings: Settings = Settings(),
+    /** progressKey(playlistId, channelId) -> position */
+    val progress: Map<String, Watch> = emptyMap(),
 )
+
+val ADULT_GROUP = Regex("(?i)(xxx|adult|18\\s*\\+|porn)")
+
+fun progressKey(playlistId: String, channelId: String) = "$playlistId|$channelId"
 
 /** 64-bit FNV-1a hash, so ids stay stable across playlist refreshes. */
 fun stableId(s: String): String {
