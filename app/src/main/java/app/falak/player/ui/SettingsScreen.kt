@@ -61,6 +61,9 @@ import app.falak.player.data.AppState
 import app.falak.player.data.GUIDE_SOURCES
 import app.falak.player.data.guideSourceName
 
+/** Public privacy policy (also linked from the Google Play listing). */
+const val PRIVACY_URL = "https://github.com/to0olate2-wq/Project/blob/main/PRIVACY.md"
+
 @Composable
 fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val s = state.settings
@@ -371,6 +374,24 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
                 Text("The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 13.sp, color = Muted)
                 Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, color = Faint)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "The Player doesn't include any channels or content: it plays the playlists you add. " +
+                        "Your playlists and settings stay on this device; nothing is sent to the developer.",
+                    fontSize = 13.sp,
+                    color = Muted,
+                )
+                val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                Text(
+                    "Privacy policy",
+                    fontSize = 13.sp,
+                    color = Signal,
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .focusRing(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                        .clickable { runCatching { uri.openUri(PRIVACY_URL) } }
+                        .padding(vertical = 6.dp, horizontal = 2.dp),
+                )
             }
         }
     }

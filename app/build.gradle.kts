@@ -9,15 +9,16 @@ plugins {
 
 android {
     namespace = "app.falak.player"
-    compileSdk = 35
+    // Google Play requires apps to target Android 16 (API 36) since 31 August 2026.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.falak.player"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "3.9"
+        versionName = "4.0"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // TVs and phones are ARM; leaving out x86 keeps the download much smaller now that VLC is built in.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -31,6 +32,17 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Google Play upload key: kept out of the repo, supplied by CI from the repository's
+        // secrets (PLAY_KEYSTORE_B64 / PLAY_KEYSTORE_PASSWORD). Without it the Play bundle is unsigned.
+        val uploadStore = System.getenv("PLAY_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+        if (uploadStore != null) {
+            create("upload") {
+                storeFile = uploadStore
+                storePassword = System.getenv("PLAY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PLAY_KEY_ALIAS") ?: "upload"
+                keyPassword = System.getenv("PLAY_KEY_PASSWORD") ?: System.getenv("PLAY_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -39,7 +51,7 @@ android {
             // Names are kept (see proguard-rules.pro) so crash reports stay readable.
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // Signing is chosen per store below (a build type's key would override the flavours').
         }
     }
 
@@ -49,10 +61,13 @@ android {
         create("github") {
             dimension = "store"
             buildConfigField("boolean", "SELF_UPDATE", "true")
+            signingConfig = signingConfigs.getByName("debug")
         }
         create("play") {
             dimension = "store"
             buildConfigField("boolean", "SELF_UPDATE", "false")
+            // Play rejects bundles signed with a debug key: use the upload key when CI has it.
+            signingConfig = signingConfigs.findByName("upload")
         }
     }
     compileOptions {
