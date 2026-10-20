@@ -128,6 +128,10 @@ data class Settings(
     /** Show subtitles/closed captions automatically when a stream has them. */
     val subtitlesOn: Boolean = false,
     val subtitleLang: String = "",
+    /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */
+    val osApiKey: String = "",
+    val osUser: String = "",
+    val osPass: String = "",
     val pin: String = "",
     val lockAdult: Boolean = true,
     /** playlistId -> locked group names */

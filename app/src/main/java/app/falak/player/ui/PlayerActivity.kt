@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -31,6 +32,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -43,6 +48,8 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -57,6 +64,8 @@ import androidx.media3.ui.PlayerView
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
+import app.falak.player.data.OpenSubtitles
+import app.falak.player.data.SubtitleResult
 import app.falak.player.data.Repository
 import app.falak.player.data.progressKey
 import app.falak.player.repo
@@ -78,6 +87,9 @@ class PlayerActivity : ComponentActivity() {
     private val trackNames by lazy { DefaultTrackNameProvider(resources) }
     private var autoSubtitlesDone = false
     private var bannerFor: Channel? = null
+    private var currentItem: MediaItem? = null
+    private var currentDataSource: DataSource.Factory? = null
+    private var currentExtractors = DefaultExtractorsFactory()
     private var player: ExoPlayer? = null
 
     private var queue: List<Channel> = emptyList()
@@ -278,10 +290,14 @@ class PlayerActivity : ComponentActivity() {
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
 
-        val dataSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua)
-        if (ch.referrer.isNotBlank()) dataSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
+        val httpSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua)
+        if (ch.referrer.isNotBlank()) httpSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
+        // DefaultDataSource adds local files (downloaded subtitles) on top of the network source.
+        val dataSource = DefaultDataSource.Factory(this, httpSource)
         val extractors = DefaultExtractorsFactory()
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
+        currentDataSource = dataSource
+        currentExtractors = extractors
 
         val itemBuilder = MediaItem.Builder()
             .setUri(url)
@@ -291,6 +307,7 @@ class PlayerActivity : ComponentActivity() {
             url.contains(".mpd", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
         val item = itemBuilder.build()
+        currentItem = item
         val source = if (url.contains("m3u8", ignoreCase = true)) {
             // Expose closed captions (CEA-608) carried inside HLS video even when the playlist doesn't declare them.
             HlsMediaSource.Factory(dataSource)
@@ -555,9 +572,14 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showTrackDialog(type: Int) {
-        val options = trackOptions(type)
+        val options = ArrayList(trackOptions(type))
         val real = if (type == C.TRACK_TYPE_TEXT) options.size - 1 else options.size
-        if (real <= 0 || (type == C.TRACK_TYPE_AUDIO && real == 1)) {
+        // Movies and episodes can also fetch subtitles online.
+        val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
+        if (type == C.TRACK_TYPE_TEXT && vod) {
+            options += TrackOption("🔎  Find subtitles online…", false) { searchOnlineSubtitles() }
+        }
+        if ((real <= 0 && !(type == C.TRACK_TYPE_TEXT && vod)) || (type == C.TRACK_TYPE_AUDIO && real == 1)) {
             val what = if (type == C.TRACK_TYPE_AUDIO) "Only one audio track" else "No subtitles"
             Toast.makeText(this, "$what in this stream", Toast.LENGTH_SHORT).show()
             return
@@ -565,8 +587,8 @@ class PlayerActivity : ComponentActivity() {
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitles")
             .setSingleChoiceItems(options.map { it.label }.toTypedArray(), options.indexOfFirst { it.selected }) { d, which ->
-                options[which].select()
                 d.dismiss()
+                options[which].select()
             }
             .setNegativeButton("Close", null)
             .show()
@@ -575,9 +597,87 @@ class PlayerActivity : ComponentActivity() {
     private fun updateTrackButtons() {
         val audio = countTracks(C.TRACK_TYPE_AUDIO)
         val text = countTracks(C.TRACK_TYPE_TEXT)
+        val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
         audioButton.text = "🔊  Audio ($audio)"
-        ccButton.visibility = if (text > 0) View.VISIBLE else View.GONE
+        ccButton.visibility = if (text > 0 || vod) View.VISIBLE else View.GONE
+    }
+
+    // ---- online subtitles (OpenSubtitles.com) ----
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    private fun searchOnlineSubtitles() {
+        val s = repo.state.value.settings
+        val ch = queue.getOrNull(index) ?: return
+        if (s.osApiKey.isBlank()) {
+            toast("Add your free OpenSubtitles API key in Settings → Online subtitles")
+            return
+        }
+        val show = repo.currentSeries
+        val (title, year) = OpenSubtitles.cleanTitle(if (show != null && ch.kind == Kind.SERIES) show.name else ch.name)
+        val se = Regex("S(\\d+) · E(\\d+)").find(ch.info)
+        val season = se?.groupValues?.get(1)?.toIntOrNull()
+        val episode = se?.groupValues?.get(2)?.toIntOrNull()
+        val langs = listOf(s.subtitleLang.ifEmpty { "en" }, "en").distinct()
+        val client = OpenSubtitles(repo.http, s.osApiKey, s.osUser, s.osPass)
+        toast("Searching subtitles for “$title”…")
+        lifecycleScope.launch {
+            val results = try {
+                withContext(Dispatchers.IO) { client.search(title, year, season, episode, langs) }
+            } catch (e: Exception) {
+                toast(e.message ?: "Subtitle search failed")
+                return@launch
+            }
+            if (results.isEmpty()) {
+                toast("No subtitles found for “$title”")
+                return@launch
+            }
+            val shown = results.take(40)
+            android.app.AlertDialog.Builder(this@PlayerActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Subtitles · $title")
+                .setItems(shown.map { "${it.language.uppercase()}  ·  ${it.release}  (${it.downloads}↓)" }.toTypedArray()) { _, which ->
+                    downloadSubtitle(client, shown[which])
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    private fun downloadSubtitle(client: OpenSubtitles, result: SubtitleResult) {
+        lifecycleScope.launch {
+            val file = try {
+                withContext(Dispatchers.IO) { client.download(result, java.io.File(cacheDir, "subs")) }
+            } catch (e: Exception) {
+                toast(e.message ?: "Subtitle download failed")
+                return@launch
+            }
+            attachSubtitle(file, result.language)
+        }
+    }
+
+    /** Re-prepares the current video with the downloaded subtitle, keeping the position. */
+    private fun attachSubtitle(file: java.io.File, lang: String) {
+        val p = player ?: return
+        val item = currentItem ?: return
+        val dataSource = currentDataSource ?: return
+        val sub = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
+            .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+            .setLanguage(lang)
+            .setLabel("Online (${lang.uppercase()})")
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+        val withSub = item.buildUpon().setSubtitleConfigurations(listOf(sub)).build()
+        val source = DefaultMediaSourceFactory(dataSource, currentExtractors).createMediaSource(withSub)
+        val pos = p.currentPosition
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(lang)
+            .build()
+        p.setMediaSource(source, pos)
+        p.prepare()
+        toast("Subtitles added")
     }
 
     /** With "Show subtitles automatically" on, turn on the first matching subtitle track. */

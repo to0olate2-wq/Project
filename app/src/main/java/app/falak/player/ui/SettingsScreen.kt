@@ -57,6 +57,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val pinSet = s.pin.isNotEmpty()
     var editPin by remember { mutableStateOf(false) }
     var addGuide by remember { mutableStateOf(false) }
+    var editSubs by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
     val guarded: (() -> Unit) -> Unit = { action ->
@@ -123,6 +124,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     vm.updateSettings { it.copy(subtitleLang = code) }
                 }
             }
+        }
+
+        item {
+            ClickRow(
+                title = "Online subtitles (OpenSubtitles.com)",
+                subtitle = if (s.osApiKey.isBlank()) "Find subtitles for movies and episodes that have none · tap to set up"
+                else "On" + if (s.osUser.isNotBlank()) " · signed in as ${s.osUser}" else " · not signed in (fewer downloads per day)",
+            ) { editSubs = true }
         }
 
         if (p != null) {
@@ -237,6 +246,40 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
                 ok
             },
+        )
+    }
+
+    if (editSubs) {
+        var key by remember { mutableStateOf(s.osApiKey) }
+        var user by remember { mutableStateOf(s.osUser) }
+        var pass by remember { mutableStateOf(s.osPass) }
+        AlertDialog(
+            onDismissRequest = { editSubs = false },
+            title = { Text("Online subtitles") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Create a free account at opensubtitles.com, then open your profile → API consumers → " +
+                            "create a consumer to get an API key. Falak searches it when a movie or episode has no subtitles " +
+                            "(player → CC → Find subtitles online).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(key, { key = it.trim() }, label = { Text("API key") }, singleLine = true)
+                    OutlinedTextField(user, { user = it.trim() }, label = { Text("Username (optional)") }, singleLine = true)
+                    OutlinedTextField(
+                        pass, { pass = it }, label = { Text("Password (optional)") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.updateSettings { it.copy(osApiKey = key, osUser = user, osPass = pass) }
+                    editSubs = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editSubs = false }) { Text("Cancel") } },
         )
     }
 
