@@ -30,6 +30,9 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
         arrayListOf(
             "--http-reconnect",
             "--no-stats",
+            // Never look up cover art or other metadata online (VLC's default, made explicit):
+            // the app only talks to the servers in the user's own playlists.
+            "--no-metadata-network-access",
             "--audio-time-stretch",
             "--network-caching=$cachingMs",
             "--live-caching=$cachingMs",
