@@ -110,7 +110,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
     private lateinit var ccButton: TextView
-    private lateinit var toolbar: android.widget.HorizontalScrollView
+    private lateinit var toolbar: FrameLayout
     private lateinit var rotateButton: TextView
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
@@ -228,44 +228,59 @@ class PlayerActivity : ComponentActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
 
-        // Audio / Subtitles / Picture-size buttons, shown together with the player controls.
-        audioButton = pill("🔊  Audio") { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
-        ccButton = pill("CC  Subtitles") { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
-        aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
-        engineButton = pill("▶  Player") { showEngineDialog() }
-        browseButton = pill("☰  Channels") { openBrowser() }
-        rotateButton = pill(rotationLabel()) { cycleRotation() }.apply { visibility = if (tvLayout) View.GONE else View.VISIBLE }
+        // Channels / Audio / Subtitles / Picture size / Player: one tidy row on the bottom line of the
+        // screen, under the seek bar, shown and hidden together with the player controls.
+        browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
+        audioButton = pill("Audio", R.drawable.ic_pl_audio) { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
+        ccButton = pill("Subtitles", R.drawable.ic_pl_subtitles) { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
+        aspectButton = pill(aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
+        rotateButton = pill(rotationLabel(), R.drawable.ic_pl_rotate) { cycleRotation() }
+            .apply { visibility = if (tvLayout) View.GONE else View.VISIBLE }
+        engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            val gap = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                .apply { marginEnd = dp(8) }
-            addView(browseButton, LinearLayout.LayoutParams(gap))
-            addView(audioButton, LinearLayout.LayoutParams(gap))
-            addView(ccButton, LinearLayout.LayoutParams(gap))
-            addView(aspectButton, LinearLayout.LayoutParams(gap))
-            addView(rotateButton, LinearLayout.LayoutParams(gap))
-            addView(engineButton)
+            gravity = Gravity.CENTER_VERTICAL
+            // Side padding leaves room for the focused button to grow without being cut off.
+            setPadding(dp(16), 0, dp(16), 0)
+            clipToPadding = false
+            clipChildren = false
+            for (b in listOf(browseButton, audioButton, ccButton, aspectButton, rotateButton, engineButton)) {
+                addView(
+                    b,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
+                        .apply { setMargins(dp(6), 0, dp(6), 0) },
+                )
+            }
         }
-        // At the bottom, just above the seek bar, and scrollable sideways on narrow phones.
-        toolbar = android.widget.HorizontalScrollView(this).apply {
+        // Centred when it fits, scrollable sideways on narrow phones.
+        val scroller = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            visibility = View.GONE
-            addView(buttons)
+            addView(buttons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
-        root.addView(
-            toolbar,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                .apply { setMargins(dp(16), 0, dp(16), dp(if (tvLayout) 112 else 100)) },
-        )
-        playerView.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { visibility ->
-                toolbar.visibility = if (inPip) View.GONE else visibility
-            },
-        )
+        toolbar = FrameLayout(this).apply {
+            addView(
+                scroller,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL),
+            )
+        }
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)?.let { styleControls(it) }
+        attachToolbar()
         applyRotation()
         // Seek bar: 10 seconds per press of the remote (Media3's default is 1/20 of the film).
-        playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
-            ?.setKeyTimeIncrement(SEEK_STEP_MS)
+        playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.apply {
+            setKeyTimeIncrement(SEEK_STEP_MS)
+            setScrubberColor(Color.WHITE)
+            // A soft band shows when the remote is on the seek bar (the dot also grows).
+            background = android.graphics.drawable.StateListDrawable().apply {
+                val band = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(0x2EFFFFFF)
+                }
+                addState(intArrayOf(android.R.attr.state_focused), android.graphics.drawable.InsetDrawable(band, dp(8), dp(6), dp(8), dp(6)))
+                addState(intArrayOf(), android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            }
+        }
+        updateTimeViews()
 
         // "+30s · 12:30 / 1:45:00" while seeking with the remote or by double-tapping.
         seekView = TextView(this).apply {
@@ -422,7 +437,7 @@ class PlayerActivity : ComponentActivity() {
         releaseEngine()
         engine = e
         if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT)
-        engineButton.text = "▶  ${e.short}"
+        engineButton.text = e.short
     }
 
     private fun createExo(software: Boolean) {
@@ -578,9 +593,9 @@ class PlayerActivity : ComponentActivity() {
         // Remembered so the list can put the selection back on this item after the player closes.
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
         browseButton.text = when (ch.kind) {
-            Kind.LIVE -> "☰  Channels"
-            Kind.MOVIE -> "☰  Films"
-            Kind.SERIES -> "☰  Episodes"
+            Kind.LIVE -> "Channels"
+            Kind.MOVIE -> "Films"
+            Kind.SERIES -> "Episodes"
         }
         val settings = repo.state.value.settings
         val url = overrideUrl
@@ -696,7 +711,7 @@ class PlayerActivity : ComponentActivity() {
                 return
             }
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
-            val hint = if (engine != Engine.VLC) "\nTry ▶ Player → VLC" else ""
+            val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
         }
 
@@ -724,6 +739,18 @@ class PlayerActivity : ComponentActivity() {
             updateTrackButtons()
             maybeAutoSubtitles()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
+        }
+
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(
+                    Player.EVENT_TIMELINE_CHANGED,
+                    Player.EVENT_MEDIA_ITEM_TRANSITION,
+                    Player.EVENT_PLAYBACK_STATE_CHANGED,
+                    Player.EVENT_AVAILABLE_COMMANDS_CHANGED,
+                )
+            ) {
+                updateTimeViews()
+            }
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -990,13 +1017,13 @@ class PlayerActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
         playerView.useController = !isInPictureInPictureMode
+        updateTimeViews()
         if (isInPictureInPictureMode) {
             if (browserOpen) {
                 browserOpen = false
                 browserView.visibility = View.GONE
             }
             bannerView.visibility = View.GONE
-            toolbar.visibility = View.GONE
             hideMessage()
         } else if (lifecycle.currentState == Lifecycle.State.CREATED) {
             finish()
@@ -1037,9 +1064,9 @@ class PlayerActivity : ComponentActivity() {
     private var tvLayout = false
 
     private fun rotationLabel(): String = when (repo.state.value.settings.playerRotation) {
-        "landscape" -> "⟳  Landscape"
-        "portrait" -> "⟳  Portrait"
-        else -> "⟳  Auto-rotate"
+        "landscape" -> "Landscape"
+        "portrait" -> "Portrait"
+        else -> "Auto-rotate"
     }
 
     /** Auto follows the phone as you turn it (even with rotation locked in the system). */
@@ -1067,7 +1094,7 @@ class PlayerActivity : ComponentActivity() {
         aspect = (aspect + 1) % resizeModes.size
         playerView.resizeMode = resizeModes[aspect]
         vlc?.setScale(aspect)
-        aspectButton.text = "⛶  ${aspectNames[aspect]}"
+        aspectButton.text = aspectNames[aspect]
         Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
         repo.updateSettings { it.copy(aspect = aspect) }
     }
@@ -1182,7 +1209,7 @@ class PlayerActivity : ComponentActivity() {
     private val captionWatch = Runnable {
         val textOn = exo?.currentTracks?.groups?.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected } == true
         if (!captionsSeen && textOn) {
-            toast("This channel isn't sending captions right now. Try another track, or ▶ Player → VLC.")
+            toast("This channel isn't sending captions right now. Try another track, or switch the player to VLC.")
         }
     }
 
@@ -1256,7 +1283,7 @@ class PlayerActivity : ComponentActivity() {
         val text = countTracks(C.TRACK_TYPE_TEXT)
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
-        audioButton.text = "🔊  Audio ($audio)"
+        audioButton.text = "Audio ($audio)"
         ccButton.visibility = if (text > 0 || vod) View.VISIBLE else View.GONE
     }
 
@@ -1376,20 +1403,112 @@ class PlayerActivity : ComponentActivity() {
         return parts.joinToString("  ·  ")
     }
 
-    private fun pill(label: String, onClick: () -> Unit): TextView = TextView(this).apply {
-        setTextColor(Color.WHITE)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        text = label
-        background = GradientDrawable().apply {
-            cornerRadius = dp(8).toFloat()
-            setColor(0xCC111010.toInt())
-            setStroke(dp(1), 0x33FFFFFF)
+    // ---- player controls: layout & the remote's highlight ----
+
+    /** Dark text and icons on the white highlight. */
+    private val focusInk = 0xFF121110.toInt()
+
+    /** White when the remote is on it, soft white while pressed, [normal] otherwise. */
+    private fun focusBackground(oval: Boolean, normal: Int = Color.TRANSPARENT, edge: Int = 0): android.graphics.drawable.StateListDrawable {
+        fun shape(color: Int, stroke: Int = 0) = GradientDrawable().apply {
+            if (oval) shape = GradientDrawable.OVAL else cornerRadius = dp(100).toFloat()
+            setColor(color)
+            if (stroke != 0) setStroke(dp(1), stroke)
         }
+        return android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), shape(Color.WHITE))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(0x4DFFFFFF))
+            addState(intArrayOf(), shape(normal, edge))
+        }
+    }
+
+    /** Text and icon colours: dark on the white highlight, white otherwise. */
+    private fun contentColors(): android.content.res.ColorStateList = android.content.res.ColorStateList(
+        arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+        intArrayOf(focusInk, Color.WHITE),
+    )
+
+    /** A button of the bottom row: icon and label; turns white and grows a little under the remote's focus. */
+    private fun pill(label: String, icon: Int, onClick: () -> Unit): TextView = TextView(this).apply {
+        text = label
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 14f)
         typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
-        setPadding(dp(14), dp(8), dp(14), dp(8))
+        setTextColor(contentColors())
+        setSingleLine()
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+        val size = dp(if (tvLayout) 20 else 18)
+        ResourcesCompat.getDrawable(resources, icon, theme)?.mutate()?.let {
+            it.setBounds(0, 0, size, size)
+            setCompoundDrawablesRelative(it, null, null, null)
+        }
+        compoundDrawablePadding = dp(8)
+        compoundDrawableTintList = contentColors()
+        background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
+        setPadding(dp(if (tvLayout) 18 else 14), 0, dp(if (tvLayout) 20 else 16), 0)
         isFocusable = true
         isClickable = true
         setOnClickListener { onClick() }
+        setOnFocusChangeListener { v, focused ->
+            val s = if (focused) 1.08f else 1f
+            v.animate().scaleX(s).scaleY(s).setDuration(120).start()
+        }
+    }
+
+    /**
+     * Puts the button row on the bottom line of the player controls; the seek bar, the time and
+     * the play buttons move up to make room. Inside the controls, the row appears, hides and stays
+     * on screen while the remote is used exactly like the rest of them.
+     */
+    private fun attachToolbar() {
+        val rowHeight = dp(if (tvLayout) 68 else 60)
+        val controls = playerView.findViewById<FrameLayout>(androidx.media3.ui.R.id.exo_controller)
+        if (controls != null) {
+            // No slide-away animation: the row and the bars above it disappear together.
+            playerView.setControllerAnimationEnabled(false)
+            controls.clipToPadding = false
+            controls.setPadding(0, 0, 0, rowHeight)
+            controls.addView(
+                toolbar,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight, Gravity.BOTTOM)
+                    .apply { bottomMargin = -rowHeight },
+            )
+        } else {
+            // Fallback: a separate row at the bottom of the screen that follows the controls.
+            toolbar.visibility = View.GONE
+            root.addView(toolbar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight, Gravity.BOTTOM))
+            playerView.setControllerVisibilityListener(
+                PlayerView.ControllerVisibilityListener { visibility ->
+                    toolbar.visibility = if (inPip) View.GONE else visibility
+                },
+            )
+        }
+    }
+
+    /** Media3's own buttons (play, previous/next, ±10 s, settings): the same white highlight. */
+    private fun styleControls(v: View) {
+        when (v) {
+            is android.widget.ImageButton -> {
+                v.background = focusBackground(oval = true)
+                v.imageTintList = contentColors()
+            }
+            // The "10" rewind/forward buttons: the icon is the button's background, in a frame that
+            // takes on the button's focus.
+            is android.widget.Button -> {
+                v.backgroundTintList = contentColors()
+                v.setTextColor(contentColors())
+                (v.parent as? View)?.background = focusBackground(oval = true)
+            }
+            is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
+        }
+    }
+
+    /** Live channels have no real position or length: hide "00:13 · 00:00" and the empty seek bar. */
+    private fun updateTimeViews() {
+        if (!::playerView.isInitialized) return
+        val state = if (canSeek()) View.VISIBLE else View.INVISIBLE
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_time)?.visibility = state
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.visibility = state
     }
 
     private fun showBanner(ch: Channel) {
