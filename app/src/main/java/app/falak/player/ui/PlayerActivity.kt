@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.util.Rational
 import android.util.TypedValue
@@ -38,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -137,12 +139,16 @@ class PlayerActivity : ComponentActivity() {
         bannerView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setLineSpacing(0f, 1.15f)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(0xCC000000.toInt())
+            setLineSpacing(0f, 1.2f)
+            // Falak glass: night→violet gradient with a thin light edge
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0xE6100C26.toInt(), 0xCC2A1B7E.toInt()),
+            ).apply {
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), 0x33FFFFFF)
             }
-            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setPadding(dp(20), dp(14), dp(22), dp(14))
             visibility = View.GONE
         }
         root.addView(
@@ -171,6 +177,7 @@ class PlayerActivity : ComponentActivity() {
         audioButton = pill("🔊  Audio") { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
         ccButton = pill("CC  Subtitles") { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
         aspectButton = pill("⛶  ${aspectNames[aspect]}") { cycleAspect() }
+        val externalButton = pill("↗  VLC") { openExternally() }
         toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
@@ -178,7 +185,8 @@ class PlayerActivity : ComponentActivity() {
                 .apply { marginEnd = dp(8) }
             addView(audioButton, gap)
             addView(ccButton, LinearLayout.LayoutParams(gap))
-            addView(aspectButton)
+            addView(aspectButton, LinearLayout.LayoutParams(gap))
+            addView(externalButton)
         }
         root.addView(
             toolbar,
@@ -397,6 +405,13 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        override fun onCues(cueGroup: CueGroup) {
+            if (cueGroup.cues.isNotEmpty()) {
+                captionsSeen = true
+                handler.removeCallbacks(captionWatch)
+            }
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             updateTrackButtons()
             maybeAutoSubtitles()
@@ -560,7 +575,7 @@ class PlayerActivity : ComponentActivity() {
             if (g.type != type) continue
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
-                val base = trackNames.getTrackName(g.getTrackFormat(i))
+                val base = trackLabel(g.getTrackFormat(i))
                 val n = (seen[base] ?: 0) + 1
                 seen[base] = n
                 val label = if (n > 1) "$base ($n)" else base
@@ -569,10 +584,56 @@ class PlayerActivity : ComponentActivity() {
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
                         .build()
+                    if (type == C.TRACK_TYPE_TEXT) watchCaptions()
                 }
             }
         }
         return out
+    }
+
+    /** Names that say what a track really is (CC vs DVB subtitles), with the language. */
+    private fun trackLabel(f: androidx.media3.common.Format): String {
+        val lang = f.language?.takeIf { it.isNotBlank() && it != "und" }
+            ?.let { java.util.Locale(it).displayLanguage.replaceFirstChar(Char::uppercase) }
+        return when (f.sampleMimeType) {
+            MimeTypes.APPLICATION_CEA608 -> buildString {
+                append("Closed captions")
+                if (f.accessibilityChannel != androidx.media3.common.Format.NO_VALUE) append(" CC").append(f.accessibilityChannel)
+                if (lang != null) append(" · ").append(lang)
+            }
+            MimeTypes.APPLICATION_CEA708 -> "Closed captions (708)" + (lang?.let { " · $it" } ?: "")
+            MimeTypes.APPLICATION_DVBSUBS -> "Subtitles" + (lang?.let { " · $it" } ?: "") + " (DVB)"
+            else -> trackNames.getTrackName(f)
+        }
+    }
+
+    private var captionsSeen = false
+    private val captionWatch = Runnable {
+        val textOn = player?.currentTracks?.groups?.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected } == true
+        if (!captionsSeen && textOn) {
+            toast("This channel isn't sending captions right now. Try another track, or ↗ Open with VLC.")
+        }
+    }
+
+    /** Many streams advertise captions but send none; tell the user instead of showing nothing. */
+    private fun watchCaptions() {
+        captionsSeen = false
+        handler.removeCallbacks(captionWatch)
+        handler.postDelayed(captionWatch, 25_000)
+    }
+
+    /** Hands the stream to VLC or another player (for teletext subtitles, rare codecs, …). */
+    private fun openExternally() {
+        val ch = queue.getOrNull(index) ?: return
+        val url = currentUrl.ifBlank { ch.url }
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(Uri.parse(url), "video/*")
+            .putExtra("title", ch.name)
+        try {
+            startActivity(Intent.createChooser(intent, "Open with"))
+        } catch (e: Exception) {
+            toast("No other video player is installed. VLC for Android is free.")
+        }
     }
 
     private fun countTracks(type: Int): Int {
@@ -704,6 +765,7 @@ class PlayerActivity : ComponentActivity() {
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .setOverrideForType(TrackSelectionOverride(pick.mediaTrackGroup, 0))
             .build()
+        watchCaptions()
     }
 
     /** e.g. "Audio: Arabic, English · Subtitles: 2" */
@@ -725,7 +787,8 @@ class PlayerActivity : ComponentActivity() {
         text = label
         background = GradientDrawable().apply {
             cornerRadius = dp(18).toFloat()
-            setColor(0x99000000.toInt())
+            setColor(0xB3140F2E.toInt())
+            setStroke(dp(1), 0x40FFC857)
         }
         setPadding(dp(14), dp(8), dp(14), dp(8))
         isFocusable = true
@@ -749,8 +812,10 @@ class PlayerActivity : ComponentActivity() {
         val next = Epg.next(programs, now)
 
         val text = SpannableStringBuilder()
-        val title = if (ch.kind == Kind.LIVE) "${index + 1}   ${ch.name}" else ch.name
-        text.append(title, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (ch.kind == Kind.LIVE) {
+            text.append("${index + 1}   ", ForegroundColorSpan(0xFFFFC857.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         if (current != null) {
             text.append("\nNow   ${time(current.start)}–${time(current.stop)}   ${current.title}")
         }

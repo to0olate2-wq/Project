@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -257,8 +258,7 @@ private fun GuideRow(
                 .width(ChannelColumn)
                 .fillMaxHeight()
                 .focusRing(cellShape)
-                .clip(cellShape)
-                .background(colors.surfaceVariant)
+                .glass(cellShape, alpha = 0.08f)
                 .clickable(onClick = onChannel)
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -304,7 +304,7 @@ private fun GuideRow(
                                 .focusRing(shape)
                                 .clip(shape)
                                 .background(
-                                    if (live) colors.primary.copy(alpha = 0.30f) else colors.surfaceVariant.copy(alpha = 0.6f),
+                                    if (live) Gold.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.06f),
                                 )
                                 .clickable { onProgram(prog) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -325,7 +325,7 @@ private fun GuideRow(
                         .offset(x = xOf(now, windowStart))
                         .width(2.dp)
                         .fillMaxHeight()
-                        .background(colors.primary),
+                        .background(Gold),
                 )
             }
         }

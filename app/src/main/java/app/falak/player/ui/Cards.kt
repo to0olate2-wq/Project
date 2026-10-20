@@ -55,7 +55,6 @@ import coil.compose.AsyncImage
 fun Modifier.cardFocus(shape: Shape): Modifier {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (focused) 1.07f else 1f, label = "cardFocus")
-    val color = MaterialTheme.colorScheme.primary
     return this
         .zIndex(if (focused) 1f else 0f)
         .graphicsLayer {
@@ -63,7 +62,7 @@ fun Modifier.cardFocus(shape: Shape): Modifier {
             scaleY = scale
         }
         .onFocusChanged { focused = it.isFocused }
-        .then(if (focused) Modifier.border(2.5.dp, color, shape) else Modifier)
+        .then(if (focused) Modifier.border(2.5.dp, OrbitBrush, shape) else Modifier)
 }
 
 /** "7.4" / "7.400" → "★ 7.4"; null when there is no useful rating. */

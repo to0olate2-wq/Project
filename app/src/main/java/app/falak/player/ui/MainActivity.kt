@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -84,7 +85,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FalakTheme {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                AuroraBackground()
+                Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     val state by vm.state.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         when (vm.screen) {
@@ -181,58 +183,104 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
 
     BackHandler(enabled = vm.playlist != null) { vm.screen = Screen.LIBRARY }
 
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Falak",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
+            FalakMark(48.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Wordmark(30)
+                Text(
+                    "Your channels, movies and series in one orbit",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Clock(Modifier.padding(horizontal = 8.dp))
             IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
                 Icon(Icons.Filled.Settings, contentDescription = "Settings")
             }
-            Spacer(Modifier.width(4.dp))
-            Button(onClick = { adding = true }) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+        }
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Your playlists", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            val addShape = RoundedCornerShape(50)
+            Row(
+                Modifier
+                    .focusRing(addShape)
+                    .clip(addShape)
+                    .background(GoldBrush)
+                    .clickable { adding = true }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = Night)
                 Spacer(Modifier.width(6.dp))
-                Text("Add playlist")
+                Text("Add playlist", color = Night, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         if (state.playlists.isEmpty()) {
-            Text(
-                "Add your provider's M3U link, an M3U file, or your Xtream login to get started.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val shape = RoundedCornerShape(20.dp)
+            Column(Modifier.fillMaxWidth().glass(shape).padding(22.dp)) {
+                Text("Start your orbit", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Add your provider's M3U link, an M3U file, or your Xtream login. Falak doesn't include any channels.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(state.playlists, key = { it.id }) { p ->
-                val shape = RoundedCornerShape(14.dp)
+                val shape = RoundedCornerShape(18.dp)
+                val current = p.id == vm.playlist?.id
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .focusRing(shape)
-                        .clip(shape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .glass(shape, alpha = if (current) 0.10f else 0.06f)
                         .clickable { vm.open(p) }
-                        .padding(16.dp),
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    if (p.type == SourceType.XTREAM) listOf(Violet, Teal) else listOf(Teal, Violet),
+                                ),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            when (p.type) {
+                                SourceType.M3U_URL -> "M3U"
+                                SourceType.M3U_FILE -> "FILE"
+                                SourceType.XTREAM -> "XC"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(p.name, style = MaterialTheme.typography.titleMedium)
+                        Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         Text(
                             when (p.type) {
                                 SourceType.M3U_URL -> "M3U link"
                                 SourceType.M3U_FILE -> "M3U file"
                                 SourceType.XTREAM -> "Xtream · ${p.username}"
-                            },
+                            } + if (current) "  ·  open" else "",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (current) Gold else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     IconButton(onClick = { toDelete = p }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove")
+                        Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

@@ -167,8 +167,7 @@ private fun EpisodeRow(ep: Channel, watched: Watch?, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .focusRing(shape)
-            .clip(shape)
-            .background(colors.surfaceVariant.copy(alpha = 0.55f))
+            .glass(shape)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,

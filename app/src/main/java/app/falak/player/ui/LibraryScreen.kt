@@ -65,8 +65,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -184,19 +187,40 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        // Header
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.screen = Screen.PLAYLISTS }) {
-                Icon(Icons.Filled.Menu, contentDescription = "Playlists")
+    val selectSection: (Section) -> Unit = { s -> vm.section = s; vm.group = null }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val railNav = maxWidth >= 840.dp
+    Row(Modifier.fillMaxSize()) {
+    if (railNav && sections.size > 1) {
+        OrbitRail(sections, section, selectSection) {
+            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings")
             }
-            Text(
-                p.name,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+        }
+    }
+    Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp)) {
+        // Header: brand, playlist, clock, actions
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!railNav) {
+                FalakMark(34.dp)
+                Spacer(Modifier.width(10.dp))
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { vm.screen = Screen.PLAYLISTS },
+            ) {
+                Wordmark(if (railNav) 26 else 22)
+                Text(
+                    "${p.name}  ▾",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Clock(Modifier.padding(horizontal = 6.dp))
             if ((section == Section.LIVE || section == Section.HOME) && Kind.LIVE in kinds) {
                 IconButton(onClick = { vm.screen = Screen.GUIDE }) {
                     Icon(Icons.Filled.DateRange, contentDescription = "TV guide")
@@ -208,8 +232,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh playlist")
             }
-            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                Icon(Icons.Filled.Settings, contentDescription = "Settings")
+            if (!railNav) {
+                IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                }
             }
         }
 
@@ -238,21 +264,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             Text("Refresh failed: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
 
-        // Sections
-        if (sections.size > 1) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                sections.forEach { s ->
-                    FilterChip(
-                        selected = s == section,
-                        onClick = { vm.section = s; vm.group = null },
-                        label = { Text(s.label) },
-                    )
-                }
-            }
-        }
+        // Sections (the rail shows them on wide screens)
+        if (sections.size > 1 && !railNav) OrbitTabs(sections, section, selectSection)
 
         when {
             vm.loading && all.isEmpty() -> Centered {
@@ -311,6 +324,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 }
             }
         }
+    }
+    }
     }
 
     pinForGroup?.let { g ->
@@ -411,16 +426,23 @@ private fun GroupItem(name: String, count: Int, selected: Boolean, locked: Boole
             .padding(vertical = 2.dp)
             .focusRing(shape)
             .clip(shape)
-            .background(if (selected) colors.primary.copy(alpha = 0.22f) else Color.Transparent)
+            .background(if (selected) Gold.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            Modifier
+                .padding(end = 10.dp)
+                .size(width = 3.dp, height = 18.dp)
+                .background(if (selected) GoldBrush else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)), RoundedCornerShape(2.dp)),
+        )
         Text(
             name,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = if (selected) colors.primary else colors.onBackground,
+            color = if (selected) Gold else colors.onBackground,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.weight(1f),
         )
         if (locked) {
@@ -495,8 +517,7 @@ private fun ChannelRow(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .focusRing(shape)
-            .clip(shape)
-            .background(colors.surfaceVariant.copy(alpha = 0.55f))
+            .glass(shape, alpha = if (current != null) 0.07f else 0.05f)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -505,19 +526,30 @@ private fun ChannelRow(
             Text(
                 "$number",
                 style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.width(40.dp),
+                fontWeight = FontWeight.SemiBold,
+                color = Gold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .width(38.dp)
+                    .padding(end = 6.dp)
+                    .background(Gold.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
+                    .padding(vertical = 4.dp),
             )
         }
-        AsyncImage(
-            model = ch.logo.ifBlank { null },
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .size(if (isVod) 48.dp else 56.dp, if (isVod) 72.dp else 36.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color.White.copy(alpha = 0.06f)),
-        )
+        Box(
+            Modifier
+                .size(if (isVod) 48.dp else 64.dp, if (isVod) 72.dp else 42.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Brush.linearGradient(listOf(Violet.copy(alpha = 0.55f), Night))),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = ch.logo.ifBlank { null },
+                contentDescription = null,
+                contentScale = if (isVod) ContentScale.Crop else ContentScale.Fit,
+                modifier = if (isVod) Modifier.fillMaxSize() else Modifier.fillMaxSize().padding(5.dp),
+            )
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -538,7 +570,9 @@ private fun ChannelRow(
                 val frac = ((now - current.start) / length).coerceIn(0f, 1f)
                 LinearProgressIndicator(
                     progress = { frac },
-                    modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp),
+                    color = Gold,
+                    trackColor = Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.padding(top = 5.dp).fillMaxWidth().height(3.dp),
                 )
             } else if (isVod) {
                 Text(

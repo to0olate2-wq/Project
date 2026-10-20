@@ -113,7 +113,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onPlay(listOf(ch), ch) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Night),
                     modifier = Modifier.focusRequester(playFocus),
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)

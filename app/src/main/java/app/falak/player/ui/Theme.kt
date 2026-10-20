@@ -63,5 +63,5 @@ fun Modifier.focusRing(shape: Shape = RoundedCornerShape(12.dp)): Modifier {
     val color = MaterialTheme.colorScheme.primary
     return this
         .onFocusChanged { focused = it.isFocused }
-        .then(if (focused) Modifier.border(2.dp, color, shape) else Modifier)
+        .then(if (focused) Modifier.border(2.dp, OrbitBrush, shape) else Modifier)
 }
