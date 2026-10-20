@@ -5,6 +5,7 @@ package app.falak.player.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -192,7 +193,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             item {
                 ClickRow(
                     title = if (vm.updateChecking) "Checking…" else "Check for updates",
-                    subtitle = "Falak ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                    subtitle = "The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
                 ) { vm.checkForUpdates(manual = true) }
             }
         }
@@ -234,7 +235,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item { SectionTitle("About") }
         item {
             Text(
-                "Falak ${BuildConfig.VERSION_NAME}",
+                "The Player ${BuildConfig.VERSION_NAME}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -267,7 +268,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Create a free account at opensubtitles.com, then open your profile → API consumers → " +
-                            "create a consumer to get an API key. Falak searches it when a movie or episode has no subtitles " +
+                            "create a consumer to get an API key. The Player searches it when a movie or episode has no subtitles " +
                             "(player → CC → Find subtitles online).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -316,13 +317,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
-    )
+    Box(Modifier.padding(top = 26.dp, bottom = 6.dp)) { Kicker(text) }
 }
 
 private const val EPG_SHARE = "https://epgshare01.online/epgshare01/epg_ripper_"

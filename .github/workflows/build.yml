@@ -39,11 +39,11 @@ jobs:
           VNAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "VNAME=$VNAME" >> "$GITHUB_ENV"
           mkdir -p out
-          cp app/build/outputs/apk/github/release/*.apk "out/Falak-$VNAME-build${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/github/release/*.apk "out/ThePlayer-$VNAME-build${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Falak-apk
+          name: ThePlayer-apk
           path: out/*.apk
 
       - name: Publish release
@@ -54,6 +54,6 @@ jobs:
           git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' > notes.txt
           gh release create "build-${{ github.run_number }}" out/*.apk \
             --target "${{ github.sha }}" \
-            --title "Falak $VNAME (build ${{ github.run_number }})" \
+            --title "The Player $VNAME (build ${{ github.run_number }})" \
             --notes-file notes.txt \
             --latest

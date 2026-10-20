@@ -25,7 +25,7 @@ class SubtitleResult(val fileId: Long, val language: String, val release: String
 class OpenSubtitles(private val http: OkHttpClient, private val apiKey: String, private val user: String, private val pass: String) {
 
     private val base = "https://api.opensubtitles.com/api/v1"
-    private val agent = "Falak v${BuildConfig.VERSION_NAME}"
+    private val agent = "ThePlayer v${BuildConfig.VERSION_NAME}"
     private val jsonType = "application/json".toMediaType()
 
     private fun request(url: String) = Request.Builder().url(url)

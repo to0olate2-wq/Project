@@ -31,7 +31,7 @@ class UpdateInfo(
 object Updater {
     val enabled: Boolean get() = BuildConfig.SELF_UPDATE
 
-    private val agent = "Falak/${BuildConfig.VERSION_NAME}"
+    private val agent = "ThePlayer/${BuildConfig.VERSION_NAME}"
 
     /** Returns the newer release, or null if this build is already the latest. */
     fun check(http: OkHttpClient): UpdateInfo? {

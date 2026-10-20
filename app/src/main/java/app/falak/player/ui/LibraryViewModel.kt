@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
+import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SeriesInfo
@@ -36,10 +37,10 @@ enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A
 
 enum class Section(val label: String, val kind: Kind?) {
     HOME("Home", null),
-    LIVE("Live TV", Kind.LIVE),
-    MOVIES("Movies", Kind.MOVIE),
+    LIVE("Live", Kind.LIVE),
+    MOVIES("Films", Kind.MOVIE),
     SERIES("Series", Kind.SERIES),
-    FAVORITES("Favorites", null),
+    FAVORITES("Saved", null),
     RECENT("Recent", null),
 }
 
@@ -53,6 +54,32 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var channels by mutableStateOf<List<Channel>>(emptyList())
         private set
+    /** Pre-sorted views of [channels], built off the main thread. */
+    var index by mutableStateOf(LibraryIndex.EMPTY)
+        private set
+
+    /** Wide backdrops for the Home feature carousel (Xtream movie details), by channel id. */
+    val heroArt = androidx.compose.runtime.mutableStateMapOf<String, String>()
+    private var heroJob: Job? = null
+
+    fun loadHeroArt(items: List<Channel>) {
+        val p = playlist ?: return
+        val todo = items.filter { it.id.startsWith("m") && it.id !in heroArt }
+        if (todo.isEmpty() || heroJob?.isActive == true) return
+        heroJob = viewModelScope.launch {
+            for (ch in todo) {
+                val art = try {
+                    repo.loadVodInfo(p, ch.id.removePrefix("m"))?.backdrop.orEmpty()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ""
+                }
+                heroArt[ch.id] = art
+            }
+        }
+    }
+
     var loading by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
@@ -105,6 +132,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var gridState by mutableStateOf(LazyGridState())
         private set
+
+    // One scroll position per section, so sections can cross-fade and each remembers its place.
+    private val listStates = HashMap<Section, LazyListState>()
+    private val gridStates = HashMap<Section, LazyGridState>()
+    fun listStateFor(s: Section): LazyListState = listStates.getOrPut(s) { LazyListState() }
+    fun gridStateFor(s: Section): LazyGridState = gridStates.getOrPut(s) { LazyGridState() }
     var homeState by mutableStateOf(LazyListState())
         private set
     var lastListKey: Any? = null
@@ -159,7 +192,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         if (!Updater.canInstall(ctx)) {
             Updater.openInstallPermission(ctx)
-            updateMessage = "Allow Falak to install apps, then come back and tap Update again."
+            updateMessage = "Allow The Player to install apps, then come back and tap Update again."
             return
         }
         if (updateProgress != null) return
@@ -185,14 +218,6 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private var seriesJob: Job? = null
     private var loadToken = Any()
 
-    init {
-        crashReport = repo.takeCrashReport()
-        val s = state.value
-        // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
-        if (crashReport == null && s.settings.openLast) {
-            s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
-        }
-    }
 
     fun open(p: Playlist, refresh: Boolean = false) {
         screen = Screen.LIBRARY
@@ -200,6 +225,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadJob?.cancel()
         if (playlist?.id != p.id) {
             channels = emptyList()
+            index = LibraryIndex.EMPTY
+            heroArt.clear()
             group = null
             query = ""
             section = Section.HOME
@@ -207,6 +234,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             listState = LazyListState()
             guideStatus = ""
             gridState = LazyGridState()
+            listStates.clear()
+            gridStates.clear()
             homeState = LazyListState()
             lastListKey = null
             repo.clearEpg()
@@ -220,6 +249,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadJob = viewModelScope.launch {
             try {
                 val data = repo.loadChannels(p, refresh)
+                index = withContext(Dispatchers.Default) { LibraryIndex.build(data.channels) }
                 channels = data.channels
                 providerEpg = data.epgUrl
                 serverTz = data.serverTz
@@ -382,5 +412,15 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         java.net.URI(url.trim()).host ?: "Playlist"
     } catch (e: Exception) {
         "Playlist"
+    }
+
+    // Runs last, after every property above exists (opening a playlist touches many of them).
+    init {
+        crashReport = repo.takeCrashReport()
+        val s = state.value
+        // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
+        if (crashReport == null && s.settings.openLast) {
+            s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
+        }
     }
 }

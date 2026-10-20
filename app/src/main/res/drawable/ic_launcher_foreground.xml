@@ -3,39 +3,12 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- back half of the orbit -->
-    <group android:rotation="-28" android:pivotX="54" android:pivotY="54">
-        <path
-            android:pathData="M24,54 A30,11 0,0 1,84 54"
-            android:fillColor="#00000000"
-            android:strokeColor="#8CFFFFFF"
-            android:strokeWidth="3.6"
-            android:strokeLineCap="round" />
-    </group>
-    <!-- play button -->
+    <!-- "P" whose counter is a play button -->
     <path
-        android:pathData="M47,40.5 L68.5,54 L47,67.5 Z"
-        android:fillColor="#F4F1FF"
-        android:strokeColor="#F4F1FF"
-        android:strokeWidth="5"
-        android:strokeLineJoin="round" />
-    <!-- front half of the orbit -->
-    <group android:rotation="-28" android:pivotX="54" android:pivotY="54">
-        <path
-            android:pathData="M24,54 A30,11 0,0 0,84 54"
-            android:fillColor="#00000000"
-            android:strokeColor="#33229A"
-            android:strokeWidth="7.5"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M24,54 A30,11 0,0 0,84 54"
-            android:fillColor="#00000000"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="3.6"
-            android:strokeLineCap="round" />
-    </group>
-    <!-- planet -->
+        android:fillColor="#F3EEE6"
+        android:fillType="evenOdd"
+        android:pathData="M37,29 H59 A17,17 0,0 1,59 63 H50 V79 H37 Z M51,38.5 L65,46 L51,53.5 Z" />
     <path
-        android:pathData="M80.7,44.1m-4.4,0a4.4,4.4 0,1 1,8.8 0a4.4,4.4 0,1 1,-8.8 0"
-        android:fillColor="#FFC857" />
+        android:fillColor="#FF4F2E"
+        android:pathData="M51,38.5 L65,46 L51,53.5 Z" />
 </vector>

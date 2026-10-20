@@ -1,9 +1,22 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package app.falak.player.ui
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,34 +25,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,68 +57,63 @@ import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import app.falak.player.data.progressKey
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
 
-/** Netflix-style start page for the open playlist: live, movies and series together. */
+/** The start page: feature carousel, then shelves for live, films and series. */
 @Composable
 fun HomeContent(
     vm: LibraryViewModel,
     state: AppState,
-    all: List<Channel>,
     locked: Set<String>,
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
 ) {
     val p = vm.playlist ?: return
-    val open = remember(all, locked) { if (locked.isEmpty()) all else all.filterNot { it.group in locked } }
-    val byId = remember(all) { all.associateBy { it.id } }
+    val index = vm.index
     val favIds = state.favorites[p.id].orEmpty()
     val recentIds = state.recents[p.id].orEmpty()
+    fun ok(ch: Channel) = locked.isEmpty() || ch.group !in locked
 
-    val continueWatching = remember(state.progress, byId, p.id, locked) {
+    val continueWatching = remember(state.progress, index, p.id, locked) {
         state.progress.entries.toList().asReversed()
             .filter { it.key.startsWith("${p.id}|") }
             .mapNotNull { (key, w) ->
                 val id = key.substringAfter('|')
-                val known = byId[id]
-                when {
-                    known != null -> known
-                    w.url.isNotBlank() -> Channel(id = id, name = w.title, group = "", url = w.url, logo = w.image, kind = w.kind)
-                    else -> null
+                index.byId[id] ?: if (w.url.isNotBlank()) {
+                    Channel(id = id, name = w.title, group = "", url = w.url, logo = w.image, kind = w.kind)
+                } else {
+                    null
                 }
             }
-            .filterNot { it.group in locked }
+            .filter(::ok)
             .take(20)
     }
-    val favLive = remember(favIds, byId, locked) {
-        favIds.mapNotNull { byId[it] }.filter { it.kind == Kind.LIVE && it.group !in locked }
+    val favLive = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) } }
+    val favVod = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind != Kind.LIVE && ok(it) } }
+    val recentLive = remember(recentIds, index, locked) {
+        recentIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) }.take(20)
     }
-    val favVod = remember(favIds, byId, locked) {
-        favIds.mapNotNull { byId[it] }.filter { it.kind != Kind.LIVE && it.group !in locked }
+    val newMovies = remember(index, locked) { index.newMovies.filter(::ok) }
+    val newSeries = remember(index, locked) { index.newSeries.filter(::ok) }
+    val liveGroups = remember(index, locked) {
+        index.groupsOf(Kind.LIVE).entries.filter { it.key !in locked }.take(6).map { it.key to it.value }
     }
-    val recentLive = remember(recentIds, byId, locked) {
-        recentIds.mapNotNull { byId[it] }.filter { it.kind == Kind.LIVE && it.group !in locked }.take(20)
+    val movieGroups = remember(index, locked) {
+        index.groupsOf(Kind.MOVIE).entries.filter { it.key !in locked && it.value.size >= 3 }.take(5).map { it.key to it.value }
     }
-    val newMovies = remember(open) { open.filter { it.kind == Kind.MOVIE && it.added > 0 }.sortedByDescending { it.added }.take(30) }
-    val newSeries = remember(open) { open.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }.take(30) }
-    val liveGroups = remember(open) { open.filter { it.kind == Kind.LIVE }.groupBy { it.group }.toList().take(6) }
-    val movieGroups = remember(open) {
-        open.filter { it.kind == Kind.MOVIE }.groupBy { it.group }.toList().filter { it.second.size >= 3 }.take(5)
+    val seriesGroups = remember(index, locked) {
+        index.groupsOf(Kind.SERIES).entries.filter { it.key !in locked && it.value.size >= 3 }.take(4).map { it.key to it.value }
     }
-    val seriesGroups = remember(open) {
-        open.filter { it.kind == Kind.SERIES }.groupBy { it.group }.toList().filter { it.second.size >= 3 }.take(4)
-    }
-    val hero = remember(newMovies, newSeries, open) {
+    val hero = remember(newMovies, newSeries, index) {
         (newMovies.filter { it.logo.isNotBlank() }.take(4) + newSeries.filter { it.logo.isNotBlank() }.take(2))
-            .ifEmpty { open.filter { it.kind != Kind.LIVE && it.logo.isNotBlank() }.take(5) }
+            .ifEmpty { (index.movies + index.series).filter { it.logo.isNotBlank() && ok(it) }.take(5) }
     }
+    LaunchedEffect(hero) { vm.loadHeroArt(hero) }
 
-    // Movies open their details page, series open the episode list, everything else plays.
     val openItem: (List<Channel>, Channel) -> Unit = { row, ch ->
         when {
             ch.isSeriesFolder -> vm.openSeries(ch)
-            ch.kind == Kind.MOVIE && byId.containsKey(ch.id) -> vm.openDetails(ch)
+            ch.kind == Kind.MOVIE && index.byId.containsKey(ch.id) -> vm.openDetails(ch)
             else -> onPlay(row, ch)
         }
     }
@@ -124,11 +124,12 @@ fun HomeContent(
     }
     val watched = { ch: Channel -> state.progress[progressKey(p.id, ch.id)] }
 
-    LazyColumn(Modifier.fillMaxSize(), state = vm.homeState, contentPadding = PaddingValues(bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = vm.homeState, contentPadding = PaddingValues(bottom = 40.dp)) {
         if (hero.isNotEmpty()) {
             item(key = "hero") {
-                HeroBanner(
+                FeatureCarousel(
                     items = hero,
+                    art = vm.heroArt,
                     onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
                     onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
                 )
@@ -136,54 +137,54 @@ fun HomeContent(
         }
         if (continueWatching.isNotEmpty()) {
             item(key = "continue") {
-                ShelfRow("Continue watching") {
-                    items(continueWatching, key = { it.id }) { ch ->
-                        PosterCard(ch, watched(ch), onClick = { onPlay(listOf(ch), ch) })
-                    }
+                Shelf("Continue watching") {
+                    items(continueWatching, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onPlay(listOf(ch), ch) }) }
                 }
             }
         }
         if (favLive.isNotEmpty()) {
             item(key = "favLive") {
-                LiveShelf("Your channels · on now", favLive, epg, now, onPlay, onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) })
+                LiveShelf("On now", favLive, epg, now, onPlay) { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }
             }
         }
         if (recentLive.isNotEmpty()) {
             item(key = "recentLive") {
-                LiveShelf("Recently watched", recentLive, epg, now, onPlay, onSeeAll = { seeAll(Section.RECENT, null, Sort.DEFAULT) })
+                LiveShelf("Recently watched", recentLive, epg, now, onPlay) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
             }
         }
         if (newMovies.isNotEmpty()) {
             item(key = "newMovies") {
-                ShelfRow("New movies", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
+                Shelf("New films", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
                     items(newMovies, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(newMovies, ch) }) }
                 }
             }
         }
         if (newSeries.isNotEmpty()) {
             item(key = "newSeries") {
-                ShelfRow("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
+                Shelf("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
                     items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }) }
                 }
             }
         }
         if (favVod.isNotEmpty()) {
             item(key = "favVod") {
-                ShelfRow("My list", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
+                Shelf("Your list", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
                     items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }) }
                 }
             }
         }
         items(liveGroups, key = { "live:" + it.first }) { (group, list) ->
-            LiveShelf(group, list.take(20), epg, now, onPlay = { _, ch -> onPlay(list, ch) }, onSeeAll = { seeAll(Section.LIVE, group, Sort.DEFAULT) })
+            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, count = list.size) {
+                seeAll(Section.LIVE, group, Sort.DEFAULT)
+            }
         }
         items(movieGroups, key = { "movies:" + it.first }) { (group, list) ->
-            ShelfRow(group, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
+            Shelf(group, count = list.size, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
                 items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }) }
             }
         }
         items(seriesGroups, key = { "series:" + it.first }) { (group, list) ->
-            ShelfRow(group, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
+            Shelf(group, count = list.size, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
                 items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(list, ch) }) }
             }
         }
@@ -197,96 +198,131 @@ private fun LiveShelf(
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
+    count: Int? = null,
     onSeeAll: (() -> Unit)?,
 ) {
-    ShelfRow(title, onSeeAll = onSeeAll) {
+    Shelf(title, count = count, onSeeAll = onSeeAll) {
         items(list, key = { it.id }) { ch ->
             ChannelCard(ch, Epg.current(epg[ch.epgKey], now), now, onClick = { onPlay(list, ch) })
         }
     }
 }
 
+private const val SLIDE_MS = 7_000
+
+/**
+ * Auto-advancing feature carousel: slow zoom on the picture, story-style progress bars,
+ * swipeable. The buttons stay put while slides change, so TV-remote focus is never lost.
+ */
 @Composable
-private fun HeroBanner(items: List<Channel>, onPrimary: (Channel) -> Unit, onDetails: (Channel) -> Unit) {
-    var index by remember { mutableIntStateOf(0) }
-    var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(items.size, focused) {
-        while (!focused && items.size > 1) {
-            delay(8_000)
-            index = (index + 1) % items.size
+private fun FeatureCarousel(
+    items: List<Channel>,
+    art: Map<String, String>,
+    onPrimary: (Channel) -> Unit,
+    onDetails: (Channel) -> Unit,
+) {
+    val size = items.size
+    val start = remember(size) { if (size <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % size } }
+    val pager = rememberPagerState(initialPage = start, pageCount = { if (size <= 1) size else Int.MAX_VALUE })
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(pager.settledPage, size) {
+        progress.snapTo(0f)
+        if (size > 1) {
+            progress.animateTo(1f, tween(SLIDE_MS, easing = LinearEasing))
+            pager.animateScrollToPage(pager.settledPage + 1, animationSpec = tween(900, easing = FastOutSlowInEasing))
         }
     }
-    val colors = MaterialTheme.colorScheme
-    val ch = items[index.coerceIn(0, items.lastIndex)]
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(250.dp)
-            .padding(top = 4.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(colors.surfaceVariant)
-            .onFocusChanged { focused = it.hasFocus },
-    ) {
-        Crossfade(targetState = ch, label = "hero") { item ->
-            AsyncImage(
-                model = item.logo,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF20B0A14), Color(0x990B0A14), Color.Transparent))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC0B0A14)))))
-        Row(Modifier.align(Alignment.BottomStart).padding(18.dp), verticalAlignment = Alignment.Bottom) {
-            AsyncImage(
-                model = ch.logo,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.width(96.dp).height(144.dp).clip(RoundedCornerShape(10.dp)),
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f, fill = false)) {
-                Text(
-                    if (ch.isNew()) (if (ch.isSeriesFolder) "NEW SERIES" else "NEW MOVIE") else "FEATURED",
-                    color = colors.secondary,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
+    val current = items[(pager.currentPage % size.coerceAtLeast(1)).coerceIn(0, items.lastIndex)]
+    val tv = isTv()
+
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        val height = (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
+        Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)).background(Ink2)) {
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                val item = items[page % size]
+                val zoom by animateFloatAsState(
+                    if (pager.settledPage == page) 1.08f else 1f,
+                    tween(if (pager.settledPage == page) SLIDE_MS + 900 else 300, easing = LinearEasing),
+                    label = "kenBurns",
                 )
-                Text(ch.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val meta = listOfNotNull(ratingLabel(ch.rating), ch.group.takeIf { it.isNotBlank() }).joinToString("  ·  ")
-                if (meta.isNotEmpty()) {
-                    Text(meta, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1)
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = { onPrimary(ch) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Night),
-                    ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (ch.isSeriesFolder) "Episodes" else "Play")
-                    }
-                    if (!ch.isSeriesFolder) {
-                        OutlinedButton(onClick = { onDetails(ch) }) {
-                            Icon(Icons.Filled.Info, contentDescription = null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Details")
+                AsyncImage(
+                    model = art[item.id]?.takeIf { it.isNotBlank() } ?: item.logo,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = zoom
+                        scaleY = zoom
+                    },
+                )
+            }
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xF2111010), 0.55f to Color(0x99111010), 1f to Color.Transparent)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xE6111010))))
+
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(if (tv) 0.55f else 0.85f)
+                    .padding(horizontal = 22.dp, vertical = 20.dp),
+            ) {
+                AnimatedContent(
+                    targetState = current,
+                    transitionSpec = {
+                        (fadeIn(tween(450, delayMillis = 150)) + slideInVertically(tween(450, delayMillis = 150)) { it / 6 })
+                            .togetherWith(fadeOut(tween(200)))
+                    },
+                    label = "heroText",
+                ) { ch ->
+                    Column {
+                        Kicker(
+                            when {
+                                ch.isNew() && ch.isSeriesFolder -> "New series"
+                                ch.isNew() -> "New film"
+                                ch.isSeriesFolder -> "Series"
+                                else -> "Featured"
+                            },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            ch.name,
+                            fontFamily = Serif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = if (tv) 38.sp else 28.sp,
+                            lineHeight = if (tv) 42.sp else 32.sp,
+                            color = Paper,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val meta = listOfNotNull(ratingLabel(ch.rating), ch.group.takeIf { it.isNotBlank() }).joinToString("   ·   ")
+                        if (meta.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(meta, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1)
                         }
                     }
                 }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PaperButton(if (current.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow) { onPrimary(current) }
+                    if (!current.isSeriesFolder) GhostButton("Details", Icons.Outlined.Info) { onDetails(current) }
+                }
             }
-        }
-        if (items.size > 1) {
-            Row(Modifier.align(Alignment.BottomEnd).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                items.indices.forEach { i ->
-                    Box(
-                        Modifier
-                            .size(if (i == index) 8.dp else 6.dp)
-                            .background(if (i == index) colors.secondary else Color(0x88FFFFFF), CircleShape),
-                    )
+
+            if (size > 1) {
+                val active = pager.currentPage % size
+                Row(
+                    Modifier.align(Alignment.BottomEnd).padding(horizontal = 20.dp, vertical = 26.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    repeat(size) { i ->
+                        Box(Modifier.width(22.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x4DFFFFFF))) {
+                            val fill = when {
+                                i < active -> 1f
+                                i == active -> progress.value
+                                else -> 0f
+                            }
+                            Box(Modifier.fillMaxWidth(fill).height(3.dp).background(Paper))
+                        }
+                    }
                 }
             }
         }

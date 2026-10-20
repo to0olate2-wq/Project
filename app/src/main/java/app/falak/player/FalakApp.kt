@@ -18,7 +18,7 @@ class FalakApp : Application() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
-                val header = "Falak ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} " +
+                val header = "The Player ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} " +
                     "(SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}\n\n"
                 File(filesDir, Repository.CRASH_FILE).writeText(header + error.stackTraceToString().take(8000))
             } catch (t: Throwable) {

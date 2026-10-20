@@ -258,7 +258,7 @@ private fun GuideRow(
                 .width(ChannelColumn)
                 .fillMaxHeight()
                 .focusRing(cellShape)
-                .glass(cellShape, alpha = 0.08f)
+                .panel(cellShape, raised = true)
                 .clickable(onClick = onChannel)
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -273,7 +273,7 @@ private fun GuideRow(
             Column {
                 Text(ch.name, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (ch.hasCatchup) {
-                    Text("⟲ ${ch.catchupDays}d replay", style = MaterialTheme.typography.labelSmall, color = colors.secondary)
+                    Text("⟲ ${ch.catchupDays}d replay", style = MaterialTheme.typography.labelSmall, color = Signal)
                 }
             }
         }
@@ -304,7 +304,7 @@ private fun GuideRow(
                                 .focusRing(shape)
                                 .clip(shape)
                                 .background(
-                                    if (live) Gold.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.06f),
+                                    if (live) Color(0xFF2E2622) else Ink2,
                                 )
                                 .clickable { onProgram(prog) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -325,7 +325,7 @@ private fun GuideRow(
                         .offset(x = xOf(now, windowStart))
                         .width(2.dp)
                         .fillMaxHeight()
-                        .background(Gold),
+                        .background(Signal),
                 )
             }
         }

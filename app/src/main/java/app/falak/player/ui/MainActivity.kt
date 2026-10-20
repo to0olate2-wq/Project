@@ -13,6 +13,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -85,17 +97,34 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FalakTheme {
-                AuroraBackground()
+                Backdrop()
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     val state by vm.state.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        when (vm.screen) {
-                            Screen.PLAYLISTS -> PlaylistsScreen(vm, state)
-                            Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
-                            Screen.SERIES -> SeriesScreen(vm, state, onPlay = ::play)
-                            Screen.DETAILS -> DetailsScreen(vm, state, onPlay = ::play)
-                            Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
-                            Screen.SETTINGS -> SettingsScreen(vm, state)
+                        // Pages slide and fade: forward from the right, back from the left.
+                        AnimatedContent(
+                            targetState = vm.screen,
+                            transitionSpec = {
+                                val forward = depth(targetState) >= depth(initialState)
+                                val dir = if (forward) 1 else -1
+                                (
+                                    fadeIn(tween(280, delayMillis = 40)) +
+                                        slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it / 10 }
+                                    ).togetherWith(
+                                    fadeOut(tween(180)) +
+                                        slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 14 },
+                                )
+                            },
+                            label = "screens",
+                        ) { screen ->
+                            when (screen) {
+                                Screen.PLAYLISTS -> PlaylistsScreen(vm, state)
+                                Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
+                                Screen.SERIES -> SeriesScreen(vm, state, onPlay = ::play)
+                                Screen.DETAILS -> DetailsScreen(vm, state, onPlay = ::play)
+                                Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
+                                Screen.SETTINGS -> SettingsScreen(vm, state)
+                            }
                         }
                     }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
@@ -104,6 +133,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** How deep a page sits, so transitions know which way to slide. */
+    private fun depth(s: Screen): Int = when (s) {
+        Screen.PLAYLISTS -> 0
+        Screen.LIBRARY -> 1
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE -> 2
+        Screen.SETTINGS -> 3
     }
 
     private fun play(list: List<Channel>, channel: Channel) {
@@ -156,7 +193,7 @@ private fun CrashDialog(report: String, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Falak stopped last time") },
+        title = { Text("The Player stopped last time") },
         text = {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Text(
@@ -180,109 +217,88 @@ private fun CrashDialog(report: String, onClose: () -> Unit) {
 private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     var adding by remember { mutableStateOf(state.playlists.isEmpty()) }
     var toDelete by remember { mutableStateOf<Playlist?>(null) }
+    val tv = isTv()
 
     BackHandler(enabled = vm.playlist != null) { vm.screen = Screen.LIBRARY }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 56.dp else 22.dp, vertical = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            FalakMark(48.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Wordmark(30)
-                Text(
-                    "Your channels, movies and series in one orbit",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                )
-            }
+            BrandMark(if (tv) 44.dp else 38.dp)
+            Spacer(Modifier.weight(1f))
             Clock(Modifier.padding(horizontal = 8.dp))
             IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
             }
         }
-        Spacer(Modifier.height(22.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Your playlists", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            val addShape = RoundedCornerShape(50)
-            Row(
-                Modifier
-                    .focusRing(addShape)
-                    .clip(addShape)
-                    .background(GoldBrush)
-                    .clickable { adding = true }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, tint = Night)
-                Spacer(Modifier.width(6.dp))
-                Text("Add playlist", color = Night, fontWeight = FontWeight.Bold)
-            }
+        Spacer(Modifier.height(if (tv) 40.dp else 28.dp))
+        Wordmark(if (tv) 46 else 38)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Live TV, films and series from your own playlists.",
+            fontFamily = Serif,
+            fontStyle = FontStyle.Italic,
+            fontWeight = FontWeight.Medium,
+            fontSize = 17.sp,
+            color = Muted,
+        )
+        Spacer(Modifier.height(30.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Kicker("Your playlists", color = Muted)
+            Spacer(Modifier.weight(1f))
+            PaperButton("Add playlist", Icons.Filled.Add) { adding = true }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
+        Rule()
         if (state.playlists.isEmpty()) {
-            val shape = RoundedCornerShape(20.dp)
-            Column(Modifier.fillMaxWidth().glass(shape).padding(22.dp)) {
-                Text("Start your orbit", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Add your provider's M3U link, an M3U file, or your Xtream login. Falak doesn't include any channels.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                "Add your provider's M3U link, an M3U file, or your Xtream login to begin. The Player doesn't come with any channels.",
+                fontFamily = Sans,
+                fontSize = 14.sp,
+                color = Muted,
+                modifier = Modifier.padding(vertical = 18.dp),
+            )
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn {
             items(state.playlists, key = { it.id }) { p ->
-                val shape = RoundedCornerShape(18.dp)
                 val current = p.id == vm.playlist?.id
+                val shape = RoundedCornerShape(8.dp)
                 Row(
                     Modifier
                         .fillMaxWidth()
+                        .animateItem()
                         .focusRing(shape)
-                        .glass(shape, alpha = if (current) 0.10f else 0.06f)
+                        .clip(shape)
                         .clickable { vm.open(p) }
-                        .padding(14.dp),
+                        .padding(vertical = 16.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
-                        Modifier
-                            .size(46.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                androidx.compose.ui.graphics.Brush.linearGradient(
-                                    if (p.type == SourceType.XTREAM) listOf(Violet, Teal) else listOf(Teal, Violet),
-                                ),
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            when (p.type) {
-                                SourceType.M3U_URL -> "M3U"
-                                SourceType.M3U_FILE -> "FILE"
-                                SourceType.XTREAM -> "XC"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        when (p.type) {
+                            SourceType.M3U_URL -> "M3U"
+                            SourceType.M3U_FILE -> "FILE"
+                            SourceType.XTREAM -> "XTREAM"
+                        },
+                        style = Tabular.copy(fontSize = 11.sp, letterSpacing = 1.2.sp),
+                        color = Faint,
+                        modifier = Modifier.width(64.dp),
+                    )
                     Column(Modifier.weight(1f)) {
-                        Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                        Text(
-                            when (p.type) {
-                                SourceType.M3U_URL -> "M3U link"
-                                SourceType.M3U_FILE -> "M3U file"
-                                SourceType.XTREAM -> "Xtream · ${p.username}"
-                            } + if (current) "  ·  open" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (current) Gold else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text(p.name, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper, maxLines = 1)
+                        if (current) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                                LiveDot(6.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Open now", fontFamily = Sans, fontSize = 12.sp, color = Muted)
+                            }
+                        } else if (p.type == SourceType.XTREAM) {
+                            Text(p.username, fontFamily = Sans, fontSize = 12.sp, color = Faint)
+                        }
                     }
                     IconButton(onClick = { toDelete = p }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = Faint)
                     }
                 }
+                Rule()
             }
         }
     }
@@ -293,7 +309,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         AlertDialog(
             onDismissRequest = { toDelete = null },
             title = { Text("Remove ${p.name}?") },
-            text = { Text("Its favorites and history will be deleted too.") },
+            text = { Text("Its saved items and history will be deleted too.") },
             confirmButton = { TextButton(onClick = { vm.remove(p); toDelete = null }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Cancel") } },
         )

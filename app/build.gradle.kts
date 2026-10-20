@@ -17,7 +17,7 @@ android {
         targetSdk = 35
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "2.4"
+        versionName = "3.0"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
     }
 

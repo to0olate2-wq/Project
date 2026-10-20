@@ -29,6 +29,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -64,6 +65,7 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
+import app.falak.player.R
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
@@ -78,6 +80,18 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INDEX = "index"
+
+        private val CAPTION_FORMATS = listOf(
+            androidx.media3.common.Format.Builder()
+                .setSampleMimeType(MimeTypes.APPLICATION_CEA608)
+                .setAccessibilityChannel(1)
+                .build(),
+            androidx.media3.common.Format.Builder()
+                .setSampleMimeType(MimeTypes.APPLICATION_CEA708)
+                .setAccessibilityChannel(1)
+                .setInitializationData(androidx.media3.common.util.CodecSpecificDataUtil.buildCea708InitializationData(false))
+                .build(),
+        )
     }
 
     private lateinit var playerView: PlayerView
@@ -141,13 +155,12 @@ class PlayerActivity : ComponentActivity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setLineSpacing(0f, 1.2f)
             // Falak glass: night→violet gradient with a thin light edge
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0xE6100C26.toInt(), 0xCC2A1B7E.toInt()),
-            ).apply {
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), 0x33FFFFFF)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(0xE6111010.toInt())
+                setStroke(dp(1), 0x26FFFFFF)
             }
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
             setPadding(dp(20), dp(14), dp(22), dp(14))
             visibility = View.GONE
         }
@@ -311,8 +324,12 @@ class PlayerActivity : ComponentActivity() {
         if (ch.referrer.isNotBlank()) httpSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
         // DefaultDataSource adds local files (downloaded subtitles) on top of the network source.
         val dataSource = DefaultDataSource.Factory(this, httpSource)
+        // Media3 only exposes captions embedded in the video when the stream declares them, and
+        // IPTV restreams almost never do. Like other IPTV players, always offer CC1 (CEA-608) and
+        // CEA-708; a stream that does declare its captions still takes priority.
         val extractors = DefaultExtractorsFactory()
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
+            .setTsSubtitleFormats(CAPTION_FORMATS)
         currentDataSource = dataSource
         currentExtractors = extractors
 
@@ -786,10 +803,11 @@ class PlayerActivity : ComponentActivity() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         text = label
         background = GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
-            setColor(0xB3140F2E.toInt())
-            setStroke(dp(1), 0x40FFC857)
+            cornerRadius = dp(8).toFloat()
+            setColor(0xCC111010.toInt())
+            setStroke(dp(1), 0x33FFFFFF)
         }
+        typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
         setPadding(dp(14), dp(8), dp(14), dp(8))
         isFocusable = true
         isClickable = true
@@ -813,7 +831,7 @@ class PlayerActivity : ComponentActivity() {
 
         val text = SpannableStringBuilder()
         if (ch.kind == Kind.LIVE) {
-            text.append("${index + 1}   ", ForegroundColorSpan(0xFFFFC857.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.append("${index + 1}   ", ForegroundColorSpan(0xFFFF4F2E.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         if (current != null) {

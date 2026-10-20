@@ -1,8 +1,15 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -23,34 +30,28 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,15 +66,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
@@ -82,11 +84,15 @@ import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
+import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
     val p = vm.playlist ?: return
+    val index = vm.index
     val epg by vm.epg.collectAsStateWithLifecycle()
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
@@ -94,11 +100,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             value = System.currentTimeMillis()
         }
     }
-    val all = vm.channels
     val favIds = state.favorites[p.id].orEmpty()
     val recentIds = state.recents[p.id].orEmpty()
     val favSet = remember(favIds) { favIds.toHashSet() }
-    val kinds = remember(all) { all.mapTo(HashSet()) { it.kind } }
     val locked = rememberLockedGroups(vm, state)
     var pinForGroup by remember { mutableStateOf<String?>(null) }
     val selectGroup: (String?) -> Unit = { g ->
@@ -109,45 +113,52 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    val sections = Section.entries.filter { s ->
-        when (s) {
-            Section.HOME -> all.isNotEmpty()
-            Section.FAVORITES -> favIds.isNotEmpty()
-            Section.RECENT -> recentIds.isNotEmpty()
-            else -> s.kind != null && s.kind in kinds
+    val hasFav = favIds.isNotEmpty()
+    val hasRecent = recentIds.isNotEmpty()
+    val sections = remember(index, hasFav, hasRecent) {
+        Section.entries.filter { s ->
+            when (s) {
+                Section.HOME -> index.all.isNotEmpty()
+                Section.FAVORITES -> hasFav
+                Section.RECENT -> hasRecent
+                else -> s.kind != null && index.ofKind(s.kind).isNotEmpty()
+            }
         }
     }
     val section = vm.section.takeIf { it in sections } ?: sections.firstOrNull() ?: Section.LIVE
-    val byId = remember(all) { all.associateBy { it.id } }
-    val base = when (section) {
-        Section.HOME -> all // searching from Home looks through everything
-        Section.FAVORITES -> remember(byId, favIds) { favIds.mapNotNull { byId[it] } }
-        Section.RECENT -> remember(byId, recentIds) { recentIds.mapNotNull { byId[it] } }
-        else -> remember(all, section) { all.filter { it.kind == section.kind } }
-    }
-    val showGroups = section.kind != null
+    val kind = section.kind
+    val showGroups = kind != null
     val group = if (showGroups) vm.group else null
     val q = vm.query.trim()
-    val counts = remember(base) { base.groupingBy { it.group }.eachCount() }
-    // Channels in locked groups stay hidden from "All", search, favorites and recents.
-    val openBase = remember(base, locked) { if (locked.isEmpty()) base else base.filterNot { it.group in locked } }
-    val isVodSection = section == Section.MOVIES || section == Section.SERIES
-    val sort = if (isVodSection) vm.sort else Sort.DEFAULT
-    val visible = remember(openBase, group, q, sort) {
-        val filtered = openBase.filter { ch ->
-            if (q.isNotEmpty()) ch.name.contains(q, ignoreCase = true)
-            else group == null || ch.group == group
-        }
-        when (sort) {
-            Sort.DEFAULT -> filtered
-            Sort.NEWEST -> filtered.sortedByDescending { it.added }
-            Sort.AZ -> filtered.sortedBy { it.name.lowercase() }
-            Sort.RATING -> filtered.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+    val isVod = section == Section.MOVIES || section == Section.SERIES
+    val sort = if (isVod) vm.sort else Sort.DEFAULT
+    val base: List<Channel> = when (section) {
+        Section.HOME -> index.all
+        Section.FAVORITES -> remember(favIds, index) { favIds.mapNotNull { index.byId[it] } }
+        Section.RECENT -> remember(recentIds, index) { recentIds.mapNotNull { index.byId[it] } }
+        else -> index.ofKind(kind!!)
+    }
+    val groupMap: Map<String, List<Channel>> = if (kind != null) index.groupsOf(kind) else emptyMap()
+
+    // Filtering and sorting run on a background thread, so taps stay instant on big playlists.
+    val visible by produceState<List<Channel>?>(null, base, group, q, sort, locked, groupMap) {
+        if (q.isNotEmpty()) delay(160)
+        value = withContext(Dispatchers.Default) {
+            val src = if (q.isEmpty() && group != null) groupMap[group].orEmpty() else base
+            val out = if (locked.isEmpty() && q.isEmpty()) src else src.filter { ch ->
+                (locked.isEmpty() || ch.group !in locked) && (q.isEmpty() || ch.name.contains(q, ignoreCase = true))
+            }
+            when (sort) {
+                Sort.DEFAULT -> out
+                Sort.NEWEST -> out.sortedByDescending { it.added }
+                Sort.AZ -> out.sortedBy { it.name.lowercase() }
+                Sort.RATING -> out.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+            }
         }
     }
-    val sorts = remember(base, isVodSection) {
-        if (!isVodSection) emptyList()
-        else Sort.entries.filter { s ->
+    val list = visible.orEmpty()
+    val sorts = remember(base, isVod) {
+        if (!isVod) emptyList() else Sort.entries.filter { s ->
             when (s) {
                 Sort.NEWEST -> base.any { it.added > 0 }
                 Sort.RATING -> base.any { (it.rating.toDoubleOrNull() ?: 0.0) > 0 }
@@ -157,8 +168,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
-    val listState = vm.listState
-    val gridState = vm.gridState
+    val listState = vm.listStateFor(section)
+    val gridState = vm.gridStateFor(section)
     LaunchedEffect(section, group, q, sort) {
         val key = listOf(section, group, q, sort)
         if (vm.lastListKey != null && vm.lastListKey != key) {
@@ -167,12 +178,11 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
         vm.lastListKey = key
     }
-    // Movies open their details page, series their episodes; channels play.
     val openItem: (Channel) -> Unit = { ch ->
         when {
             ch.isSeriesFolder -> vm.openSeries(ch)
             ch.kind == Kind.MOVIE -> vm.openDetails(ch)
-            else -> onPlay(visible, ch)
+            else -> onPlay(list, ch)
         }
     }
 
@@ -187,145 +197,134 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    val selectSection: (Section) -> Unit = { s -> vm.section = s; vm.group = null }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-    val railNav = maxWidth >= 840.dp
-    Row(Modifier.fillMaxSize()) {
-    if (railNav && sections.size > 1) {
-        OrbitRail(sections, section, selectSection) {
-            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                Icon(Icons.Filled.Settings, contentDescription = "Settings")
-            }
-        }
-    }
-    Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp)) {
-        // Header: brand, playlist, clock, actions
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (!railNav) {
-                FalakMark(34.dp)
-                Spacer(Modifier.width(10.dp))
-            }
-            Column(
+    val tv = isTv()
+    Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
+        // Masthead
+        Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
                 Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { vm.screen = Screen.PLAYLISTS },
+                    .focusRing(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { vm.screen = Screen.PLAYLISTS }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Wordmark(if (railNav) 26 else 22)
-                Text(
-                    "${p.name}  ▾",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Clock(Modifier.padding(horizontal = 6.dp))
-            if ((section == Section.LIVE || section == Section.HOME) && Kind.LIVE in kinds) {
-                IconButton(onClick = { vm.screen = Screen.GUIDE }) {
-                    Icon(Icons.Filled.DateRange, contentDescription = "TV guide")
+                BrandMark(if (tv) 38.dp else 32.dp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Wordmark(if (tv) 24 else 20)
+                    Text(
+                        "${p.name}  ⌄",
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        color = Faint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
-            IconButton(onClick = { searching = true }) {
-                Icon(Icons.Filled.Search, contentDescription = "Search")
+            Clock(Modifier.padding(horizontal = 8.dp))
+            if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
+                if (index.live.isNotEmpty()) {
+                    IconButton(onClick = { vm.screen = Screen.GUIDE }) {
+                        Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
+                    }
+                }
+            }
+            IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
+                Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
             }
             IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Refresh playlist")
+                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
             }
-            if (!railNav) {
-                IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                }
+            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
             }
         }
 
-        if (searching) {
-            val focus = remember { FocusRequester() }
-            OutlinedTextField(
-                value = vm.query,
-                onValueChange = { vm.query = it },
-                placeholder = { Text("Search ${section.label}") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                trailingIcon = {
-                    IconButton(onClick = { vm.query = ""; searching = false }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close search")
-                    }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-            LaunchedEffect(Unit) { focus.requestFocus() }
+        if (sections.size > 1) {
+            Spacer(Modifier.height(6.dp))
+            NavTabs(sections, section, onSelect = { s -> vm.section = s; vm.group = null }, large = tv)
         }
 
-        if (vm.loading && all.isNotEmpty()) {
-            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-        }
-        vm.error?.takeIf { all.isNotEmpty() }?.let {
-            Text("Refresh failed: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            SearchField(vm.query, section.label) { vm.query = it }
         }
 
-        // Sections (the rail shows them on wide screens)
-        if (sections.size > 1 && !railNav) OrbitTabs(sections, section, selectSection)
+        if (vm.loading && index.all.isNotEmpty()) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
+        }
+        vm.error?.takeIf { index.all.isNotEmpty() }?.let {
+            Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        }
 
         when {
-            vm.loading && all.isEmpty() -> Centered {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
-                Text("Loading playlist…")
+            vm.loading && index.all.isEmpty() -> Centered {
+                CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
+                Spacer(Modifier.height(14.dp))
+                Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
+                Text("Big playlists take a moment the first time.", fontSize = 13.sp, color = Muted)
             }
-            vm.error != null && all.isEmpty() -> Centered {
-                Text(vm.error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = { vm.open(p, refresh = true) }) { Text("Try again") }
+            vm.error != null && index.all.isEmpty() -> Centered {
+                Text("Something went wrong", fontFamily = Serif, fontSize = 20.sp, color = Paper)
+                Spacer(Modifier.height(6.dp))
+                Text(vm.error.orEmpty(), color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
+                Spacer(Modifier.height(16.dp))
+                PaperButton("Try again") { vm.open(p, refresh = true) }
             }
-            section == Section.HOME && q.isEmpty() -> HomeContent(vm, state, all, locked, epg, now, onPlay)
-            else -> BoxWithConstraints(Modifier.fillMaxSize()) {
-                val wide = maxWidth >= 720.dp
-                val groupsVisible = showGroups && q.isEmpty() && counts.size > 1
-                val channelList: @Composable (Modifier) -> Unit = { m ->
-                    if (isVodSection) {
-                        Column(m) {
-                            if (sorts.size > 1) {
-                                Row(
-                                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    sorts.forEach { s ->
-                                        FilterChip(selected = s == sort, onClick = { vm.sort = s }, label = { Text(s.label) })
-                                    }
-                                }
-                            }
-                            PosterGrid(
-                                list = visible, state = gridState, progress = state.progress, playlistId = p.id,
-                                onOpen = openItem, modifier = Modifier.weight(1f).fillMaxWidth(),
-                            )
-                        }
-                    } else {
-                        ChannelList(
-                            list = visible, favIds = favSet, epg = epg, now = now, state = listState,
-                            progress = state.progress, playlistId = p.id,
-                            onPlay = openItem,
-                            onFav = { ch -> vm.toggleFavorite(ch) },
-                            modifier = m,
-                        )
-                    }
-                }
-                if (wide && groupsVisible) {
-                    Row(Modifier.fillMaxSize()) {
-                        GroupList(counts, openBase.size, group, locked, selectGroup, Modifier.width(260.dp).fillMaxHeight())
-                        Spacer(Modifier.width(8.dp))
-                        channelList(Modifier.weight(1f).fillMaxHeight())
-                    }
+            else -> AnimatedContent(
+                targetState = section to (q.isEmpty()),
+                transitionSpec = {
+                    (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(320)) { it / 40 })
+                        .togetherWith(fadeOut(tween(140)))
+                },
+                label = "section",
+                modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+            ) { (shown, noQuery) ->
+                if (shown == Section.HOME && noQuery) {
+                    HomeContent(vm, state, locked, epg, now, onPlay)
                 } else {
-                    Column(Modifier.fillMaxSize()) {
-                        if (groupsVisible) GroupChips(counts, group, locked, selectGroup)
-                        channelList(Modifier.weight(1f).fillMaxWidth())
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val wide = maxWidth >= 720.dp
+                        val groupsVisible = showGroups && q.isEmpty() && groupMap.size > 1
+                        val content: @Composable (Modifier) -> Unit = { m ->
+                            when {
+                                visible == null -> Box(m)
+                                isVod -> Column(m) {
+                                    if (sorts.size > 1) {
+                                        Row(
+                                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
+                                        }
+                                    }
+                                    PosterGrid(list, vm.gridStateFor(shown), state.progress, p.id, openItem, Modifier.weight(1f).fillMaxWidth())
+                                }
+                                else -> ChannelList(
+                                    list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                    progress = state.progress, playlistId = p.id,
+                                    onOpen = openItem, onFav = { ch -> vm.toggleFavorite(ch) }, modifier = m,
+                                )
+                            }
+                        }
+                        if (wide && groupsVisible) {
+                            Row(Modifier.fillMaxSize()) {
+                                GroupColumn(groupMap, base.size, group, locked, selectGroup, Modifier.width(250.dp).fillMaxHeight())
+                                Spacer(Modifier.width(20.dp))
+                                content(Modifier.weight(1f).fillMaxHeight())
+                            }
+                        } else {
+                            Column(Modifier.fillMaxSize()) {
+                                if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup)
+                                content(Modifier.weight(1f).fillMaxWidth())
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-    }
     }
 
     pinForGroup?.let { g ->
@@ -341,6 +340,36 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 ok
             },
         )
+    }
+}
+
+@Composable
+private fun SearchField(value: String, scope: String, onChange: (String) -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+            .panel(RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Search, contentDescription = null, tint = Muted, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(if (scope == "Home") "Search everything" else "Search ${scope.lowercase()}", color = Faint, fontFamily = Sans, fontSize = 15.sp)
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 15.sp),
+                cursorBrush = SolidColor(Signal),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+        }
     }
 }
 
@@ -363,6 +392,75 @@ fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
 }
 
 @Composable
+private fun GroupColumn(
+    groups: Map<String, List<Channel>>,
+    total: Int,
+    selected: String?,
+    locked: Set<String>,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier,
+) {
+    val names = remember(groups) { groups.keys.toList() }
+    LazyColumn(modifier, contentPadding = PaddingValues(bottom = 32.dp)) {
+        item(key = "__all") { GroupLine("All", total, selected == null, false) { onSelect(null) } }
+        items(names, key = { "g:$it" }) { g ->
+            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked) { onSelect(g) }
+        }
+    }
+}
+
+@Composable
+private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(6.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .focusRing(shape)
+            .clip(shape)
+            .background(if (selected) Ink3 else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .padding(end = 10.dp)
+                .width(3.dp)
+                .height(18.dp)
+                .background(if (selected) Signal else Color.Transparent, RoundedCornerShape(2.dp)),
+        )
+        Text(
+            name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontFamily = Sans,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) Paper else Muted,
+            modifier = Modifier.weight(1f),
+        )
+        if (locked) {
+            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Faint, modifier = Modifier.padding(end = 8.dp).size(14.dp))
+        } else {
+            Text("$count", style = Tabular.copy(fontSize = 12.sp), color = Faint, modifier = Modifier.padding(end = 8.dp))
+        }
+    }
+}
+
+@Composable
+private fun GroupChips(groups: Map<String, List<Channel>>, selected: String?, locked: Set<String>, onSelect: (String?) -> Unit) {
+    val names = remember(groups) { listOf<String?>(null) + groups.keys }
+    LazyRow(
+        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(names, key = { it ?: "__all" }) { g ->
+            TagChip(if (g != null && g in locked) "🔒 $g" else g ?: "All", selected == g) { onSelect(g) }
+        }
+    }
+}
+
+@Composable
 private fun PosterGrid(
     list: List<Channel>,
     state: LazyGridState,
@@ -372,100 +470,19 @@ private fun PosterGrid(
     modifier: Modifier,
 ) {
     if (list.isEmpty()) {
-        Box(modifier, contentAlignment = Alignment.Center) {
-            Text("Nothing here", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Box(modifier, contentAlignment = Alignment.Center) { Text("Nothing here yet", color = Muted) }
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(108.dp),
+        columns = GridCells.Adaptive(if (isTv()) 140.dp else 108.dp),
         state = state,
         modifier = modifier,
-        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 32.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         gridItems(list, key = { it.id }) { ch ->
             PosterCard(ch, progress[progressKey(playlistId, ch.id)], onClick = { onOpen(ch) }, width = null)
-        }
-    }
-}
-
-@Composable
-internal fun Centered(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) { content() }
-    }
-}
-
-@Composable
-private fun GroupList(
-    counts: Map<String, Int>,
-    total: Int,
-    selected: String?,
-    locked: Set<String>,
-    onSelect: (String?) -> Unit,
-    modifier: Modifier,
-) {
-    val names = remember(counts) { counts.keys.toList() }
-    LazyColumn(modifier, contentPadding = PaddingValues(bottom = 24.dp)) {
-        item(key = "__all") { GroupItem("All", total, selected == null, false) { onSelect(null) } }
-        items(names, key = { "g:$it" }) { g ->
-            GroupItem(g, counts[g] ?: 0, selected == g, g in locked) { onSelect(g) }
-        }
-    }
-}
-
-@Composable
-private fun GroupItem(name: String, count: Int, selected: Boolean, locked: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
-    val colors = MaterialTheme.colorScheme
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
-            .focusRing(shape)
-            .clip(shape)
-            .background(if (selected) Gold.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .padding(end = 10.dp)
-                .size(width = 3.dp, height = 18.dp)
-                .background(if (selected) GoldBrush else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)), RoundedCornerShape(2.dp)),
-        )
-        Text(
-            name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = if (selected) Gold else colors.onBackground,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            modifier = Modifier.weight(1f),
-        )
-        if (locked) {
-            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
-        } else {
-            Text("$count", color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
-@Composable
-private fun GroupChips(counts: Map<String, Int>, selected: String?, locked: Set<String>, onSelect: (String?) -> Unit) {
-    val names = remember(counts) { listOf<String?>(null) + counts.keys }
-    LazyRow(
-        Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(names, key = { it ?: "__all" }) { g ->
-            FilterChip(
-                selected = selected == g,
-                onClick = { onSelect(g) },
-                label = { Text(if (g != null && g in locked) "🔒 $g" else g ?: "All", maxLines = 1) },
-            )
         }
     }
 }
@@ -479,25 +496,25 @@ private fun ChannelList(
     state: LazyListState,
     progress: Map<String, Watch>,
     playlistId: String,
-    onPlay: (Channel) -> Unit,
+    onOpen: (Channel) -> Unit,
     onFav: (Channel) -> Unit,
     modifier: Modifier,
 ) {
     if (list.isEmpty()) {
-        Box(modifier, contentAlignment = Alignment.Center) {
-            Text("Nothing here", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Box(modifier, contentAlignment = Alignment.Center) { Text("Nothing here yet", color = Muted) }
         return
     }
-    LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onPlay(ch) }, { onFav(ch) })
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, Modifier.animateItem())
+            Rule()
         }
     }
 }
 
+/** Editorial list row: number, logo, name, what's on now with time left, a quiet star. */
 @Composable
 private fun ChannelRow(
     number: Int,
@@ -508,93 +525,98 @@ private fun ChannelRow(
     now: Long,
     onClick: () -> Unit,
     onFav: () -> Unit,
+    modifier: Modifier,
 ) {
-    val shape = RoundedCornerShape(12.dp)
-    val colors = MaterialTheme.colorScheme
-    val isVod = ch.kind != Kind.LIVE
+    val shape = RoundedCornerShape(6.dp)
+    val isLive = ch.kind == Kind.LIVE
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
             .focusRing(shape)
-            .glass(shape, alpha = if (current != null) 0.07f else 0.05f)
+            .clip(shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (!isVod) {
+        if (isLive) {
             Text(
                 "$number",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Gold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .width(38.dp)
-                    .padding(end = 6.dp)
-                    .background(Gold.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
-                    .padding(vertical = 4.dp),
+                style = Tabular.copy(fontSize = 13.sp),
+                color = Faint,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(34.dp).padding(end = 10.dp),
             )
         }
         Box(
             Modifier
-                .size(if (isVod) 48.dp else 64.dp, if (isVod) 72.dp else 42.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Brush.linearGradient(listOf(Violet.copy(alpha = 0.55f), Night))),
+                .size(if (isLive) 64.dp else 46.dp, if (isLive) 40.dp else 68.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Ink3),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
                 model = ch.logo.ifBlank { null },
                 contentDescription = null,
-                contentScale = if (isVod) ContentScale.Crop else ContentScale.Fit,
-                modifier = if (isVod) Modifier.fillMaxSize() else Modifier.fillMaxSize().padding(5.dp),
+                contentScale = if (isLive) ContentScale.Fit else ContentScale.Crop,
+                modifier = if (isLive) Modifier.fillMaxSize().padding(5.dp) else Modifier.fillMaxSize(),
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                if (ch.hasCatchup) "${ch.name}  ⟲" else ch.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (current != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    current.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
+                    ch.name,
+                    fontFamily = Sans,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp,
+                    color = Paper,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
-                val length = (current.stop - current.start).coerceAtLeast(1L).toFloat()
-                val frac = ((now - current.start) / length).coerceIn(0f, 1f)
-                LinearProgressIndicator(
-                    progress = { frac },
-                    color = Gold,
-                    trackColor = Color.White.copy(alpha = 0.08f),
-                    modifier = Modifier.padding(top = 5.dp).fillMaxWidth().height(3.dp),
-                )
-            } else if (isVod) {
-                Text(
-                    ch.info.ifBlank { if (ch.isSeriesFolder) "Series · ${ch.group}" else ch.group },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (watched != null && watched.dur > 0) {
-                    LinearProgressIndicator(
-                        progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
-                        modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp),
-                    )
+                if (ch.hasCatchup) {
+                    Text("  REPLAY", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.sp, color = Muted)
                 }
+            }
+            when {
+                current != null -> {
+                    Text(
+                        "${current.title}  ·  ${minutesLeft(current, now)}",
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        color = Muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val length = (current.stop - current.start).coerceAtLeast(1L).toFloat()
+                    Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(2.dp).background(Hairline)) {
+                        Box(Modifier.fillMaxWidth(((now - current.start) / length).coerceIn(0f, 1f)).height(2.dp).background(Signal))
+                    }
+                }
+                !isLive -> {
+                    Text(
+                        ch.info.ifBlank { listOfNotNull(ratingLabel(ch.rating), ch.group).joinToString("  ·  ") },
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        color = Muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (watched != null && watched.dur > 0) {
+                        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(2.dp).background(Hairline)) {
+                            Box(Modifier.fillMaxWidth((watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f)).height(2.dp).background(Signal))
+                        }
+                    }
+                }
+                else -> Text(ch.group, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1)
             }
         }
         IconButton(onClick = onFav) {
             Icon(
-                if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                contentDescription = if (isFav) "Remove from favorites" else "Add to favorites",
-                tint = if (isFav) Color(0xFFFF5C8A) else colors.onSurfaceVariant,
+                Icons.Filled.Star,
+                contentDescription = if (isFav) "Remove from saved" else "Save",
+                tint = if (isFav) Amber else Color(0x33FFFFFF),
+                modifier = Modifier.size(20.dp),
             )
         }
     }

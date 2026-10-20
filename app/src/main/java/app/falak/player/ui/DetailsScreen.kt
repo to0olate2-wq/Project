@@ -104,7 +104,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         Text(meta, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                     }
                     info?.genre?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = colors.secondary, maxLines = 2)
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = Amber, maxLines = 2)
                     }
                 }
             }
@@ -113,7 +113,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onPlay(listOf(ch), ch) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Night),
+                    colors = ButtonDefaults.buttonColors(containerColor = Paper, contentColor = Ink),
                     modifier = Modifier.focusRequester(playFocus),
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
@@ -144,7 +144,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             if (watched != null && watched.dur > 0) {
                 LinearProgressIndicator(
                     progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
-                    color = colors.secondary,
+                    color = Signal,
                     modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp),
                 )
             }

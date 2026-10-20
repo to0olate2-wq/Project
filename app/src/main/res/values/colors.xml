@@ -1,5 +1,5 @@
 <resources>
-    <color name="bg">#0B0A14</color>
-    <color name="accent">#8B7CFF</color>
-    <color name="launcher_bg">#3B2AA8</color>
+    <color name="bg">#111010</color>
+    <color name="accent">#FF4F2E</color>
+    <color name="launcher_bg">#141211</color>
 </resources>

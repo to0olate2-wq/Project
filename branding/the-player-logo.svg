@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <!-- The Player: a "P" whose counter is a play button, on warm ink -->
+  <rect width="108" height="108" fill="#141211"/>
+  <path fill="#F3EEE6" fill-rule="evenodd"
+        d="M37,29 H59 A17,17 0 0 1 59,63 H50 V79 H37 Z
+           M51,38.5 L65,46 L51,53.5 Z"/>
+  <path fill="#FF4F2E" d="M51,38.5 L65,46 L51,53.5 Z"/>
+</svg>

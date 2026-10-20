@@ -1,4 +1,4 @@
-# Falak — media player for your own playlists (Android phones & Android TV)
+# The Player — live TV, films and series from your own playlists (Android phones & Android TV)
 
 Stage 1 features
 - Add playlists by **M3U link**, **M3U file**, or **Xtream Codes login** (server, username, password)
@@ -22,12 +22,12 @@ No channels are included: you add your own provider's playlist.
 ## Build the APK
 
 ### Option A — Download the latest build (easiest)
-Open **Releases** → latest **Falak … (build N)** → download the `.apk`. Once installed, Falak updates itself: it offers new builds on launch (Settings → Check for updates).
+Open **Releases** → latest **The Player … (build N)** → download the `.apk`. Once installed, The Player updates itself: it offers new builds on launch (Settings → Check for updates).
 
 ### Option A2 — Build it yourself on GitHub
 1. Create a new repository on GitHub and upload this whole folder (including `.github/`).
 2. Open the repo's **Actions** tab → the "Build APK" run starts on every push (about 5 minutes).
-3. Open the finished run → **Artifacts** → download `Falak-apk` (a zip containing the `.apk`).
+3. Open the finished run → **Artifacts** → download `ThePlayer-apk` (a zip containing the `.apk`).
 
 ### Option B — Android Studio on your Mac
 1. Install Android Studio from developer.android.com/studio.
@@ -53,4 +53,4 @@ Catch-up / timeshift, multi-screen, recordings, cloud backup of favorites.
 ## Builds
 - **github** flavor: sideloaded APK with one-tap self-updates (published by CI as GitHub Releases).
 - **play** flavor: for Google Play — no self-update (Play doesn't allow it).
-- Branding source files (logo SVG, Play icon 512, feature graphic) are in `branding/`.
+- Branding (logo SVG, Play icon 512, feature graphic, TV banner) is in `branding/`. Fonts: Lora and Inter (SIL Open Font License).
