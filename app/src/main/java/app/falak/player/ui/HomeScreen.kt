@@ -154,6 +154,9 @@ fun HomeContent(
         LocalHomeScroller provides scroller,
         LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
     ) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // TV: the slideshow always fits on screen whole, with the next row's title peeking below it.
+    val heroMax = if (tvHome) (maxHeight - 72.dp).coerceAtLeast(220.dp) else 10_000.dp
     LazyColumn(
         Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
         state = vm.homeState,
@@ -164,6 +167,7 @@ fun HomeContent(
                 FeatureCarousel(
                     items = hero,
                     art = vm.heroArt,
+                    heightLimit = heroMax,
                     onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
                     onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
                 )
@@ -240,6 +244,7 @@ fun HomeContent(
         }
     }
     }
+    }
 }
 
 @Composable
@@ -273,6 +278,7 @@ private const val SLIDE_MS = 7_000
 private fun FeatureCarousel(
     items: List<Channel>,
     art: Map<String, String>,
+    heightLimit: androidx.compose.ui.unit.Dp,
     onPrimary: (Channel) -> Unit,
     onDetails: (Channel) -> Unit,
 ) {
@@ -297,7 +303,8 @@ private fun FeatureCarousel(
     BoxWithConstraints(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
         // Phone layout: a tall poster card; TV (and wide tablets): a wide cinema banner.
         val compact = !tv && maxWidth < 600.dp
-        val height = if (compact) (maxWidth * 1.15f).coerceIn(320.dp, 560.dp) else (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
+        val height = (if (compact) (maxWidth * 1.15f).coerceIn(320.dp, 560.dp) else (maxWidth * 0.52f).coerceIn(250.dp, 440.dp))
+            .coerceAtMost(heightLimit)
         Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)).background(Ink2)) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 val item = items[page % size]

@@ -28,6 +28,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -255,6 +257,29 @@ class HomeScroller(
     val manual = object : BringIntoViewSpec {
         override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
     }
+
+    private var pinning: Job? = null
+
+    /**
+     * Scrolls the page so the row in [target] starts at the top of the screen. A row the remote
+     * brings in from off screen is only laid out in the frame after it takes focus, so it is
+     * measured then; measuring it at once found nothing and left the page stuck on the slideshow.
+     */
+    fun pin(target: Array<LayoutCoordinates?>) {
+        pinning?.cancel()
+        pinning = scope.launch {
+            repeat(4) {
+                withFrameNanos { }
+                val me = target[0]
+                val port = viewport
+                if (me != null && port != null && me.isAttached && port.isAttached) {
+                    val delta = port.localPositionOf(me, Offset.Zero).y
+                    if (kotlin.math.abs(delta) > 1f) state.animateScrollBy(delta)
+                    return@launch
+                }
+            }
+        }
+    }
 }
 
 val LocalHomeScroller = staticCompositionLocalOf<HomeScroller?> { null }
@@ -266,12 +291,5 @@ fun Modifier.pinToTop(): Modifier {
     val holder = remember { arrayOfNulls<LayoutCoordinates>(1) }
     return this
         .onGloballyPositioned { holder[0] = it }
-        .onFocusChanged { st ->
-            if (!st.hasFocus) return@onFocusChanged
-            val me = holder[0] ?: return@onFocusChanged
-            val viewport = scroller.viewport ?: return@onFocusChanged
-            if (!me.isAttached || !viewport.isAttached) return@onFocusChanged
-            val delta = viewport.localPositionOf(me, Offset.Zero).y
-            if (kotlin.math.abs(delta) > 1f) scroller.scope.launch { scroller.state.animateScrollBy(delta) }
-        }
+        .onFocusChanged { st -> if (st.hasFocus) scroller.pin(holder) }
 }
