@@ -66,7 +66,11 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         // VLC and the FFmpeg audio decoder both bring the C++ runtime.
-        jniLibs { pickFirsts += "**/libc++_shared.so" }
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+            // Compress the native libraries (VLC is large): less than half the download size.
+            useLegacyPackaging = true
+        }
     }
     lint {
         abortOnError = false
