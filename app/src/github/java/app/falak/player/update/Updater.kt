@@ -26,7 +26,7 @@ class UpdateInfo(
 
 /**
  * One-tap updates for sideloaded builds: reads the latest GitHub release of this app's repo
- * (tag "build-N", N = versionCode) and installs its APK. Disabled in the Google Play build.
+ * (tag "build-N", N = versionCode) and installs its APK. GitHub build only (the Play build has a stub).
  */
 object Updater {
     val enabled: Boolean get() = BuildConfig.SELF_UPDATE
