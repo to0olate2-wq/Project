@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -158,6 +159,19 @@ class XtreamApi(
     }
 
     companion object {
+        /** Splits http://host:port/get.php?username=U&password=P… into (server, user, pass). */
+        fun fromM3uLink(link: String): Triple<String, String, String>? {
+            val url = link.trim().toHttpUrlOrNull() ?: return null
+            if (!url.encodedPath.endsWith("/get.php")) return null
+            val user = url.queryParameter("username")?.takeIf { it.isNotBlank() } ?: return null
+            val pass = url.queryParameter("password")?.takeIf { it.isNotBlank() } ?: return null
+            val server = url.newBuilder()
+                .encodedPath(url.encodedPath.removeSuffix("get.php"))
+                .query(null)
+                .build().toString().trimEnd('/')
+            return Triple(server, user, pass)
+        }
+
         fun normalize(server: String): String {
             var s = server.trim()
             if (!s.startsWith("http://", true) && !s.startsWith("https://", true)) s = "http://$s"

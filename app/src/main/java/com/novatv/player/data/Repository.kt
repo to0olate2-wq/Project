@@ -106,17 +106,7 @@ class Repository(private val context: Context) {
             }
         }
         val result = when (p.type) {
-            SourceType.M3U_URL -> {
-                val req = Request.Builder().url(p.url.trim())
-                    .header("User-Agent", p.userAgent.ifBlank { DEFAULT_UA })
-                    .build()
-                http.newCall(req).execute().use { res ->
-                    if (!res.isSuccessful) throw IOException("Playlist download failed (HTTP ${res.code})")
-                    val body = res.body ?: throw IOException("Empty playlist")
-                    val parsed = M3uParser.parse(body.charStream().buffered())
-                    PlaylistCache(parsed.channels, parsed.epgUrl)
-                }
-            }
+            SourceType.M3U_URL -> loadXtreamStyleLink(p) ?: downloadM3u(p)
             SourceType.M3U_FILE -> {
                 val parsed = M3uParser.parse(File(p.url).bufferedReader())
                 PlaylistCache(parsed.channels, parsed.epgUrl)
@@ -129,6 +119,44 @@ class Repository(private val context: Context) {
         if (result.channels.isEmpty()) throw IOException("No channels found in this playlist")
         file.writeText(json.encodeToString(PlaylistCache.serializer(), result))
         result
+    }
+
+    /**
+     * Most provider links look like http://host:port/get.php?username=…&password=….
+     * Many providers block get.php downloads (e.g. HTTP 884), so load those through the
+     * Xtream API instead. Returns null when the link isn't that kind or the API doesn't answer.
+     */
+    private fun loadXtreamStyleLink(p: Playlist): PlaylistCache? {
+        val (server, user, pass) = XtreamApi.fromM3uLink(p.url) ?: return null
+        return try {
+            val api = XtreamApi(http, server, user, pass, p.userAgent)
+            val list = api.loadAll()
+            if (list.isEmpty()) null else PlaylistCache(list, api.epgUrl)
+        } catch (e: Exception) {
+            null // fall back to downloading the M3U file
+        }
+    }
+
+    /** Downloads an M3U file, retrying with other common player User-Agents if the provider refuses. */
+    private fun downloadM3u(p: Playlist): PlaylistCache {
+        val agents = if (p.userAgent.isNotBlank()) listOf(p.userAgent) else FALLBACK_UAS
+        var lastCode = 0
+        for (ua in agents) {
+            val req = Request.Builder().url(p.url.trim()).header("User-Agent", ua).build()
+            http.newCall(req).execute().use { res ->
+                if (res.isSuccessful) {
+                    val body = res.body ?: throw IOException("Empty playlist")
+                    val parsed = M3uParser.parse(body.charStream().buffered())
+                    return PlaylistCache(parsed.channels, parsed.epgUrl)
+                }
+                lastCode = res.code
+            }
+        }
+        throw IOException(
+            if (lastCode == 404) "Playlist not found (HTTP 404). Check the link."
+            else "Your provider refused the playlist download (HTTP $lastCode). " +
+                "Try adding it with the Xtream option, or check the subscription is active."
+        )
     }
 
     suspend fun loadEpg(url: String, channels: List<Channel>, userAgent: String) = withContext(Dispatchers.IO) {
@@ -153,6 +181,12 @@ class Repository(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_UA = "NovaTV/1.0 (Linux; Android)"
+        /** A widely accepted player User-Agent; many providers reject unknown apps. */
+        const val DEFAULT_UA = "VLC/3.0.20 LibVLC/3.0.20"
+        private val FALLBACK_UAS = listOf(
+            DEFAULT_UA,
+            "IPTVSmartersPro",
+            "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36",
+        )
     }
 }
