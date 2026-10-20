@@ -7,13 +7,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+@OptIn(ExperimentalSerializationApi::class)
 class Repository(private val context: Context) {
 
     val http: OkHttpClient = OkHttpClient.Builder()
@@ -35,6 +39,13 @@ class Repository(private val context: Context) {
     /** Set right before opening the player: the list to zap through and where it came from. */
     @Volatile var playQueue: List<Channel> = emptyList()
     @Volatile var currentPlaylist: Playlist? = null
+
+    /** Returns (and clears) the crash saved by NovaApp on the previous run, if any. */
+    fun takeCrashReport(): String? {
+        val f = File(context.filesDir, CRASH_FILE)
+        if (!f.exists()) return null
+        return try { f.readText() } catch (e: Exception) { null } finally { f.delete() }
+    }
 
     // ---- saved state (playlists, favorites, recents) ----
 
@@ -100,7 +111,9 @@ class Repository(private val context: Context) {
         val file = File(cacheDir, "${p.id}.json")
         if (!refresh && file.exists()) {
             try {
-                return@withContext json.decodeFromString(PlaylistCache.serializer(), file.readText())
+                return@withContext file.inputStream().buffered().use {
+                    json.decodeFromStream(PlaylistCache.serializer(), it)
+                }
             } catch (e: Exception) {
                 // fall through and download again
             }
@@ -117,7 +130,12 @@ class Repository(private val context: Context) {
             }
         }
         if (result.channels.isEmpty()) throw IOException("No channels found in this playlist")
-        file.writeText(json.encodeToString(PlaylistCache.serializer(), result))
+        // Stream to disk: building one huge string for big providers can run out of memory.
+        try {
+            file.outputStream().buffered().use { json.encodeToStream(PlaylistCache.serializer(), result, it) }
+        } catch (e: Throwable) {
+            file.delete() // the cache is only a speed-up
+        }
         result
     }
 
@@ -182,6 +200,7 @@ class Repository(private val context: Context) {
 
     companion object {
         /** A widely accepted player User-Agent; many providers reject unknown apps. */
+        const val CRASH_FILE = "last_crash.txt"
         const val DEFAULT_UA = "VLC/3.0.20 LibVLC/3.0.20"
         private val FALLBACK_UAS = listOf(
             DEFAULT_UA,

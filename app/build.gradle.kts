@@ -15,8 +15,8 @@ android {
         applicationId = "com.novatv.player"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     // Fixed signing key so each new build installs as an update over the previous one.
@@ -40,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }

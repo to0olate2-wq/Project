@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
@@ -84,6 +89,7 @@ class MainActivity : ComponentActivity() {
                             Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
                         }
                     }
+                    vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
                 }
             }
         }
@@ -94,6 +100,31 @@ class MainActivity : ComponentActivity() {
         val index = list.indexOf(channel).coerceAtLeast(0)
         startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, index))
     }
+}
+
+@Composable
+private fun CrashDialog(report: String, onClose: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Nova TV stopped last time") },
+        text = {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                Text(
+                    "Tap Copy and paste this to Claude so it can be fixed.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                SelectionContainer {
+                    Text(report, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { clipboard.setText(AnnotatedString(report)); onClose() }) { Text("Copy") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 @Composable

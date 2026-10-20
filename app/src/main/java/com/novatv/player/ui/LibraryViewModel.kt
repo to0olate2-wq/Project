@@ -46,12 +46,19 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var group by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
 
+    /** Crash details from the previous run, shown once so the user can copy them. */
+    var crashReport by mutableStateOf<String?>(null)
+
     private var loadJob: Job? = null
     private var loadToken = Any()
 
     init {
+        crashReport = repo.takeCrashReport()
         val s = state.value
-        s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
+        // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
+        if (crashReport == null) {
+            s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
+        }
     }
 
     fun open(p: Playlist, refresh: Boolean = false) {
@@ -89,6 +96,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 error = e.message ?: e.toString()
+            } catch (e: OutOfMemoryError) {
+                channels = emptyList()
+                error = "This playlist is too large for this device's memory."
             } finally {
                 if (loadToken === token) loading = false
             }
