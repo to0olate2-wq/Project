@@ -94,6 +94,7 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INDEX = "index"
+        private const val SEEK_STEP_MS = 10_000L
 
         /** Automatic mode: items ExoPlayer couldn't open this session; they go straight to VLC. */
         private val needsVlc = HashSet<String>()
@@ -105,6 +106,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var bannerView: TextView
     private lateinit var messageView: TextView
+    private lateinit var seekView: TextView
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
     private lateinit var ccButton: TextView
@@ -246,6 +248,81 @@ class PlayerActivity : ComponentActivity() {
                 toolbar.visibility = if (inPip) View.GONE else visibility
             },
         )
+        // Seek bar: 10 seconds per press of the remote (Media3's default is 1/20 of the film).
+        playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
+            ?.setKeyTimeIncrement(SEEK_STEP_MS)
+
+        // "+30s · 12:30 / 1:45:00" while seeking with the remote or by double-tapping.
+        seekView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            gravity = Gravity.CENTER
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_semibold)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(0xD9111010.toInt())
+            }
+            setPadding(dp(26), dp(14), dp(26), dp(14))
+            visibility = View.GONE
+        }
+        root.addView(
+            seekView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
+        )
+
+        // Touch: double-tap the left or right side to jump 10 s (films and episodes); single tap shows the controls.
+        val gestures = android.view.GestureDetector(
+            this,
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: android.view.MotionEvent): Boolean {
+                    swipeStart = -1L
+                    return true
+                }
+
+                // Sliding a finger sideways across the picture scrubs precisely: one screen width ≈ 3 minutes.
+                override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                    val start = e1 ?: return false
+                    val dx = e2.x - start.x
+                    if (!canSeek() || kotlin.math.abs(dx) < kotlin.math.abs(e2.y - start.y) || kotlin.math.abs(dx) < dp(24)) return false
+                    val p = player ?: return false
+                    if (swipeStart < 0) swipeStart = pendingSeek ?: p.currentPosition
+                    val offset = (dx / playerView.width.coerceAtLeast(1) * 180_000f).toLong()
+                    showSeekTarget(swipeStart, swipeStart + offset, commitDelayMs = -1)
+                    return true
+                }
+
+                override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
+                    if (canSeek()) return false // wait: it may be the first tap of a double tap
+                    toggleControls()
+                    return true
+                }
+
+                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    if (canSeek()) toggleControls()
+                    return true
+                }
+
+                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                    if (!canSeek()) return false
+                    val w = playerView.width.coerceAtLeast(1)
+                    when {
+                        e.x < w / 3f -> seekBy(-SEEK_STEP_MS)
+                        e.x > w * 2 / 3f -> seekBy(SEEK_STEP_MS)
+                        else -> toggleControls()
+                    }
+                    return true
+                }
+            },
+        )
+        playerView.setOnTouchListener { _, e ->
+            gestures.onTouchEvent(e)
+            if ((e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) && swipeStart >= 0) {
+                swipeStart = -1L
+                handler.removeCallbacks(commitSeek)
+                handler.post(commitSeek)
+            }
+            true
+        }
 
         browserView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -253,7 +330,7 @@ class PlayerActivity : ComponentActivity() {
             setContent {
                 val app by repo.state.collectAsState()
                 val epg by repo.epg.collectAsState()
-                FalakTheme(app.settings.theme) {
+                FalakTheme(app.settings.theme, app.settings.layout) {
                     ChannelBrowser(
                         open = browserOpen,
                         groups = browserGroups,
@@ -358,6 +435,8 @@ class PlayerActivity : ComponentActivity() {
         val builder = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(audio, true)
             .setHandleAudioBecomingNoisy(true)
+            .setSeekBackIncrementMs(SEEK_STEP_MS)
+            .setSeekForwardIncrementMs(SEEK_STEP_MS)
         if (s.bigBuffer) {
             builder.setLoadControl(
                 DefaultLoadControl.Builder()
@@ -750,6 +829,20 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_UP -> if (live && !controlsShown) { zap(1); return true }
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (live && !controlsShown) { zap(-1); return true }
+                // Films and episodes: left/right jump 10 s per press, faster while held; the jump
+                // happens once you stop pressing, so it is quick and precise.
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> if (!controlsShown && canSeek()) {
+                    val dir = if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
+                    val step = when {
+                        event.repeatCount < 8 -> SEEK_STEP_MS
+                        event.repeatCount < 24 -> 30_000L
+                        else -> 60_000L
+                    }
+                    seekBy(dir * step)
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (canSeek()) { seekBy(30_000L); return true }
+                KeyEvent.KEYCODE_MEDIA_REWIND -> if (canSeek()) { seekBy(-30_000L); return true }
                 KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> {
                     queue.getOrNull(index)?.let { showBanner(it) }
                     return true
@@ -761,7 +854,80 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
+        // The key-up of a seek press must not pop up the controls.
+        if (event.action == KeyEvent.ACTION_UP && pendingSeek != null &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+        ) {
+            return true
+        }
         return playerView.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    }
+
+    // ---- precise seeking ----
+
+    /** Where the pending jump will land; several presses add up before seeking once. */
+    private var pendingSeek: Long? = null
+    private val commitSeek = Runnable {
+        val target = pendingSeek
+        pendingSeek = null
+        if (target != null) player?.seekTo(target)
+        handler.postDelayed(hideSeek, 900)
+    }
+    private val hideSeek = Runnable { if (pendingSeek == null) seekView.visibility = View.GONE }
+    private var seekFrom = 0L
+
+    /** Films, episodes and replays that know their length can be sought; live TV can't. */
+    private fun canSeek(): Boolean {
+        val p = player ?: return false
+        return p.duration > 0 && p.isCurrentMediaItemSeekable && !inPip
+    }
+
+    /** Finger position when a sideways swipe started (−1 = not swiping). */
+    private var swipeStart = -1L
+
+    private fun seekBy(deltaMs: Long) {
+        val p = player ?: return
+        val from = if (pendingSeek == null) p.currentPosition else seekFrom
+        showSeekTarget(from, (pendingSeek ?: p.currentPosition) + deltaMs, commitDelayMs = 650)
+    }
+
+    /** Shows where a jump will land; it is made [commitDelayMs] after the last change (−1: on release). */
+    private fun showSeekTarget(from: Long, wanted: Long, commitDelayMs: Long) {
+        val p = player ?: return
+        val duration = p.duration.takeIf { it > 0 } ?: return
+        seekFrom = from
+        val target = wanted.coerceIn(0L, (duration - 1_000).coerceAtLeast(0L))
+        pendingSeek = target
+        val diff = (target - from) / 1000
+        val sign = if (diff >= 0) "+" else "−"
+        val arrow = if (diff >= 0) "⏩" else "⏪"
+        seekView.text = "$arrow  $sign${clock(kotlin.math.abs(diff) * 1000, short = true)}   ·   ${clock(target)} / ${clock(duration)}"
+        seekView.visibility = View.VISIBLE
+        handler.removeCallbacks(hideSeek)
+        handler.removeCallbacks(commitSeek)
+        if (commitDelayMs >= 0) handler.postDelayed(commitSeek, commitDelayMs)
+    }
+
+    private fun toggleControls() {
+        if (inPip) return
+        if (playerView.isControllerFullyVisible) playerView.hideController() else playerView.showController()
+    }
+
+    /** 1:05:09, 4:07, or with [short] "45s" / "2m 30s". */
+    private fun clock(ms: Long, short: Boolean = false): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val sec = total % 60
+        if (short) {
+            return when {
+                total < 60 -> "${sec}s"
+                h == 0L -> if (sec == 0L) "${m}m" else "${m}m ${sec}s"
+                else -> "${h}h ${m}m"
+            }
+        }
+        return if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, sec)
+        else String.format(java.util.Locale.US, "%d:%02d", m, sec)
     }
 
     // ---- picture-in-picture ----

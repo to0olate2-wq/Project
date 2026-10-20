@@ -24,6 +24,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.sp
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             val theme = state.settings.theme
-            FalakTheme(theme) {
+            FalakTheme(theme, state.settings.layout) {
                 // Status-bar icons follow the theme (dark icons on the light theme).
                 val dark = LocalPalette.current.dark
                 LaunchedEffect(dark) {
@@ -260,6 +261,7 @@ private fun CrashDialog(report: String, onClose: () -> Unit) {
 private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     var adding by remember { mutableStateOf(state.playlists.isEmpty()) }
     var toDelete by remember { mutableStateOf<Playlist?>(null) }
+    var toRename by remember { mutableStateOf<Playlist?>(null) }
     val tv = isTv()
 
     BackHandler(enabled = vm.playlist != null) { vm.screen = Screen.LIBRARY }
@@ -333,9 +335,10 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                                 Spacer(Modifier.width(6.dp))
                                 Text("Open now", fontFamily = Sans, fontSize = 12.sp, color = Muted)
                             }
-                        } else if (p.type == SourceType.XTREAM) {
-                            Text(p.username, fontFamily = Sans, fontSize = 12.sp, color = Faint)
                         }
+                    }
+                    IconButton(onClick = { toRename = p }) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Rename", tint = Faint)
                     }
                     IconButton(onClick = { toDelete = p }) {
                         Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = Faint)
@@ -343,10 +346,34 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                 }
                 Rule()
             }
+            item(key = "__credit") {
+                Text(
+                    "Made by Ahmed",
+                    fontFamily = Serif,
+                    fontStyle = FontStyle.Italic,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    color = Faint,
+                    modifier = Modifier.padding(top = 28.dp, bottom = 12.dp),
+                )
+            }
         }
     }
 
     if (adding) AddPlaylistDialog(vm) { adding = false }
+
+    toRename?.let { p ->
+        var name by remember(p.id) { mutableStateOf(p.name) }
+        AlertDialog(
+            onDismissRequest = { toRename = null },
+            title = { Text("Rename playlist") },
+            text = { Field(name, { name = it }, "Name") },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = { vm.renamePlaylist(p, name); toRename = null }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { toRename = null }) { Text("Cancel") } },
+        )
+    }
 
     toDelete?.let { p ->
         AlertDialog(

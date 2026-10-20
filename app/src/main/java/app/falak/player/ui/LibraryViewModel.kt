@@ -262,7 +262,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: e.toString()
+                error = app.falak.player.data.hideAddresses(e.message ?: e.toString(), p.url, p.epgUrl)
             } catch (e: OutOfMemoryError) {
                 channels = emptyList()
                 error = "This playlist is too large for this device's memory."
@@ -335,12 +335,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val p = when (type) {
             SourceType.M3U_URL -> {
                 require(url.isNotBlank()) { "Enter the playlist link" }
-                Playlist(id, name.ifBlank { hostOf(url) }, type, url.trim(), epgUrl = epg, userAgent = ua)
+                Playlist(id, name.trim().ifBlank { nextPlaylistName() }, type, url.trim(), epgUrl = epg, userAgent = ua)
             }
             SourceType.M3U_FILE -> {
                 requireNotNull(file) { "Choose a playlist file" }
                 val path = repo.importFile(file, id)
-                Playlist(id, name.ifBlank { "Local playlist" }, type, path, epgUrl = epg, userAgent = ua)
+                Playlist(id, name.trim().ifBlank { nextPlaylistName() }, type, path, epgUrl = epg, userAgent = ua)
             }
             SourceType.XTREAM -> {
                 require(url.isNotBlank() && user.isNotBlank() && pass.isNotBlank()) {
@@ -348,7 +348,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val server = XtreamApi.normalize(url)
                 repo.xtreamLogin(server, user.trim(), pass.trim(), ua)
-                Playlist(id, name.ifBlank { hostOf(server) }, type, server, user.trim(), pass.trim(), epg, ua)
+                Playlist(id, name.trim().ifBlank { nextPlaylistName() }, type, server, user.trim(), pass.trim(), epg, ua)
             }
         }
         repo.addPlaylist(p)
@@ -357,7 +357,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        e.message ?: "Something went wrong"
+        app.falak.player.data.hideAddresses(e.message ?: "Something went wrong", url)
     }
 
     // ---- TV guide ----
@@ -391,7 +391,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                guideStatus = "Guide failed to load: ${e.message}"
+                guideStatus = "Guide failed to load: " + app.falak.player.data.hideAddresses(e.message.orEmpty(), p0.url, p0.epgUrl, providerEpg)
             } catch (e: OutOfMemoryError) {
                 repo.clearEpg()
                 guideStatus = "The guide is too large for this device. Remove some guide sources."
@@ -625,13 +625,51 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun hostOf(url: String): String = try {
-        java.net.URI(url.trim()).host ?: "Playlist"
+        java.net.URI(url.trim()).host ?: ""
     } catch (e: Exception) {
-        "Playlist"
+        ""
+    }
+
+    /** "Playlist 1", "Playlist 2"…: playlists are never named after their server's address. */
+    private fun nextPlaylistName(): String {
+        val taken = state.value.playlists.map { it.name }.toSet()
+        var n = 1
+        while ("Playlist $n" in taken) n++
+        return "Playlist $n"
+    }
+
+    fun renamePlaylist(p: Playlist, name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty() || clean == p.name) return
+        val renamed = p.copy(name = clean)
+        repo.updatePlaylist(renamed)
+        if (playlist?.id == p.id) playlist = renamed
+    }
+
+    /** Older versions named unnamed playlists after the server: rename those once. */
+    private fun renameAddressNamedPlaylists() {
+        val s = state.value
+        if (s.playlists.none { it.name == hostOf(it.url) || app.falak.player.data.looksLikeAddress(it.name) }) return
+        repo.update { st ->
+            val taken = HashSet<String>()
+            var n = 1
+            st.copy(
+                playlists = st.playlists.map { p ->
+                    if (p.name == hostOf(p.url) || app.falak.player.data.looksLikeAddress(p.name)) {
+                        while ("Playlist $n" in taken || st.playlists.any { it.name == "Playlist $n" }) n++
+                        taken += "Playlist $n"
+                        p.copy(name = "Playlist $n")
+                    } else {
+                        p
+                    }
+                },
+            )
+        }
     }
 
     // Runs last, after every property above exists (opening a playlist touches many of them).
     init {
+        renameAddressNamedPlaylists()
         crashReport = repo.takeCrashReport()
         val s = state.value
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).

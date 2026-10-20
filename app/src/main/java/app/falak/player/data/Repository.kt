@@ -389,7 +389,7 @@ class Repository(private val context: Context) {
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    failed += host
+                    failed += if (url == providerUrl.trim()) "provider guide" else sourceLabel(url)
                 }
                 setRawGuide(HashMap(merged)) // show what we have so far
                 publishGuide(p.epgShiftMinutes)
@@ -460,10 +460,9 @@ class Repository(private val context: Context) {
     companion object {
         /** "epgshare01.online/…/epg_ripper_UK1.xml.gz" → "UK1 · epgshare01.online" */
         fun sourceLabel(url: String): String {
-            val host = url.substringAfter("://").substringBefore('/').removePrefix("www.")
-            val file = url.substringAfterLast('/').substringBefore('?')
-                .removePrefix("epg_ripper_").removeSuffix(".gz").removeSuffix(".xml")
-            return if (file.isNotBlank() && file.length <= 24 && !file.contains("xmltv.php")) "$file · $host" else host
+            GUIDE_SOURCES.firstOrNull { it.url == url }?.let { return it.name }
+            if (url.contains("xmltv.php")) return "Provider guide"
+            return "Guide · ${maskHost(url)}" // never show a server's full address
         }
 
 

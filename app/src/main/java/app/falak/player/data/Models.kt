@@ -256,6 +256,8 @@ data class Settings(
     val hiddenGroups: Map<String, List<String>> = emptyMap(),
     /** Index into the theme list (Screening room, Midnight, Pure black, Emerald, Daylight). */
     val theme: Int = 0,
+    /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */
+    val layout: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
     val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */
@@ -323,4 +325,32 @@ fun ensureUniqueIds(list: List<Channel>): List<Channel> {
         out.add(ch.copy(id = "${ch.id}_$n"))
     }
     return out ?: list
+}
+
+/** "tv.example.com" → "tv•••.com": enough to recognise, without showing the server's address. */
+fun maskHost(host: String): String {
+    val h = host.substringAfter("://").substringBefore('/').substringBefore(':').trim()
+    if (h.isEmpty()) return "•••"
+    val isIp = h.all { it.isDigit() || it == '.' }
+    val tld = h.substringAfterLast('.', "")
+    return if (isIp || tld.isEmpty() || tld == h) h.take(2) + "•••" else h.take(2) + "•••." + tld
+}
+
+private val URL_IN_TEXT = Regex("(?i)\\b(?:https?|rtmp|rtsp|udp)://[^\\s\"')]+")
+
+/** Removes server addresses from a message before it is shown (errors can contain links or hosts). */
+fun hideAddresses(text: String, vararg urls: String): String {
+    var t = URL_IN_TEXT.replace(text) { maskHost(it.value) }
+    for (u in urls) {
+        val host = u.substringAfter("://").substringBefore('/').substringBefore(':').trim()
+        if (host.length >= 4) t = t.replace(host, maskHost(host), ignoreCase = true)
+    }
+    return t
+}
+
+/** True for names that are really a server address (older versions named playlists after the host). */
+fun looksLikeAddress(name: String): Boolean {
+    val n = name.trim().lowercase()
+    if (n.contains("://")) return true
+    return Regex("^[a-z0-9-]+(\\.[a-z0-9-]+)+(:\\d+)?$").matches(n) && n.any { it == '.' }
 }

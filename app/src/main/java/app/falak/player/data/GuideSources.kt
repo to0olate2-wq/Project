@@ -75,4 +75,5 @@ fun suggestGuides(live: List<Channel>, existing: List<String>): List<GuideSugges
 }
 
 /** Friendly name for a guide link: the source's name if it's one of ours. */
-fun guideSourceName(url: String): String = GUIDE_SOURCES.firstOrNull { it.url == url }?.name ?: url
+fun guideSourceName(url: String): String =
+    GUIDE_SOURCES.firstOrNull { it.url == url }?.name ?: "Your guide link · ${maskHost(url)}"

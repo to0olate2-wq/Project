@@ -295,7 +295,9 @@ private fun FeatureCarousel(
     val context = LocalContext.current
 
     BoxWithConstraints(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
-        val height = (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
+        // Phone layout: a tall poster card; TV (and wide tablets): a wide cinema banner.
+        val compact = !tv && maxWidth < 600.dp
+        val height = if (compact) (maxWidth * 1.15f).coerceIn(320.dp, 560.dp) else (maxWidth * 0.52f).coerceIn(250.dp, 440.dp)
         Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp)).background(Ink2)) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 val item = items[page % size]
@@ -339,10 +341,13 @@ private fun FeatureCarousel(
                             model = item.logo,
                             contentDescription = item.name,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = if (tv) 48.dp else 18.dp, top = 18.dp, bottom = 18.dp)
-                                .fillMaxHeight()
+                            modifier = (
+                                if (compact) {
+                                    Modifier.align(Alignment.TopCenter).padding(top = 20.dp).fillMaxHeight(0.66f)
+                                } else {
+                                    Modifier.align(Alignment.CenterEnd).padding(end = if (tv) 48.dp else 18.dp, top = 18.dp, bottom = 18.dp).fillMaxHeight()
+                                }
+                                )
                                 .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
                                 .clip(RoundedCornerShape(8.dp))
                                 .graphicsLayer {
@@ -353,14 +358,18 @@ private fun FeatureCarousel(
                     }
                 }
             }
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.95f), 0.55f to Ink.copy(alpha = 0.65f), 1f to Color.Transparent)))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Ink.copy(alpha = 0.92f))))
+            if (compact) {
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 0.78f to Ink.copy(alpha = 0.85f), 1f to Ink)))
+            } else {
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.95f), 0.55f to Ink.copy(alpha = 0.65f), 1f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Ink.copy(alpha = 0.92f))))
+            }
 
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(if (tv) 0.55f else 0.62f)
-                    .padding(horizontal = 22.dp, vertical = 20.dp),
+                    .fillMaxWidth(if (compact) 1f else if (tv) 0.55f else 0.62f)
+                    .padding(horizontal = if (compact) 18.dp else 22.dp, vertical = if (compact) 16.dp else 20.dp),
             ) {
                 AnimatedContent(
                     targetState = current,

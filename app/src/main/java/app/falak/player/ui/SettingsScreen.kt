@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -87,7 +89,17 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
     BackHandler { back() }
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
+    val tvLayout = isTv()
+    // TV: a centred column of comfortable reading width; phone: the full width.
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    LazyColumn(
+        Modifier
+            .fillMaxHeight()
+            .then(if (tvLayout) Modifier.widthIn(max = 780.dp) else Modifier)
+            .fillMaxWidth()
+            .padding(horizontal = if (tvLayout) 24.dp else 16.dp),
+        contentPadding = PaddingValues(bottom = 32.dp),
+    ) {
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
@@ -100,6 +112,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
                 items(Palettes.indices.toList(), key = { it }) { i ->
                     ThemeCard(Palettes[i], selected = s.theme == i) { vm.updateSettings { it.copy(theme = i) } }
+                }
+            }
+        }
+
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val detected = remember(context) { detectTv(context) }
+            Column(Modifier.padding(top = 10.dp, bottom = 4.dp)) {
+                Text("Screen", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "TV: made for the remote, big screen and slideshow. Phone & tablet: made for touch.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TagChip("Automatic (${if (detected) "TV" else "phone"})", s.layout == "auto") { vm.updateSettings { it.copy(layout = "auto") } }
+                    TagChip("TV", s.layout == "tv") { vm.updateSettings { it.copy(layout = "tv") } }
+                    TagChip("Phone & tablet", s.layout == "phone") { vm.updateSettings { it.copy(layout = "phone") } }
                 }
             }
         }
@@ -329,12 +360,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("About") }
         item {
-            Text(
-                "The Player ${BuildConfig.VERSION_NAME} · uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL)",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 8.dp),
-            )
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
+                Text("The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 13.sp, color = Muted)
+                Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, color = Faint)
+            }
         }
+    }
     }
 
     pendingAction?.let { action ->

@@ -174,10 +174,16 @@ private val Type = Typography().let { t ->
 }
 
 @Composable
-fun FalakTheme(theme: Int = 0, content: @Composable () -> Unit) {
+fun FalakTheme(theme: Int = 0, layout: String = "auto", content: @Composable () -> Unit) {
     val palette = Palettes.getOrElse(theme) { Palettes[0] }
     val scheme = remember(palette) { schemeFor(palette) }
-    CompositionLocalProvider(LocalPalette provides palette) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tv = when (layout) {
+        "tv" -> true
+        "phone" -> false
+        else -> remember(context) { detectTv(context) }
+    }
+    CompositionLocalProvider(LocalPalette provides palette, LocalIsTv provides tv) {
         MaterialTheme(colorScheme = scheme, typography = Type) {
             // Text and icons without an explicit colour use the theme's text colour
             // (Compose's default is black, which disappeared on the dark themes).
@@ -189,10 +195,26 @@ fun FalakTheme(theme: Int = 0, content: @Composable () -> Unit) {
     }
 }
 
-/** True on Android TV / Google TV. */
+/** TV layout (remote control, big screen) or phone/tablet layout; see Settings → Appearance. */
+val LocalIsTv = staticCompositionLocalOf { false }
+
+/** True when the TV layout is in use (detected, or chosen in Settings). */
 @Composable
-fun isTv(): Boolean =
-    (LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+@ReadOnlyComposable
+fun isTv(): Boolean = LocalIsTv.current
+
+/**
+ * Many Android TV boxes don't report themselves as televisions, so also look for the TV
+ * launcher feature and for the absence of a touch screen.
+ */
+fun detectTv(context: android.content.Context): Boolean {
+    val mode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+    if (mode == Configuration.UI_MODE_TYPE_TELEVISION) return true
+    val pm = context.packageManager
+    return pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+        pm.hasSystemFeature("android.software.leanback_only") ||
+        !pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+}
 
 /** Quiet surface: a step lighter than the page, with a hairline edge. */
 @Composable
