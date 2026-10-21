@@ -32,6 +32,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -115,6 +116,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
     private lateinit var speedButton: TextView
+    private lateinit var favButton: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
 
@@ -234,6 +236,9 @@ class PlayerActivity : ComponentActivity() {
         // Channels / Audio / Subtitles / Picture size / Player: one tidy row on the bottom line of the
         // screen, under the seek bar, shown and hidden together with the player controls.
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
+        // Add what's playing to Favorites without leaving the player.
+        favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
+            .apply { visibility = View.GONE }
         audioButton = pill("Audio", R.drawable.ic_pl_audio) { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
         ccButton = pill("Subtitles", R.drawable.ic_pl_subtitles) { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
         aspectButton = pill(aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
@@ -249,7 +254,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(browseButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -365,6 +370,9 @@ class PlayerActivity : ComponentActivity() {
             setContent {
                 val app by repo.state.collectAsState()
                 val epg by repo.epg.collectAsState()
+                val favorites = remember(app.favorites) {
+                    repo.currentPlaylist?.let { app.favorites[it.id] }.orEmpty().toHashSet()
+                }
                 // Over the picture the channel list is always dark, whatever the time of day.
                 FalakTheme(dark = true, layout = app.settings.layout) {
                     ChannelBrowser(
@@ -373,6 +381,9 @@ class PlayerActivity : ComponentActivity() {
                         groups = browserGroups,
                         currentId = currentChannelId,
                         epg = epg,
+                        favorites = favorites,
+                        canFavorite = { canFavorite(it) },
+                        onFavorite = { toggleFavorite(it) },
                         onShowGroups = { setBrowserGroups(it) },
                         onPick = { list, ch -> pickFromBrowser(list, ch) },
                         onClose = { closeBrowser() },
@@ -406,11 +417,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        repo.playerOpen = true
         if (::playerView.isInitialized) initPlayer()
     }
 
     override fun onStop() {
         super.onStop()
+        repo.playerOpen = false
         if (::playerView.isInitialized) releasePlayer()
         // Closing the picture-in-picture window stops the activity: finish so it doesn't linger.
         if (inPip) finish()
@@ -608,6 +621,7 @@ class PlayerActivity : ComponentActivity() {
         val wanted = desiredEngine(ch)
         if (player == null || wanted != engine) startEngine(wanted)
         currentChannelId = ch.id
+        updateFavButton()
         // Remembered so the list can put the selection back on this item after the player closes.
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
         browseButton.text = when (ch.kind) {
@@ -1592,6 +1606,45 @@ class PlayerActivity : ComponentActivity() {
                 (v.parent as? View)?.background = focusBackground(oval = true)
             }
             is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
+        }
+    }
+
+    // ---- favorites ----
+
+    /** Channels, films and series of the open playlist can be favorites (not replays or single episodes). */
+    private fun canFavorite(ch: Channel): Boolean =
+        repo.currentPlaylist != null && !ch.id.startsWith("cu:") && repo.currentIndex.byId.containsKey(ch.id)
+
+    private fun isFavorite(ch: Channel): Boolean {
+        val pl = repo.currentPlaylist ?: return false
+        return ch.id in repo.state.value.favorites[pl.id].orEmpty()
+    }
+
+    private fun toggleFavorite(ch: Channel) {
+        val pl = repo.currentPlaylist ?: return
+        if (!canFavorite(ch)) return
+        val adding = !isFavorite(ch)
+        repo.toggleFavorite(pl.id, ch.id)
+        Toast.makeText(this, if (adding) "Added to Favorites" else "Removed from Favorites", Toast.LENGTH_SHORT).show()
+        updateFavButton()
+        // The browser's "★ Favorites" group follows at once.
+        if (browserOpen) queue.getOrNull(index)?.let { cur -> browserGroups = browserGroupsFor(cur) }
+    }
+
+    private fun updateFavButton() {
+        if (!::favButton.isInitialized) return
+        val ch = queue.getOrNull(index)
+        if (ch == null || !canFavorite(ch)) {
+            favButton.visibility = View.GONE
+            return
+        }
+        val fav = isFavorite(ch)
+        favButton.visibility = View.VISIBLE
+        favButton.text = if (fav) "Favorited" else "Favorite"
+        val size = dp(if (tvLayout) 20 else 18)
+        ResourcesCompat.getDrawable(resources, if (fav) R.drawable.ic_pl_star else R.drawable.ic_pl_star_outline, theme)?.mutate()?.let {
+            it.setBounds(0, 0, size, size)
+            favButton.setCompoundDrawablesRelative(it, null, null, null)
         }
     }
 

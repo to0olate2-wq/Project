@@ -126,6 +126,7 @@ fun PosterCard(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            val details = LocalCardDetails.current
             if (ch.isNew()) {
                 Text(
                     "NEW",
@@ -140,15 +141,29 @@ fun PosterCard(
                         .background(Signal, RoundedCornerShape(3.dp))
                         .padding(horizontal = 5.dp, vertical = 1.dp),
                 )
+            } else if (details) {
+                qualityTag(ch)?.let { CardBadge(it, Amber, Modifier.align(Alignment.TopStart).padding(7.dp)) }
             }
             if (watched != null && watched.dur > 0) {
                 EdgeProgress(watched.pos.toFloat() / watched.dur, Modifier.align(Alignment.BottomCenter))
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(ch.name, style = MaterialTheme.typography.bodySmall, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        ratingLabel(ch.rating)?.let {
-            Text(it, fontFamily = Sans, fontSize = 11.sp, color = Amber)
+        if (LocalCardDetails.current) {
+            // Sidebar look: title, then group on the left and rating on the right.
+            Text(ch.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(ch.group, fontFamily = Sans, fontSize = 11.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                ratingLabel(ch.rating)?.let {
+                    Spacer(Modifier.width(6.dp))
+                    Text(it, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Amber, maxLines = 1)
+                }
+            }
+        } else {
+            Text(ch.name, style = MaterialTheme.typography.bodySmall, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ratingLabel(ch.rating)?.let {
+                Text(it, fontFamily = Sans, fontSize = 11.sp, color = Amber)
+            }
         }
     }
 }
@@ -161,11 +176,11 @@ fun ChannelCard(
     current: Program?,
     now: Long,
     onClick: () -> Unit,
-    width: Dp = 200.dp,
+    width: Dp? = 200.dp,
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
-    Column(Modifier.width(width)) {
+    Column(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()

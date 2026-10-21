@@ -287,6 +287,10 @@ data class Settings(
     val darkFrom: Int = 18,
     /** …until this hour. */
     val lightFrom: Int = 6,
+    /** "classic" (tabs on top, slideshow) or "sidebar" (side menu, big continue cards, filter chips). */
+    val look: String = "classic",
+    /** Sidebar look: sections shown as a grid rather than a list. */
+    val gridSections: List<String> = listOf("MOVIES", "SERIES"),
     /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */
     val layout: String = "auto",
     /** Turn quiet channels up and loud ones down so every channel plays at a similar volume. */

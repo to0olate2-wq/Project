@@ -91,6 +91,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var error by mutableStateOf<String?>(null)
         private set
     var section by mutableStateOf(Section.HOME)
+
+    /** Sidebar look: show this section as a grid (else a list). Remembered in Settings. */
+    fun setGridView(s: Section, grid: Boolean) = repo.updateSettings { st ->
+        st.copy(gridSections = if (grid) (st.gridSections + s.name).distinct() else st.gridSections - s.name)
+    }
     var sort by mutableStateOf(Sort.DEFAULT)
 
     var details by mutableStateOf<Channel?>(null)
@@ -232,6 +237,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         screen = Screen.LIBRARY
         if (!refresh && playlist?.id == p.id && channels.isNotEmpty()) return
         loadJob?.cancel()
+        refreshJob?.cancel()
         if (playlist?.id != p.id) {
             channels = emptyList()
             index = LibraryIndex.EMPTY
@@ -263,7 +269,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 show(data)
                 if (loadToken === token) loading = false
                 loadGuide(force = refresh)
-                if (cached != null && isStale(cached.savedAt)) backgroundRefresh(p, token)
+                if (cached != null && isStale(cached.savedAt)) {
+                    refreshJob?.cancel()
+                    refreshJob = viewModelScope.launch { backgroundRefresh(p, token) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -313,6 +322,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         delay(20_000)
         guideJob?.join()
         if (loadToken !== token || playlist?.id != p.id) return
+        // Never while a film or channel plays: it would compete with the stream for memory and
+        // bandwidth. The next return to the app tries again.
+        if (repo.playerOpen) return
+        lastRefreshTry = System.currentTimeMillis()
         // A refresh needs room to work beside the list on screen; with little left (a very big
         // playlist and a film buffering), wait for the next time the app comes to the front.
         if (heapUsed() > 0.6 && withContext(Dispatchers.Default) { Runtime.getRuntime().gc(); heapUsed() } > 0.6) return
@@ -340,12 +353,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return (r.totalMemory() - r.freeMemory()).toDouble() / r.maxMemory()
     }
 
+    private var refreshJob: Job? = null
+    /** When a quiet refresh last ran (even if it failed): a failing provider isn't retried at every turn. */
+    private var lastRefreshTry = 0L
+
     /** Called when the app comes back to the front: refresh quietly if the playlist got old. */
     fun refreshIfStale() {
         val p = playlist ?: return
         if (loading || refreshing || loadedAt == 0L || !isStale(loadedAt)) return
+        if (refreshJob?.isActive == true) return // one at a time (it waits 20 s before starting)
+        if (System.currentTimeMillis() - lastRefreshTry < 30 * 60_000L) return
         val token = loadToken
-        viewModelScope.launch { backgroundRefresh(p, token) }
+        refreshJob = viewModelScope.launch { backgroundRefresh(p, token) }
     }
 
     /** Returns an error message, or null on success. */

@@ -141,7 +141,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val section = vm.section.takeIf { it in sections } ?: sections.firstOrNull() ?: Section.LIVE
     val kind = section.kind
     val showGroups = kind != null
-    val group = if (showGroups) vm.group else null
+    val sidebarLook = state.settings.look == "sidebar"
+    // The favorites filter chip only exists in the sidebar look.
+    val group = if (showGroups) vm.group?.takeIf { sidebarLook || it != FAV_FILTER } else null
     val q = vm.query.trim()
     val isVod = section == Section.MOVIES || section == Section.SERIES
     val sort = if (isVod) vm.sort else Sort.DEFAULT
@@ -155,10 +157,19 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val groupMap = remember(allGroups, hidden) { if (hidden.isEmpty()) allGroups else allGroups.filterKeys { it !in hidden } }
 
     // Filtering and sorting run on a background thread, so taps stay instant on big playlists.
-    val visible by produceState<List<Channel>?>(null, base, group, q, sort, excluded, groupMap) {
+    val favOfKind: List<Channel> = remember(favIds, index, kind) {
+        if (kind == null) emptyList() else favIds.mapNotNull { index.byId[it] }.filter { it.kind == kind }
+    }
+    val visibleTotal = remember(groupMap) { groupMap.values.sumOf { it.size } }
+    val gridView = section.name in state.settings.gridSections
+    val visible by produceState<List<Channel>?>(null, base, group, q, sort, excluded, groupMap, favOfKind) {
         if (q.isNotEmpty()) delay(160)
         value = withContext(Dispatchers.Default) {
-            val src = if (q.isEmpty() && group != null) groupMap[group].orEmpty() else base
+            val src = when {
+                q.isNotEmpty() || group == null -> base
+                group == FAV_FILTER -> favOfKind
+                else -> groupMap[group].orEmpty()
+            }
             val out = if (excluded.isEmpty() && q.isEmpty()) src else src.filter { ch ->
                 (excluded.isEmpty() || ch.group !in excluded) && (q.isEmpty() || ch.name.contains(q, ignoreCase = true))
             }
@@ -184,6 +195,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
+    // The sidebar look's search bar is always there: "searching" just means something is typed.
+    val searchOn = if (sidebarLook) vm.query.isNotEmpty() else searching
     val listState = vm.listStateFor(section)
     val gridState = vm.gridStateFor(section)
     LaunchedEffect(section, group, q, sort, savedList) {
@@ -204,7 +217,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             if (section != Section.HOME) vm.focusId = null
             return@LaunchedEffect
         }
-        if (isVod) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2).coerceAtLeast(0))
+        val usesGrid = if (sidebarLook) kind != null && gridView else isVod
+        if (usesGrid) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2).coerceAtLeast(0))
         delay(400)
         vm.focusId = null
     }
@@ -216,9 +230,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    BackHandler(enabled = searching || group != null || (section != Section.HOME && Section.HOME in sections)) {
+    BackHandler(enabled = searchOn || group != null || (section != Section.HOME && Section.HOME in sections)) {
         when {
-            searching -> {
+            searchOn -> {
                 searching = false
                 vm.query = ""
             }
@@ -228,157 +242,211 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     val tv = isTv()
-    Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
-        // Masthead
-        Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                Modifier
-                    .weight(1f)
-                    .focusRing(RoundedCornerShape(8.dp))
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { vm.screen = Screen.PLAYLISTS }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BrandMark(if (tv) 38.dp else 32.dp)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Wordmark(if (tv) 24 else 20)
-                    Text(
-                        "${p.name}  ⌄",
-                        fontFamily = Sans,
-                        fontSize = 12.sp,
-                        color = Faint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+
+    // Everything under the top bar: progress, errors, Home or the section's lists.
+    @Composable
+    fun Body(modifier: Modifier) {
+        Column(modifier) {
+            // Only a reload you asked for shows progress; the automatic one stays out of sight.
+            if (vm.loading && index.all.isNotEmpty()) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
             }
-            // The icons' touch areas reach past the page edge, so the last icon lines up with the content.
-            Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (tv) Clock(Modifier.padding(horizontal = 8.dp))
-                if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
-                    if (index.live.isNotEmpty()) {
-                        IconButton(onClick = { vm.screen = Screen.GUIDE }) {
-                            Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
+            vm.error?.takeIf { index.all.isNotEmpty() }?.let {
+                Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+
+            when {
+                vm.loading && index.all.isEmpty() -> Centered {
+                    CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
+                    Spacer(Modifier.height(14.dp))
+                    Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
+                    Text("Big playlists take a moment the first time.", fontSize = 13.sp, color = Muted)
+                }
+                vm.error != null && index.all.isEmpty() -> Centered {
+                    Text("Something went wrong", fontFamily = Serif, fontSize = 20.sp, color = Paper)
+                    Spacer(Modifier.height(6.dp))
+                    Text(vm.error.orEmpty(), color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
+                    Spacer(Modifier.height(16.dp))
+                    PaperButton("Try again") { vm.open(p, refresh = true) }
+                }
+                else -> AnimatedContent(
+                    targetState = section to (q.isEmpty()),
+                    transitionSpec = {
+                        if (tv) {
+                            // TV: one quick fade; the old page goes at once (no two full pages drawn together).
+                            fadeIn(tween(150)).togetherWith(ExitTransition.None)
+                        } else {
+                            (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(320)) { it / 40 })
+                                .togetherWith(fadeOut(tween(140)))
                         }
-                    }
-                }
-                IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
-                    Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
-                }
-                IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
-                }
-                IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
-                }
-            }
-        }
-
-        if (sections.size > 1) {
-            Spacer(Modifier.height(6.dp))
-            NavTabs(sections, section, onSelect = { s -> vm.section = s; vm.group = null }, large = tv)
-        }
-
-        AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            SearchField(vm.query, section.label) { vm.query = it }
-        }
-
-        if ((vm.loading || vm.refreshing) && index.all.isNotEmpty()) {
-            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
-        }
-        vm.error?.takeIf { index.all.isNotEmpty() }?.let {
-            Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-        }
-
-        when {
-            vm.loading && index.all.isEmpty() -> Centered {
-                CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
-                Spacer(Modifier.height(14.dp))
-                Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
-                Text("Big playlists take a moment the first time.", fontSize = 13.sp, color = Muted)
-            }
-            vm.error != null && index.all.isEmpty() -> Centered {
-                Text("Something went wrong", fontFamily = Serif, fontSize = 20.sp, color = Paper)
-                Spacer(Modifier.height(6.dp))
-                Text(vm.error.orEmpty(), color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
-                Spacer(Modifier.height(16.dp))
-                PaperButton("Try again") { vm.open(p, refresh = true) }
-            }
-            else -> AnimatedContent(
-                targetState = section to (q.isEmpty()),
-                transitionSpec = {
-                    if (tv) {
-                        // TV: one quick fade; the old page goes at once (no two full pages drawn together).
-                        fadeIn(tween(150)).togetherWith(ExitTransition.None)
+                    },
+                    label = "section",
+                    modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+                ) { (shown, noQuery) ->
+                    if (shown == Section.HOME && noQuery) {
+                        HomeContent(vm, state, excluded, epg, now, onPlay, sidebar = sidebarLook)
                     } else {
-                        (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(320)) { it / 40 })
-                            .togetherWith(fadeOut(tween(140)))
-                    }
-                },
-                label = "section",
-                modifier = Modifier.fillMaxSize().padding(top = 8.dp),
-            ) { (shown, noQuery) ->
-                if (shown == Section.HOME && noQuery) {
-                    HomeContent(vm, state, excluded, epg, now, onPlay)
-                } else {
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        val wide = maxWidth >= 720.dp
-                        val groupsVisible = showGroups && q.isEmpty() && groupMap.size > 1
-                        val content: @Composable (Modifier) -> Unit = { m ->
-                            when {
-                                visible == null -> Box(m)
-                                isVod -> Column(m) {
-                                    if (sorts.size > 1) {
-                                        Row(
-                                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
-                                        }
-                                    }
-                                    PosterGrid(
-                                        list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem,
-                                        { ch -> vm.listSheetFor = ch }, Modifier.weight(1f).fillMaxWidth(),
-                                    )
-                                }
-                                shown == Section.FAVORITES -> Column(m) {
-                                    if (noQuery) {
-                                        ListChips(lists, favIds.size, savedList, { vm.savedList = it }, { editList = it }) { newList = true }
-                                    }
-                                    ChannelList(
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val wide = maxWidth >= 720.dp
+                            val groupsVisible = showGroups && q.isEmpty() && groupMap.size > 1
+                            val content: @Composable (Modifier) -> Unit = { m ->
+                                when {
+                                    visible == null -> Box(m)
+                                    sidebarLook && shown.kind != null && !(shown.name in state.settings.gridSections) -> ChannelList(
                                         list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                         progress = state.progress, playlistId = p.id,
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
-                                        focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to add it to Favorites."
-                                        else "This list is empty. Long-press any channel, film or series and tick this list.",
+                                        focusId = focusId, modifier = m,
+                                    )
+                                    sidebarLook && shown == Section.LIVE -> ChannelGrid(
+                                        list, epg, now, vm.gridStateFor(shown), openItem, { ch -> vm.listSheetFor = ch }, m,
+                                    )
+                                    isVod -> Column(m) {
+                                        if (sorts.size > 1 && !sidebarLook) {
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
+                                            }
+                                        }
+                                        PosterGrid(
+                                            list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem,
+                                            { ch -> vm.listSheetFor = ch }, Modifier.weight(1f).fillMaxWidth(),
+                                        )
+                                    }
+                                    shown == Section.FAVORITES -> Column(m) {
+                                        if (noQuery) {
+                                            ListChips(lists, favIds.size, savedList, { vm.savedList = it }, { editList = it }) { newList = true }
+                                        }
+                                        ChannelList(
+                                            list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                            progress = state.progress, playlistId = p.id,
+                                            onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                            focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
+                                            emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to add it to Favorites."
+                                            else "This list is empty. Long-press any channel, film or series and tick this list.",
+                                        )
+                                    }
+                                    else -> ChannelList(
+                                        list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                        progress = state.progress, playlistId = p.id,
+                                        onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                        focusId = focusId, modifier = m,
                                     )
                                 }
-                                else -> ChannelList(
-                                    list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
-                                    progress = state.progress, playlistId = p.id,
-                                    onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
-                                    focusId = focusId, modifier = m,
-                                )
                             }
-                        }
-                        if (wide && groupsVisible) {
-                            Row(Modifier.fillMaxSize()) {
-                                GroupColumn(groupMap, base.size, group, locked, selectGroup, { groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
-                                Spacer(Modifier.width(20.dp))
-                                content(Modifier.weight(1f).fillMaxHeight())
-                            }
-                        } else {
-                            Column(Modifier.fillMaxSize()) {
-                                if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { groupMenu = it }) { vm.screen = Screen.GROUPS }
-                                content(Modifier.weight(1f).fillMaxWidth())
+                            if (sidebarLook) {
+                                // Sidebar look: a header with the count, sort and grid/list, then the
+                                // groups as chips with counts (the side menu already takes the left).
+                                Column(Modifier.fillMaxSize()) {
+                                    SectionHead(
+                                        title = when {
+                                            !noQuery -> "Results"
+                                            shown == Section.LIVE -> "All channels"
+                                            shown == Section.MOVIES -> "All films"
+                                            shown == Section.SERIES -> "All series"
+                                            shown == Section.RECENT -> "Recently watched"
+                                            else -> shown.label
+                                        },
+                                        count = list.size,
+                                        unit = when (shown) {
+                                            Section.LIVE -> if (list.size == 1) "channel" else "channels"
+                                            Section.MOVIES -> if (list.size == 1) "film" else "films"
+                                            Section.SERIES -> "series"
+                                            else -> if (list.size == 1) "item" else "items"
+                                        },
+                                        sorts = sorts,
+                                        sort = sort,
+                                        onSort = { vm.sort = it },
+                                        grid = if (shown.kind != null) (shown.name in state.settings.gridSections) else null,
+                                        onGrid = { vm.setGridView(shown, it) },
+                                    )
+                                    if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
+                                        FilterChips(groupMap, visibleTotal, favOfKind.size, group, locked, selectGroup, { groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    }
+                                    content(Modifier.weight(1f).fillMaxWidth())
+                                }
+                            } else if (wide && groupsVisible) {
+                                Row(Modifier.fillMaxSize()) {
+                                    GroupColumn(groupMap, base.size, group, locked, selectGroup, { groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
+                                    Spacer(Modifier.width(20.dp))
+                                    content(Modifier.weight(1f).fillMaxHeight())
+                                }
+                            } else {
+                                Column(Modifier.fillMaxSize()) {
+                                    if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    content(Modifier.weight(1f).fillMaxWidth())
+                                }
                             }
                         }
                     }
                 }
             }
+
+        }
+    }
+
+    if (sidebarLook) {
+        SidebarFrame(vm, state, p, sections, section, excluded, onPlay) { m -> Body(m) }
+    } else {
+        Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
+            // Masthead
+            Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .focusRing(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { vm.screen = Screen.PLAYLISTS }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BrandMark(if (tv) 38.dp else 32.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Wordmark(if (tv) 24 else 20)
+                        Text(
+                            "${p.name}  ⌄",
+                            fontFamily = Sans,
+                            fontSize = 12.sp,
+                            color = Faint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                // The icons' touch areas reach past the page edge, so the last icon lines up with the content.
+                Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (tv) Clock(Modifier.padding(horizontal = 8.dp))
+                    if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
+                        if (index.live.isNotEmpty()) {
+                            IconButton(onClick = { vm.screen = Screen.GUIDE }) {
+                                Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
+                            }
+                        }
+                    }
+                    IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
+                        Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
+                    }
+                    IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
+                    }
+                    IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
+                    }
+                }
+            }
+
+            if (sections.size > 1) {
+                Spacer(Modifier.height(6.dp))
+                NavTabs(sections, section, onSelect = { s -> vm.section = s; vm.group = null }, large = tv)
+            }
+
+            AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                SearchField(vm.query, section.label) { vm.query = it }
+            }
+            Body(Modifier.fillMaxSize())
         }
     }
 

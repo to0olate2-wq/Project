@@ -57,10 +57,19 @@ class Repository(private val context: Context) {
     /** Last channel/video shown in the player, so the lists can return to it. */
     @Volatile var lastPlayedId: String? = null
 
-    /** Returns (and clears) the crash saved by FalakApp on the previous run, if any. */
+    /** The player is on screen: heavy background work (playlist refresh) waits until it closes. */
+    @Volatile var playerOpen = false
+
+    /**
+     * Returns (and clears) the crash saved by FalakApp on the previous run, or else a report of a
+     * stop Android recorded that the app couldn't see itself (native crash, freeze, memory).
+     */
     fun takeCrashReport(): String? {
+        val header = "The Player ${app.falak.player.BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} " +
+            "(SDK ${android.os.Build.VERSION.SDK_INT}) · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n\n"
+        val unexpected = ExitReasons.takeUnexpected(context, header) // always read, so it's only shown once
         val f = File(context.filesDir, CRASH_FILE)
-        if (!f.exists()) return null
+        if (!f.exists()) return unexpected
         return try { f.readText() } catch (e: Exception) { null } finally { f.delete() }
     }
 

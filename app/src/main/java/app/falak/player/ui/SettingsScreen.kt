@@ -148,6 +148,27 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         item {
+            Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
+                Text("Look", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    if (s.look == "sidebar") "Side menu, big “Continue watching” cards, and each section as a grid with filters."
+                    else "Tabs along the top and a slideshow on Home.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LookOption("Classic", s.look != "sidebar", sidebar = false, Modifier.weight(1f)) {
+                        vm.updateSettings { it.copy(look = "classic") }
+                    }
+                    LookOption("Sidebar", s.look == "sidebar", sidebar = true, Modifier.weight(1f)) {
+                        vm.updateSettings { it.copy(look = "sidebar") }
+                    }
+                }
+            }
+        }
+
+        item {
             val context = androidx.compose.ui.platform.LocalContext.current
             val detected = remember(context) { detectTv(context) }
             Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
@@ -485,6 +506,70 @@ private fun ThemeOption(label: String, selected: Boolean, palettes: List<Palette
                             .size(8.dp)
                             .background(p.signal, androidx.compose.foundation.shape.CircleShape),
                     )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            label,
+            fontFamily = Sans,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) Paper else Muted,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 2.dp),
+        )
+    }
+}
+
+/** A look to pick, drawn as a tiny sketch of the screen. */
+@Composable
+private fun LookOption(label: String, selected: Boolean, sidebar: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    val line = Paper.copy(alpha = 0.22f)
+    val block = Paper.copy(alpha = 0.12f)
+    Column(
+        modifier
+            .focusRing(shape)
+            .clip(shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) Signal else Hairline, shape)
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(78.dp).clip(RoundedCornerShape(8.dp)).background(Ink).padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            if (sidebar) {
+                Column(Modifier.width(22.dp).fillMaxHeight().background(Ink3, RoundedCornerShape(3.dp)).padding(3.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.fillMaxWidth().height(3.dp).background(Signal, RoundedCornerShape(2.dp)))
+                    repeat(4) { Box(Modifier.fillMaxWidth().height(3.dp).background(line, RoundedCornerShape(2.dp))) }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.fillMaxWidth(0.7f).height(6.dp).background(block, RoundedCornerShape(3.dp)))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(2) { Box(Modifier.weight(1f).height(18.dp).background(line, RoundedCornerShape(3.dp))) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        repeat(4) { Box(Modifier.width(9.dp).height(4.dp).background(block, RoundedCornerShape(2.dp))) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(5) { Box(Modifier.weight(1f).height(22.dp).background(block, RoundedCornerShape(2.dp))) }
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.width(22.dp).height(5.dp).background(line, RoundedCornerShape(2.dp)))
+                        Box(Modifier.width(14.dp).height(5.dp).background(block, RoundedCornerShape(2.dp)))
+                        Box(Modifier.width(14.dp).height(5.dp).background(block, RoundedCornerShape(2.dp)))
+                    }
+                    Box(Modifier.fillMaxWidth().height(30.dp).background(line, RoundedCornerShape(3.dp))) {
+                        Box(Modifier.align(Alignment.BottomStart).padding(4.dp).width(20.dp).height(4.dp).background(Signal, RoundedCornerShape(2.dp)))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(4) { Box(Modifier.weight(1f).height(18.dp).background(block, RoundedCornerShape(2.dp))) }
+                    }
                 }
             }
         }

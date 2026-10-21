@@ -163,10 +163,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Set when we open the player, so coming back from it isn't taken for a return to the app. */
+    private var fromPlayer = false
+
     override fun onResume() {
         super.onResume()
         vm.onReturnFromPlayer()
-        vm.refreshIfStale()
+        // Leaving a film or channel must not start a playlist reload: only a return to the app
+        // from elsewhere (it may have sat in the background for hours) checks for a stale playlist.
+        if (fromPlayer) fromPlayer = false else vm.refreshIfStale()
     }
 
     /** How deep a page sits, so transitions know which way to slide. */
@@ -193,6 +198,7 @@ class MainActivity : ComponentActivity() {
                 android.widget.Toast.makeText(this, "No other video player is installed; using the built-in one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
+        fromPlayer = true
         startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, index))
     }
 }

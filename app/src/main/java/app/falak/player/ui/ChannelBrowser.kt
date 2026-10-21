@@ -12,6 +12,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -87,12 +90,16 @@ object BrowserLayout {
  * plays it there; picking the channel that is already playing goes back to full screen.
  */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun ChannelBrowser(
     open: Boolean,
     showGroups: Boolean,
     groups: Map<String, List<Channel>>,
     currentId: String?,
     epg: Map<String, List<Program>>,
+    favorites: Set<String> = emptySet(),
+    canFavorite: (Channel) -> Boolean = { false },
+    onFavorite: (Channel) -> Unit = {},
     onShowGroups: (Boolean) -> Unit,
     onPick: (List<Channel>, Channel) -> Unit,
     onClose: () -> Unit,
@@ -282,7 +289,11 @@ fun ChannelBrowser(
                                         },
                                     )
                                     .rowFocus(shape, if (playing) Signal.copy(alpha = 0.16f) else Color.Transparent)
-                                    .clickable { onPick(channels, ch) }
+                                    // Hold OK (or long-press) to add or remove it from Favorites.
+                                    .combinedClickable(
+                                        onClick = { onPick(channels, ch) },
+                                        onLongClick = { if (canFavorite(ch)) onFavorite(ch) },
+                                    )
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -324,6 +335,25 @@ fun ChannelBrowser(
                                 if (playing) {
                                     Spacer(Modifier.width(8.dp))
                                     LiveDot(7.dp)
+                                }
+                                if (canFavorite(ch)) {
+                                    // Its own stop for the remote: right from the row, then OK.
+                                    val fav = ch.id in favorites
+                                    Spacer(Modifier.width(4.dp))
+                                    Box(
+                                        Modifier
+                                            .size(36.dp)
+                                            .rowFocus(CircleShape, Color.Transparent)
+                                            .clickable { onFavorite(ch) },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Star,
+                                            contentDescription = if (fav) "Remove from Favorites" else "Add to Favorites",
+                                            tint = if (fav) Amber else Faint.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
                                 }
                             }
                         }

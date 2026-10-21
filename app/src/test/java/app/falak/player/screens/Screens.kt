@@ -65,9 +65,11 @@ abstract class ScreenshotBase {
         layout: String,
         theme: String = "dark",
         hidden: List<String> = emptyList(),
+        look: String = "classic",
+        watching: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden)
+        seed(layout, theme, hidden, look, watching)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -91,7 +93,13 @@ abstract class ScreenshotBase {
     }
 
     /** Saves sample playlist + settings, as if the user had set the app up. */
-    private fun seed(layout: String, theme: String = "dark", hidden: List<String> = emptyList()): Playlist {
+    private fun seed(
+        layout: String,
+        theme: String = "dark",
+        hidden: List<String> = emptyList(),
+        look: String = "classic",
+        watching: Boolean = false,
+    ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
         m3u.writeText(buildM3u(dir))
@@ -102,8 +110,15 @@ abstract class ScreenshotBase {
                 lastPlaylistId = p.id,
                 settings = s.settings.copy(
                     layout = layout, player = "exo", openLast = true, themeMode = theme,
-                    hiddenGroups = mapOf(p.id to hidden),
+                    hiddenGroups = mapOf(p.id to hidden), look = look,
                 ),
+                // Two films part-watched, for "Continue watching".
+                progress = if (!watching) emptyMap() else films.take(2).withIndex().associate { (i, title) ->
+                    val id = app.falak.player.data.stableId("$title|http://127.0.0.1:1/movie/u/p/$i.mp4")
+                    app.falak.player.data.progressKey(p.id, id) to app.falak.player.data.Watch(pos = (20 + i * 25) * 60_000L, dur = 110 * 60_000L)
+                },
+                favorites = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"))),
+                recents = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"), liveId("Pulse Sports 1"))),
             )
         }
         return p
@@ -213,6 +228,9 @@ abstract class ScreenshotBase {
             ch.epgKey to list
         }
     }
+
+    /** The id the M3U parser gives a sample live channel. */
+    private fun liveId(name: String) = app.falak.player.data.stableId("$name|http://127.0.0.1:1/live/${slug(name)}.m3u8")
 
     private fun slug(s: String) = s.lowercase().replace(Regex("[^a-z0-9]+"), ".").trim('.')
     private fun initials(s: String) = s.split(' ').filter { it.isNotEmpty() && it[0].isLetter() }.take(2).joinToString("") { it.take(1) }
@@ -360,6 +378,42 @@ class TvChannelListScreens : ScreenshotBase() {
 class TvChannelGroupsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = TV)
     fun tvChannelGroups() = player(tv = true, live = true, browser = true, groups = true) { shoot -> shoot("tv-14-channel-list-groups") }
+}
+
+// ---------- Sidebar look ----------
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSidebarScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvSidebar() = mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
+        shoot("tv-15-sidebar-home")
+        vm.section = Section.MOVIES
+        shoot("tv-16-sidebar-films")
+        vm.section = Section.LIVE
+        shoot("tv-17-sidebar-live")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSidebarScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneSidebar() = mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
+        shoot("phone-13-sidebar-home")
+        vm.section = Section.MOVIES
+        shoot("phone-14-sidebar-films")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSidebarLightScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneSidebarLand() = mainScreens("phone", theme = "light", look = "sidebar", watching = true) { vm, shoot ->
+        vm.section = Section.LIVE
+        shoot("phone-15-sidebar-live-landscape-light")
+    }
 }
 
 // ---------- Phone (1080 × 2340) ----------

@@ -80,6 +80,8 @@ fun HomeContent(
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
+    /** Sidebar look: big "Continue watching" cards take the slideshow's place when there are any. */
+    sidebar: Boolean = false,
 ) {
     val p = vm.playlist ?: return
     val index = vm.index
@@ -132,7 +134,8 @@ fun HomeContent(
         (newMovies.filter(::featured).take(4) + newSeries.filter(::featured).take(2))
             .ifEmpty { (index.movies.asSequence() + index.series.asSequence()).filter(::featured).take(5).toList() }
     }
-    LaunchedEffect(hero) { vm.loadHeroArt(hero) }
+    val bigContinue = sidebar && continueWatching.isNotEmpty()
+    LaunchedEffect(hero, bigContinue) { vm.loadHeroArt(if (bigContinue) continueWatching else hero) }
 
     val openItem: (List<Channel>, Channel) -> Unit = { row, ch ->
         when {
@@ -166,7 +169,12 @@ fun HomeContent(
         state = vm.homeState,
         contentPadding = PaddingValues(bottom = 40.dp),
     ) {
-        if (hero.isNotEmpty()) {
+        if (bigContinue) {
+            item(key = "continueBig") {
+                ContinueRow(continueWatching, vm.heroArt, state.progress, p.id) { ch -> onPlay(listOf(ch), ch) }
+            }
+        }
+        if (hero.isNotEmpty() && !bigContinue) {
             item(key = "hero") {
                 FeatureCarousel(
                     items = hero,
@@ -177,7 +185,7 @@ fun HomeContent(
                 )
             }
         }
-        if (continueWatching.isNotEmpty()) {
+        if (continueWatching.isNotEmpty() && !bigContinue) {
             item(key = "continue") {
                 Shelf("Continue watching") {
                     items(continueWatching, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onPlay(listOf(ch), ch) }) }
