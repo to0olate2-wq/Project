@@ -435,6 +435,13 @@ class Repository(private val context: Context) {
         rawShift = 0L
     }
 
+    /** Screenshot tests: show this guide without downloading anything. */
+    @androidx.annotation.VisibleForTesting
+    internal fun showGuideForTest(programs: Map<String, List<Program>>) {
+        setRawGuide(programs)
+        publishGuide(0)
+    }
+
     /** Applies the playlist's guide time correction without downloading again. */
     @Synchronized
     fun publishGuide(shiftMinutes: Int) {

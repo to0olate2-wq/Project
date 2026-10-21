@@ -996,8 +996,21 @@ class PlayerActivity : ComponentActivity() {
 
     /** Films, episodes and replays that know their length can be sought; live TV can't. */
     private fun canSeek(): Boolean {
-        val p = player ?: return false
+        val p = playerView.player ?: return false
         return p.duration > 0 && p.isCurrentMediaItemSeekable && !inPip
+    }
+
+    /** Screenshot tests: the controls (or the channel list) over a stand-in player, nothing playing. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewControls(stand: Player, browser: Boolean = false) {
+        handler.removeCallbacksAndMessages(null)
+        releaseEngine()
+        hideMessage()
+        bannerView.visibility = View.GONE
+        playerView.player = stand
+        updateTrackButtons()
+        updateTimeViews()
+        if (browser) openBrowser() else playerView.showController()
     }
 
     /** Finger position when a sideways swipe started (−1 = not swiping). */

@@ -91,6 +91,18 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+    // Screenshot tests (app/src/test/.../screens): Robolectric draws the real screens with sample
+    // data, so layout changes can be checked without a device. CI publishes them to the
+    // "screenshots" branch.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.maxHeapSize = "4g"
+                it.systemProperty("screens.dir", layout.buildDirectory.dir("screens").get().asFile.path)
+            }
+        }
+    }
 }
 
 kotlin {
@@ -126,4 +138,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.15.1")
+    testImplementation("androidx.test:core-ktx:1.6.1")
 }

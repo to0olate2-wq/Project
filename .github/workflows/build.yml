@@ -78,3 +78,38 @@ jobs:
             --title "The Player $VNAME (build ${{ github.run_number }})" \
             --notes-file notes.txt \
             --latest
+
+  # Draws the main screens with sample data (Robolectric) and publishes them to the
+  # "screenshots" branch, for reviewing layout without a device. Never blocks a release.
+  screens:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Draw the screens
+        continue-on-error: true
+        run: |
+          chmod +x gradlew
+          ./gradlew testPlayDebugUnitTest --tests 'app.falak.player.screens.*' --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
+
+      - name: Publish to the screenshots branch
+        if: always() && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p /tmp/screens
+          cp app/build/screens/*.png /tmp/screens/ 2>/dev/null || true
+          grep -E "FAILED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
+          find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
+          cd /tmp/screens
+          git init -q
+          git checkout -q -b screenshots
+          git add -A
+          git -c user.name="CI" -c user.email="ci@users.noreply.github.com" commit -q -m "Screens for build ${{ github.run_number }} (${{ github.sha }})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" screenshots
