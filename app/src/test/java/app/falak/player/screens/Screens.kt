@@ -379,14 +379,18 @@ class PhoneLightScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE)
     fun phoneLight() = mainScreens("phone", theme = "light") { vm, shoot ->
         shoot("phone-07-home-light")
-        // The film shelves at the end of Home: a long provider group name must stay on one line.
-        vm.homeState = androidx.compose.foundation.lazy.LazyListState(
-            firstVisibleItemIndex = (vm.homeState.layoutInfo.totalItemsCount - 3).coerceAtLeast(0),
-        )
-        shoot("phone-07b-home-shelves-light")
         vm.screen = Screen.GUIDE
         shoot("phone-08-guide-light")
     }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneShelfScreens : ScreenshotBase() {
+    // A very tall phone shows every Home shelf, including the films group with a long
+    // provider-style name: its title must stay on one line.
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneShelves() = mainScreens("phone") { _, shoot -> shoot("phone-11-home-all-shelves") }
 }
 
 @RunWith(RobolectricTestRunner::class)

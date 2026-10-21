@@ -102,6 +102,8 @@ android {
                 // Compose's frame clock doesn't survive Robolectric's reset between tests: one JVM per test.
                 it.forkEvery = 1
                 it.systemProperty("screens.dir", layout.buildDirectory.dir("screens").get().asFile.path)
+                // Name each test as it starts, so a stuck one shows up in the CI log.
+                it.testLogging { events("started", "passed", "failed", "skipped") }
             }
         }
     }

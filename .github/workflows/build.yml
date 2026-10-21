@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     # A stuck screen test must not hold a runner for hours.
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -98,6 +98,7 @@ jobs:
 
       - name: Draw the screens
         continue-on-error: true
+        timeout-minutes: 14
         run: |
           chmod +x gradlew
           ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
@@ -107,7 +108,7 @@ jobs:
         run: |
           mkdir -p /tmp/screens
           cp app/build/screens/*.png /tmp/screens/ 2>/dev/null || true
-          grep -E "FAILED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
+          grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
           cd /tmp/screens
           git init -q
