@@ -587,7 +587,7 @@ fun FilterChips(
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun CountChip(label: String, count: Int?, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+internal fun CountChip(label: String, count: Int?, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     val bg by animateColorAsState(if (selected) Paper else Ink3, tween(200), label = "countChipBg")
     val fg = if (selected) Ink else Paper

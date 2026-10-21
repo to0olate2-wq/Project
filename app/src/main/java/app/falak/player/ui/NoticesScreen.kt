@@ -62,7 +62,7 @@ fun NoticesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         PageHeader(
             "What's new",
             onBack = back,
-            subtitle = "Channels, films and series added to your playlists",
+            subtitle = "New in your playlists",
             actions = {
                 if (notices.isNotEmpty()) TextButton(onClick = { vm.clearNotices() }) { Text("Clear") }
             },
@@ -113,7 +113,7 @@ private fun NoticeCard(vm: LibraryViewModel, state: AppState, n: Notice, onPlay:
             Spacer(Modifier.height(10.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(n.groups, key = { it.kind.name + it.group }) { g ->
-                    TagChip("${g.group} · ${g.count}", false) { vm.showNoticeGroup(n, g) }
+                    CountChip(g.group, g.count, selected = false) { vm.showNoticeGroup(n, g) }
                 }
             }
         }
