@@ -44,6 +44,8 @@ import java.util.concurrent.atomic.AtomicInteger
 class SyncServer(
     private val repo: Repository,
     private val deviceName: String,
+    /** A problem report to hand to the phone (opened from the report on screen), if any. */
+    private val report: (() -> String?)? = null,
     private val onEvent: (String) -> Unit,
 ) {
     /** The code people type on the other device; new every time sharing starts. */
@@ -220,6 +222,11 @@ class SyncServer(
                 sendJson(out, 200, text)
             }
             "POST /api/groups" -> setGroups(req, out)
+            "GET /report" -> {
+                val text = report?.invoke() ?: return error(out, 404, "No report")
+                send(out, 200, "text/html; charset=utf-8", SyncPage.report(deviceName, text).toByteArray())
+                onEvent("Report opened on $who")
+            }
             "POST /api/playlists/rename" -> {
                 val o = body(req) ?: return error(out, 400, "Bad request")
                 val id = o.str("id")

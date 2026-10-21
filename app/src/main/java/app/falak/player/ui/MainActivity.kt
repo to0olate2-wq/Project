@@ -2,6 +2,10 @@
 
 package app.falak.player.ui
 
+import app.falak.player.FreezeWatch
+import app.falak.player.sync.deviceName
+import app.falak.player.sync.SyncServer
+import app.falak.player.repo
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -73,6 +77,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.foundation.focusable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,7 +114,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
-            val dark = rememberDarkTheme(s.themeMode, s.darkFrom, s.lightFrom)
+            val dark = rememberDarkTheme(s.themeMode)
             FalakTheme(dark, s.layout) {
                 // Status-bar icons follow the theme (dark icons on the light theme).
                 LaunchedEffect(dark) {
@@ -114,6 +125,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 Backdrop()
+                // Where the user is, for problem reports ("Last steps").
+                val tvNow = isTv()
+                LaunchedEffect(vm.screen, vm.section, vm.group != null, s.look, tvNow) {
+                    FreezeWatch.note(
+                        "screen ${vm.screen.name.lowercase()} · ${vm.section.name.lowercase()}" +
+                            (if (vm.group != null) " · one group" else "") + " · ${s.look} look · " + if (tvNow) "TV" else "phone",
+                    )
+                }
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
@@ -168,6 +187,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        FreezeWatch.note(if (fromPlayer) "back from the player" else "app in front")
         vm.onReturnFromPlayer()
         // Leaving a film or channel must not start a playlist reload: only a return to the app
         // from elsewhere (it may have sat in the background for hours) checks for a stale playlist.
@@ -244,25 +264,115 @@ private fun UpdateDialogs(vm: LibraryViewModel) {
 @Composable
 private fun CrashDialog(report: String, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
+    val tv = isTv()
+    var toPhone by remember { mutableStateOf(false) }
+    if (toPhone) {
+        ReportToPhone(report) { toPhone = false }
+        return
+    }
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onClose,
+        // A TV shows the report wide, in small type, so all of it fits on screen.
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = !tv),
+        modifier = if (tv) Modifier.fillMaxWidth(0.86f) else Modifier,
         title = { Text("The Player stopped last time") },
         text = {
-            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+            Column {
                 Text(
-                    "Tap Copy and paste this to Claude so it can be fixed.",
+                    if (tv) "Choose “Open on phone” and scan the code, then copy the report there and paste it to Claude."
+                    else "Tap Copy and paste this to Claude so it can be fixed.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                SelectionContainer {
-                    Text(report, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                // The remote scrolls the report with up and down.
+                Box(
+                    Modifier
+                        .heightIn(max = if (tv) 420.dp else 380.dp)
+                        .focusable()
+                        .onKeyEvent { e ->
+                            if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                            val step = when (e.key) {
+                                Key.DirectionDown -> 220f
+                                Key.DirectionUp -> -220f
+                                else -> return@onKeyEvent false
+                            }
+                            scope.launch { scroll.animateScrollBy(step) }
+                            true
+                        }
+                        .verticalScroll(scroll),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            report,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = if (tv) 11.sp else 12.sp, lineHeight = if (tv) 14.sp else 16.sp),
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { clipboard.setText(AnnotatedString(report)); onClose() }) { Text("Copy") }
+            Row {
+                if (tv) TextButton(onClick = { toPhone = true }) { Text("Open on phone") }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(report)); onClose() }) { Text("Copy") }
+            }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
+}
+
+/** Hands the report to a phone on the same Wi-Fi: a QR code opens it there, ready to copy. */
+@Composable
+private fun ReportToPhone(report: String, onClose: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val server = remember { SyncServer(context.repo, deviceName(context), report = { report }) {} }
+    var url by remember { mutableStateOf<String?>(null) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        try {
+            val port = server.start()
+            url = SyncServer.localAddress()?.let { "http://$it:$port/report?code=${server.code}" }
+            if (url == null) failed = "This TV isn't on a network."
+        } catch (e: Exception) {
+            failed = "Couldn't open the report for the phone: ${e.message}"
+        }
+        onDispose { server.stop() }
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Open the report on your phone") },
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val link = url
+                val qr = remember(link) { link?.let { qrBitmap(it, 400) } }
+                if (qr != null) {
+                    androidx.compose.foundation.Image(
+                        qr,
+                        contentDescription = "QR code for the report",
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                        modifier = Modifier
+                            .size(200.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(androidx.compose.ui.graphics.Color.White)
+                            .padding(10.dp),
+                    )
+                    Spacer(Modifier.width(20.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        failed ?: "Scan this with your phone's camera (the phone must be on the same Wi-Fi). The report opens " +
+                            "there with a Copy button.",
+                    )
+                    if (link != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(link, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Done") } },
     )
 }
 

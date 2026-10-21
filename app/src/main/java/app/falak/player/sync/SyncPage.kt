@@ -4,6 +4,49 @@ package app.falak.player.sync
 internal object SyncPage {
     fun html(device: String): String = PAGE.replace("{{DEVICE}}", escape(device))
 
+    /** A problem report shown on the phone, ready to copy (the TV can't copy text out). */
+    fun report(device: String, text: String): String = REPORT.replace("{{DEVICE}}", escape(device)).replace("{{TEXT}}", escape(text))
+
+    private val REPORT = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem report · {{DEVICE}}</title>
+<style>
+  :root { --ink:#121110; --ink2:#1b1918; --line:rgba(255,255,255,.12); --paper:#f7f3ec; --muted:#d2cbc1; --signal:#ff5a3c; }
+  @media (prefers-color-scheme: light) { :root { --ink:#f6f2ea; --ink2:#ffffff; --line:rgba(0,0,0,.12); --paper:#16130f; --muted:#4a423a; --signal:#dc3a1c; } }
+  body { margin:0; background:var(--ink); color:var(--paper); font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 40px; }
+  h1 { font:600 26px/1.15 Georgia,"Times New Roman",serif; margin:0 0 6px; }
+  p { color:var(--muted); margin:0 0 14px; }
+  textarea { width:100%; box-sizing:border-box; height:62vh; background:var(--ink2); color:var(--paper); border:1px solid var(--line);
+             border-radius:12px; padding:12px; font:12px/1.45 ui-monospace,Menlo,monospace; resize:vertical; }
+  button { font:600 16px/1 system-ui,sans-serif; border-radius:999px; padding:14px 26px; border:0; background:var(--paper); color:var(--ink); margin-top:14px; cursor:pointer; }
+  #m { margin-left:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Problem report</h1>
+  <p>From {{DEVICE}}. Copy it and paste it to Claude.</p>
+  <textarea id="t" readonly>{{TEXT}}</textarea>
+  <button onclick="copyIt()">Copy</button><span id="m"></span>
+</main>
+<script>
+function copyIt() {
+  var t = document.getElementById('t');
+  t.focus(); t.select(); t.setSelectionRange(0, t.value.length);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.getElementById('m').textContent = ok ? 'Copied' : 'Press and hold the text, then Select all and Copy';
+}
+</script>
+</body>
+</html>
+"""
+
     private fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     private val PAGE = """

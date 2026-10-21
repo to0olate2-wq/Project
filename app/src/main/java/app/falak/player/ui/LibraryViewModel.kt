@@ -473,7 +473,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeGuideSource(url: String) {
         val p = playlist ?: return
-        updatePlaylist(p.copy(extraEpg = p.extraEpg - url), true)
+        updatePlaylist(p.copy(extraEpg = p.extraEpg - url, epgSourceShift = p.epgSourceShift - url), true)
+    }
+
+    /** Moves one guide source's times by [minutes] (total), found by comparing it with the others. */
+    fun setGuideSourceShift(url: String, minutes: Int) {
+        val p = playlist ?: return
+        val next = if (minutes == 0) p.epgSourceShift - url else p.epgSourceShift + (url to minutes.coerceIn(-720, 720))
+        updatePlaylist(p.copy(epgSourceShift = next), true)
     }
 
     fun replay(ch: Channel, prog: Program, now: Long): Channel? {

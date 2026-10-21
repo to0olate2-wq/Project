@@ -1,5 +1,6 @@
 package app.falak.player.data
 
+import app.falak.player.FreezeWatch
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.CoroutineDispatcher
@@ -67,7 +68,10 @@ class Repository(private val context: Context) {
     fun takeCrashReport(): String? {
         val header = "The Player ${app.falak.player.BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} " +
             "(SDK ${android.os.Build.VERSION.SDK_INT}) · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n\n"
-        val unexpected = ExitReasons.takeUnexpected(context, header) // always read, so it's only shown once
+        var unexpected = ExitReasons.takeUnexpected(context, header) // always read, so it's only shown once
+        // The app's own record of a freeze has the whole stuck call chain and the last steps.
+        val freeze = FreezeWatch.take(context.filesDir, anr = unexpected?.contains("(ANR)") == true)
+        if (freeze != null) unexpected = (unexpected ?: header) + "\n\n" + freeze
         val f = File(context.filesDir, CRASH_FILE)
         if (!f.exists()) return unexpected
         return try { f.readText() } catch (e: Exception) { null } finally { f.delete() }
@@ -417,6 +421,8 @@ class Repository(private val context: Context) {
             val listed = ArrayList<GuideChannel>()
             val failed = ArrayList<String>()
             val stats = ArrayList<GuideSourceStat>()
+            // The first guide with data is the yardstick the later ones are checked against.
+            var reference = ""
             val job = coroutineContext[kotlinx.coroutines.Job]
             for (url in sources) {
                 val isProvider = url == providerUrl.trim()
@@ -428,20 +434,32 @@ class Repository(private val context: Context) {
                     http.newCall(req).execute().use { res ->
                         val body = res.body
                         if (!res.isSuccessful || body == null) throw IOException("HTTP ${res.code}")
-                        val part = Epg.parse(body.byteStream(), matcher, now, source = sourceLabel(url)) { job?.isActive == false }
+                        val applied = p.epgSourceShift[url] ?: 0
+                        val part = Epg.parse(body.byteStream(), matcher, now, source = sourceLabel(url), shiftMs = applied * 60_000L) { job?.isActive == false }
                         coroutineContext.ensureActive() // a newer load replaced this one
                         var matched = 0
                         var added = 0
+                        val tally = GuideCheck.Tally()
                         for ((key, list) in part.programs) {
                             if (list.isEmpty()) continue
                             matched++
-                            if (merged[key].isNullOrEmpty()) {
+                            val earlier = merged[key]
+                            if (earlier.isNullOrEmpty()) {
                                 merged[key] = list
                                 added++
+                            } else if (tally.compared < 400) {
+                                // Both guides cover this channel: do they list the same shows at the same times?
+                                tally.add(GuideCheck.channelOffset(earlier, list, now))
                             }
                         }
                         listed += part.channels
-                        stats += GuideSourceStat(url, label, isProvider, matched, added, ok = true)
+                        stats += GuideSourceStat(
+                            url, label, isProvider, matched, added, ok = true,
+                            compared = tally.compared, agree = tally.agree,
+                            suggestShift = tally.suggestedShift, shiftVotes = tally.shiftVotes,
+                            applied = applied, against = reference,
+                        )
+                        if (reference.isEmpty() && matched > 0) reference = label
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e

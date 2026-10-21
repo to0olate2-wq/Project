@@ -422,7 +422,7 @@ private fun CopyDialog(device: FoundDevice?, get: Boolean, onDismiss: () -> Unit
 }
 
 /** A QR code for [text], black on white. */
-private fun qrBitmap(text: String, size: Int): ImageBitmap? = try {
+internal fun qrBitmap(text: String, size: Int): ImageBitmap? = try {
     val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(
         text, com.google.zxing.BarcodeFormat.QR_CODE, size, size,
         mapOf(com.google.zxing.EncodeHintType.MARGIN to 0),

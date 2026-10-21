@@ -21,6 +21,8 @@ data class Playlist(
     val extraEpg: List<String> = emptyList(),
     /** Fix for guides published with the wrong time zone, in minutes (e.g. -60). */
     val epgShiftMinutes: Int = 0,
+    /** The same fix for one guide source (by its link), found by comparing it with the others. */
+    val epgSourceShift: Map<String, Int> = emptyMap(),
 )
 
 @Serializable
@@ -95,6 +97,18 @@ data class GuideSourceStat(
     val matched: Int,
     val added: Int,
     val ok: Boolean,
+    /** Channels it shares with the guides before it whose programmes could be compared… */
+    val compared: Int = 0,
+    /** …and how many of them line up as they are. */
+    val agree: Int = 0,
+    /** Minutes to add to this source's times to line up with the others (0: no fix needed). */
+    val suggestShift: Int = 0,
+    /** Shared channels that line up with [suggestShift]. */
+    val shiftVotes: Int = 0,
+    /** Correction already applied to this source, in minutes. */
+    val applied: Int = 0,
+    /** Name of the guide it was compared with. */
+    val against: String = "",
 )
 
 /** A channel listed in a guide source: its XMLTV id, display name and the source's host. */

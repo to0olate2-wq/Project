@@ -179,26 +179,24 @@ fun FalakTheme(dark: Boolean = true, layout: String = "auto", content: @Composab
 }
 
 /**
- * Dark or light right now. "auto": light from [lightFrom] o'clock, dark from [darkFrom] o'clock;
- * checked every minute, so the app turns dark in the evening by itself.
+ * Dark or light right now. "auto": light from sunrise, dark from sunset, for where the device is
+ * (worked out from its time zone, see [app.falak.player.data.SunTimes]). Checked every minute, so
+ * it switches by itself, and follows a change of time zone.
  */
 @Composable
-fun rememberDarkTheme(mode: String, darkFrom: Int, lightFrom: Int): Boolean {
+fun rememberDarkTheme(mode: String): Boolean {
     if (mode == "dark") return true
     if (mode == "light") return false
-    val dark by androidx.compose.runtime.produceState(isEvening(darkFrom, lightFrom), darkFrom, lightFrom) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dark by androidx.compose.runtime.produceState(app.falak.player.data.SunTimes.isDark(context)) {
         while (true) {
-            value = isEvening(darkFrom, lightFrom)
+            value = app.falak.player.data.SunTimes.isDark(context)
             val now = System.currentTimeMillis()
             kotlinx.coroutines.delay(60_000L - now % 60_000L + 50)
         }
     }
     return dark
 }
-
-/** True between [darkFrom] o'clock and [lightFrom] o'clock (wrapping past midnight). */
-fun isEvening(darkFrom: Int, lightFrom: Int, hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)): Boolean =
-    if (darkFrom > lightFrom) hour >= darkFrom || hour < lightFrom else hour in darkFrom until lightFrom
 
 /** TV layout (remote control, big screen) or phone/tablet layout; see Settings → Appearance. */
 val LocalIsTv = staticCompositionLocalOf { false }

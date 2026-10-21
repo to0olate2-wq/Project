@@ -110,14 +110,29 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item { SectionTitle("Appearance") }
         item {
             val context = androidx.compose.ui.platform.LocalContext.current
-            val hour: (Int) -> String = { h -> hourLabel(context, h) }
+            // Today's sunrise and sunset where this device is (from its time zone).
+            val sun = remember(context) {
+                val place = app.falak.player.data.SunTimes.place(context)
+                place to app.falak.player.data.SunTimes.day(place)
+            }
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Theme", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
                     when (s.themeMode) {
                         "light" -> "Always light."
                         "dark" -> "Always dark."
-                        else -> "Light by day, dark from ${hour(s.darkFrom)} until ${hour(s.lightFrom)}. Switches by itself."
+                        else -> {
+                            val (place, day) = sun
+                            val rise = day.sunrise
+                            val set = day.sunset
+                            val where = if (place.guessed) "for your time zone (${place.city})" else "in ${place.city}"
+                            if (rise != null && set != null) {
+                                "Light from sunrise (${minuteLabel(context, rise)}) and dark from sunset (${minuteLabel(context, set)}) $where. " +
+                                    "Follows the sun every day."
+                            } else {
+                                "Light by day and dark at night $where. Follows the sun every day."
+                            }
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
@@ -132,16 +147,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     }
                     ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "dark") }
-                    }
-                }
-                if (s.themeMode == "auto") {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Evening starts at", style = MaterialTheme.typography.bodySmall, color = Muted)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(17, 18, 19, 20).forEach { h ->
-                            TagChip(hour(h), s.darkFrom == h) { vm.updateSettings { it.copy(darkFrom = h) } }
-                        }
                     }
                 }
             }
@@ -586,10 +591,27 @@ private fun LookOption(label: String, selected: Boolean, sidebar: Boolean, modif
     }
 }
 
-/** "18:00" or "6 PM", following the device's clock setting. */
-private fun hourLabel(context: android.content.Context, hour: Int): String =
-    if (android.text.format.DateFormat.is24HourFormat(context)) String.format(java.util.Locale.US, "%02d:00", hour)
-    else "${(hour + 11) % 12 + 1} ${if (hour < 12) "AM" else "PM"}"
+/**
+ * A guide time difference in words. [earlier] phrases a needed correction (+60 → "1 h earlier",
+ * the source shows shows an hour early); otherwise an applied one (+60 → "1 h later").
+ */
+private fun shiftWords(minutes: Int, earlier: Boolean): String {
+    val a = kotlin.math.abs(minutes)
+    val amount = if (a % 60 == 0) "${a / 60} h" else if (a > 60) "${a / 60} h ${a % 60} min" else "$a min"
+    return when {
+        earlier -> amount + if (minutes > 0) " earlier" else " later"
+        else -> amount + if (minutes > 0) " later" else " earlier"
+    }
+}
+
+/** "17:46" or "5:46 PM" for minutes after midnight, following the device's clock setting. */
+private fun minuteLabel(context: android.content.Context, minutes: Int): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    return if (android.text.format.DateFormat.is24HourFormat(context)) String.format(java.util.Locale.US, "%02d:%02d", h, m)
+    else String.format(java.util.Locale.US, "%d:%02d %s", (h + 11) % 12 + 1, m, if (h < 12) "AM" else "PM")
+}
+
 
 /** Which video player to use; Automatic shows what it picked for this TV and why. */
 @Composable
@@ -698,9 +720,33 @@ private fun GuideSourcesDialog(vm: LibraryViewModel, p: app.falak.player.data.Pl
                                 else -> "Covers ${st.matched} · adds ${st.added} the others miss" to false
                             }
                             Text(detail, fontSize = 12.sp, color = if (weak) Signal else Faint)
+                            // Checked against the guide before it, channel by channel (see GuideCheck).
+                            val against = st.against.ifBlank { "the other guides" }
+                            when {
+                                st.suggestShift != 0 -> Text(
+                                    "Its times are ${shiftWords(st.suggestShift, earlier = true)} than $against on " +
+                                        "${st.shiftVotes} of ${st.compared} shared channels.",
+                                    fontSize = 12.sp,
+                                    color = Signal,
+                                )
+                                st.compared > 0 -> Text(
+                                    "Matches $against on ${st.agree} of ${st.compared} shared channels" +
+                                        if (st.applied != 0) " (times moved ${shiftWords(st.applied, earlier = false)})" else "",
+                                    fontSize = 12.sp,
+                                    color = Faint,
+                                )
+                                st.applied != 0 -> Text("Times moved ${shiftWords(st.applied, earlier = false)}", fontSize = 12.sp, color = Faint)
+                            }
                         }
-                        if (!st.provider && st.url.isNotEmpty()) {
-                            TextButton(onClick = { vm.removeGuideSource(st.url) }) { Text("Remove") }
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (st.suggestShift != 0 && st.url.isNotEmpty()) {
+                                TextButton(onClick = { vm.setGuideSourceShift(st.url, st.applied + st.suggestShift) }) { Text("Fix times") }
+                            } else if (st.applied != 0 && st.url.isNotEmpty()) {
+                                TextButton(onClick = { vm.setGuideSourceShift(st.url, 0) }) { Text("Undo") }
+                            }
+                            if (!st.provider && st.url.isNotEmpty()) {
+                                TextButton(onClick = { vm.removeGuideSource(st.url) }) { Text("Remove") }
+                            }
                         }
                     }
                 }

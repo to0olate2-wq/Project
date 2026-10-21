@@ -20,6 +20,8 @@ class FalakApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         repo = Repository(this)
+        FreezeWatch.start(filesDir)
+        FreezeWatch.note("app started")
 
         // Save any crash so the next launch can show it (there is no other way to see it on a phone).
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -27,7 +29,9 @@ class FalakApp : Application(), ImageLoaderFactory {
             try {
                 val header = "The Player ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} " +
                     "(SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}\n\n"
-                File(filesDir, Repository.CRASH_FILE).writeText(header + error.stackTraceToString().take(8000))
+                File(filesDir, Repository.CRASH_FILE).writeText(
+                    header + error.stackTraceToString().take(8000) + "\n\nLast steps:\n" + FreezeWatch.recent(),
+                )
             } catch (t: Throwable) {
                 // nothing else we can do
             }

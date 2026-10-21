@@ -71,7 +71,7 @@ object ExitReasons {
         i.description?.takeIf { it.isNotBlank() }?.let { out.append("Android says: ").append(it).append('\n') }
         out.append("Memory then: ").append(i.pss / 1024).append(" MB (PSS), ").append(i.rss / 1024).append(" MB (RSS)\n")
         trace(i)?.let { out.append('\n').append(it) }
-        return out.toString().take(8000)
+        return out.toString().take(12000)
     }
 
     /** The useful part of the system's trace: the main thread for a freeze, the frames for a crash. */
@@ -82,7 +82,7 @@ object ExitReasons {
             ApplicationExitInfo.REASON_ANR -> {
                 val text = String(bytes)
                 val start = text.indexOf("\"main\"")
-                if (start < 0) null else text.substring(start).lineSequence().take(45).joinToString("\n")
+                if (start < 0) null else text.substring(start).lineSequence().take(80).joinToString("\n")
             }
             ApplicationExitInfo.REASON_CRASH_NATIVE -> {
                 // A binary record (tombstone): keep the readable bits that name the signal and the

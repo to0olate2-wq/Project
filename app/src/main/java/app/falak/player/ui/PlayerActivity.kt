@@ -1,5 +1,6 @@
 package app.falak.player.ui
 
+import app.falak.player.FreezeWatch
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -418,12 +419,14 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         repo.playerOpen = true
+        FreezeWatch.note("player opened")
         if (::playerView.isInitialized) initPlayer()
     }
 
     override fun onStop() {
         super.onStop()
         repo.playerOpen = false
+        FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
         // Closing the picture-in-picture window stops the activity: finish so it doesn't linger.
         if (inPip) finish()
@@ -621,6 +624,7 @@ class PlayerActivity : ComponentActivity() {
         val wanted = desiredEngine(ch)
         if (player == null || wanted != engine) startEngine(wanted)
         currentChannelId = ch.id
+        FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
         // Remembered so the list can put the selection back on this item after the player closes.
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
@@ -858,6 +862,7 @@ class PlayerActivity : ComponentActivity() {
         val groups = browserGroupsFor(ch)
         if (groups.isEmpty()) return
         browserGroups = groups
+        FreezeWatch.note("channel list opened (${groups.size} groups, ${groups.values.sumOf { it.size }} items)")
         handler.removeCallbacks(hideBrowserView)
         // The controls stay away while browsing (they would also pull the remote's focus to themselves).
         playerView.hideController()
@@ -872,6 +877,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun closeBrowser() {
         if (!browserOpen) return
+        FreezeWatch.note("channel list closed")
         browserOpen = false
         browserShowGroups = false
         handler.postDelayed(hideBrowserView, 320)
