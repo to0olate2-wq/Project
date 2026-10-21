@@ -145,7 +145,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun listStateFor(s: Section): LazyListState = listStates.getOrPut(s) { LazyListState() }
     fun gridStateFor(s: Section): LazyGridState = gridStates.getOrPut(s) { LazyGridState() }
     var homeState by mutableStateOf(LazyListState())
-        private set
+        internal set // screenshot tests scroll Home
     var lastListKey: Any? = null
 
     /** True once the parental PIN was entered in this session. */

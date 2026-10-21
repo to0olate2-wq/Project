@@ -84,6 +84,8 @@ jobs:
   screens:
     runs-on: ubuntu-latest
     continue-on-error: true
+    # A stuck screen test must not hold a runner for hours.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
