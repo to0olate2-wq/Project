@@ -172,7 +172,11 @@ abstract class ScreenshotBase {
     private fun sampleChannels(): List<Channel> {
         val out = ArrayList<Channel>()
         for ((group, names) in liveGroups) for (name in names) {
-            out += Channel(id = slug(name), name = name, group = group, url = "http://127.0.0.1:1/live/${slug(name)}.m3u8", tvgId = slug(name))
+            val logo = File(app.filesDir, "sample/logo-${slug(name)}.png")
+            out += Channel(
+                id = slug(name), name = name, group = group, url = "http://127.0.0.1:1/live/${slug(name)}.m3u8",
+                tvgId = slug(name), logo = if (logo.exists()) "file://${logo.path}" else "",
+            )
         }
         for ((i, title) in films.withIndex()) {
             out += Channel(id = "film$i", name = title, group = "Drama", url = "http://127.0.0.1:1/movie/u/p/$i.mp4", kind = Kind.MOVIE)
@@ -257,6 +261,8 @@ abstract class ScreenshotBase {
                     ).build(),
                 )
                 .setPlaylist(listOf(data))
+                .setSeekBackIncrementMs(10_000)
+                .setSeekForwardIncrementMs(10_000)
                 .setPlayWhenReady(true, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
                 .setPlaybackState(Player.STATE_READY)
                 .setContentPositionMs(if (live) 0 else 1_394_000)

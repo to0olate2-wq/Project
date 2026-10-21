@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
@@ -272,9 +273,11 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(if (tv) 44.dp else 38.dp)
             Spacer(Modifier.weight(1f))
-            if (tv) Clock(Modifier.padding(horizontal = 8.dp))
-            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
+            Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (tv) Clock(Modifier.padding(horizontal = 8.dp))
+                IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
+                }
             }
         }
         Spacer(Modifier.height(if (tv) 40.dp else 28.dp))
@@ -289,12 +292,22 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
             color = Muted,
         )
         Spacer(Modifier.height(30.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
+        if (tv) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Kicker("Your playlists", color = Muted)
+                Spacer(Modifier.weight(1f))
+                GhostButton("Devices", Icons.Filled.Share) { vm.screen = Screen.SYNC }
+                Spacer(Modifier.width(10.dp))
+                PaperButton("Add playlist", Icons.Filled.Add) { adding = true }
+            }
+        } else {
+            // Phone: the two buttons share a row of their own, equal width, above the list's title.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PaperButton("Add playlist", Icons.Filled.Add, Modifier.weight(1f)) { adding = true }
+                GhostButton("Devices", Icons.Filled.Share, Modifier.weight(1f)) { vm.screen = Screen.SYNC }
+            }
+            Spacer(Modifier.height(24.dp))
             Kicker("Your playlists", color = Muted)
-            Spacer(Modifier.weight(1f))
-            GhostButton("Devices", Icons.Filled.Share) { vm.screen = Screen.SYNC }
-            Spacer(Modifier.width(10.dp))
-            PaperButton("Add playlist", Icons.Filled.Add) { adding = true }
         }
         Spacer(Modifier.height(10.dp))
         Rule()

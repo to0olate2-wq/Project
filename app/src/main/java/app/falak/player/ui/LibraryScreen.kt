@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -251,22 +252,25 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     )
                 }
             }
-            if (tv) Clock(Modifier.padding(horizontal = 8.dp))
-            if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
-                if (index.live.isNotEmpty()) {
-                    IconButton(onClick = { vm.screen = Screen.GUIDE }) {
-                        Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
+            // The icons' touch areas reach past the page edge, so the last icon lines up with the content.
+            Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (tv) Clock(Modifier.padding(horizontal = 8.dp))
+                if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
+                    if (index.live.isNotEmpty()) {
+                        IconButton(onClick = { vm.screen = Screen.GUIDE }) {
+                            Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
+                        }
                     }
                 }
-            }
-            IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
-                Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
-            }
-            IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
-            }
-            IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
+                IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
+                    Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
+                }
+                IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
+                }
+                IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
+                }
             }
         }
 

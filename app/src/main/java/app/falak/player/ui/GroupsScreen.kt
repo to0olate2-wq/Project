@@ -67,14 +67,8 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     val hiddenHere = groups.keys.count { it in hidden }
     val tv = isTv()
 
-    Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 48.dp else 16.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
-            Column(Modifier.weight(1f)) {
-                Text("Show & hide groups", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Paper)
-                Text(p.name, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1)
-            }
-        }
+    Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
+        PageHeader("Show & hide groups", onBack = back, subtitle = p.name)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             kinds.forEach { k ->

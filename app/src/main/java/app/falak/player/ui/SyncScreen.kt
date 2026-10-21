@@ -180,12 +180,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                 .padding(horizontal = if (tv) 24.dp else 16.dp),
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
-            item {
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
-                    Text("Your devices", style = MaterialTheme.typography.titleLarge, color = Paper)
-                }
-            }
+            item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader("Your devices", onBack = back) } }
             item {
                 Text(
                     "Set your playlists up once, then use them on every TV, phone and tablet. " +
@@ -209,8 +204,13 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                 ) {
                     if (s == null) {
                         Text(
-                            "Open a page on any phone or computer on the same Wi-Fi to add, rename or remove playlists here, " +
-                                "without typing on the TV, and to download or load a backup.",
+                            if (tv) {
+                                "Open a page on any phone or computer on the same Wi-Fi to add, rename or remove this TV's " +
+                                    "playlists without typing with the remote, and to download or load a backup."
+                            } else {
+                                "Open a page on a computer or another phone on the same Wi-Fi to add, rename or remove " +
+                                    "this phone's playlists, and to download or load a backup."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = Muted,
                         )

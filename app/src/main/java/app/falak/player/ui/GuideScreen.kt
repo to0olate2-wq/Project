@@ -137,20 +137,10 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
 
     BackHandler { vm.screen = Screen.LIBRARY }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.screen = Screen.LIBRARY }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                if (group != null) "TV Guide · $group" else "TV Guide",
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+    Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
+        PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = { vm.screen = Screen.LIBRARY }) {
             IconButton(onClick = { vm.loadGuide(force = true) }, enabled = !vm.guideLoading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Reload guide")
+                Icon(Icons.Filled.Refresh, contentDescription = "Reload guide", tint = Paper)
             }
         }
         if (vm.guideLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -347,10 +337,12 @@ private fun GuideRow(
                         val end = minOf(prog.stop, windowEnd)
                         val live = now >= prog.start && now < prog.stop
                         val shape = RoundedCornerShape(8.dp)
+                        val cellX = xOf(start, windowStart)
+                        val cellWidth = MinuteWidth * ((end - start) / 60_000L).toInt().coerceAtLeast(3)
                         Box(
                             Modifier
-                                .offset(x = xOf(start, windowStart))
-                                .width(MinuteWidth * ((end - start) / 60_000L).toInt().coerceAtLeast(3))
+                                .offset(x = cellX)
+                                .width(cellWidth)
                                 .fillMaxHeight()
                                 .padding(horizontal = 1.dp)
                                 .focusRing(shape)
@@ -367,6 +359,13 @@ private fun GuideRow(
                                 fontWeight = if (live) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                                // A programme that started before the visible part keeps its title in view
+                                // (read while placing, so scrolling doesn't recompose the guide).
+                                modifier = Modifier.offset {
+                                    val hidden = hScroll.value - cellX.roundToPx()
+                                    val room = (cellWidth - 96.dp).roundToPx().coerceAtLeast(0)
+                                    androidx.compose.ui.unit.IntOffset(hidden.coerceIn(0, room), 0)
+                                },
                             )
                         }
                     }

@@ -372,7 +372,7 @@ class Repository(private val context: Context) {
                 }
             }
             val sources = (listOf(providerUrl) + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            if (sources.isEmpty()) return@withContext "No TV guide link for this playlist. Add a guide source in Settings."
+            if (sources.isEmpty()) return@withContext "No TV guide for this playlist yet"
             val overrides = _state.value.settings.guideOverrides[p.id].orEmpty()
             val matcher = GuideMatcher(channels, overrides)
             if (matcher.keys.isEmpty()) return@withContext ""

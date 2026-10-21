@@ -105,18 +105,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             .padding(horizontal = if (tvLayout) 24.dp else 16.dp),
         contentPadding = PaddingValues(bottom = 32.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
-                Text("Settings", style = MaterialTheme.typography.titleLarge, color = Paper)
-            }
-        }
+        item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader("Settings", onBack = back) } }
 
         item { SectionTitle("Appearance") }
         item {
             val context = androidx.compose.ui.platform.LocalContext.current
             val hour: (Int) -> String = { h -> hourLabel(context, h) }
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Theme", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
                     when (s.themeMode) {
@@ -128,14 +123,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = Muted,
                 )
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette)) {
+                Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "auto") }
                     }
-                    ThemeOption("Light", s.themeMode == "light", listOf(LightPalette)) {
+                    ThemeOption("Light", s.themeMode == "light", listOf(LightPalette), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "light") }
                     }
-                    ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette)) {
+                    ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "dark") }
                     }
                 }
@@ -155,7 +150,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item {
             val context = androidx.compose.ui.platform.LocalContext.current
             val detected = remember(context) { detectTv(context) }
-            Column(Modifier.padding(top = 10.dp, bottom = 4.dp)) {
+            Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
                 Text("Screen", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
                     "TV: made for the remote, big screen and slideshow. Phone & tablet: made for touch.",
@@ -176,7 +171,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("Playback") }
         item {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Picture size", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -247,7 +242,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         vm.guideLoading -> "Loading the guide…"
                         vm.guideStatus.isNotEmpty() -> vm.guideStatus
                         else -> "Where the TV guide comes from"
-                    } + " · " + if (extra == 0) "provider only" else "provider + $extra more",
+                    } + when (extra) {
+                        0 -> ""
+                        1 -> " · 1 extra source"
+                        else -> " · $extra extra sources"
+                    },
                 ) { guideSources = true }
             }
             item {
@@ -286,7 +285,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
                     "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
@@ -321,7 +320,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     Text(
                         "Lock groups in ${p.name}",
                         style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp),
                     )
                 }
                 items(groups, key = { "lock:$it" }) { g ->
@@ -332,7 +331,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("About") }
         item {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
                 Text("The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 13.sp, color = Muted)
                 Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, color = Faint)
@@ -461,16 +460,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
 @Composable
 private fun SectionTitle(text: String) {
-    Box(Modifier.padding(top = 26.dp, bottom = 6.dp)) { Kicker(text) }
+    Box(Modifier.padding(start = 4.dp, top = 26.dp, bottom = 6.dp)) { Kicker(text) }
 }
 
 /** A theme to pick: a small preview (both halves for Automatic) and its name. */
 @Composable
-private fun ThemeOption(label: String, selected: Boolean, palettes: List<Palette>, onClick: () -> Unit) {
+private fun ThemeOption(label: String, selected: Boolean, palettes: List<Palette>, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Column(
-        Modifier
-            .width(128.dp)
+        modifier
             .focusRing(shape)
             .clip(shape)
             .border(if (selected) 2.dp else 1.dp, if (selected) Signal else Hairline, shape)
@@ -518,7 +516,7 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String) {
         }
     }
     val selected = app.falak.player.player.Engine.of(current)
-    Column(Modifier.padding(vertical = 8.dp)) {
+    Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
         Text("Video player", style = MaterialTheme.typography.bodyLarge, color = Paper)
         Text(
             when {
@@ -551,7 +549,7 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String) {
             Text(it.device, fontSize = 11.sp, color = Faint)
         }
         Text(
-            "In the player, ▶ switches player for the channel you're watching.",
+            "In the player, the ExoPlayer / VLC button switches player for the channel you're watching.",
             fontSize = 11.sp,
             color = Faint,
             modifier = Modifier.padding(top = 4.dp),
@@ -680,7 +678,7 @@ private val LANGUAGES = listOf(
 
 @Composable
 private fun LanguageRow(title: String, subtitle: String?, selected: String, onSelect: (String) -> Unit) {
-    Column(Modifier.padding(vertical = 8.dp)) {
+    Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
         if (subtitle != null) {
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

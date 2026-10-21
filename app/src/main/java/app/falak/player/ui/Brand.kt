@@ -213,9 +213,10 @@ fun PaperButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
         }
         Text(text, color = Ink, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -232,8 +233,9 @@ fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
             .clip(shape)
             .border(1.dp, Paper.copy(alpha = 0.35f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null, tint = Paper, modifier = Modifier.size(18.dp))
@@ -309,3 +311,42 @@ internal fun Centered(content: @Composable () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) { content() }
     }
 }
+
+/**
+ * A page's title row: back arrow, title (and a small line under it), optional actions on the
+ * right. The arrow and the action icons sit on the page's edges (their touch areas reach past
+ * them), so the header lines up with the content below it.
+ */
+@Composable
+fun PageHeader(
+    title: String,
+    onBack: () -> Unit,
+    subtitle: String? = null,
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.IconButton(onClick = onBack, modifier = Modifier.offset(x = (-12).dp)) {
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = Paper,
+            )
+        }
+        Column(Modifier.weight(1f).offset(x = (-10).dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                color = Paper,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) Text(subtitle, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1)
+        }
+        Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
+    }
+}
+
+/** Side margin of full-width pages: wide on TV (TV safe area), narrow on phones. */
+@Composable
+@androidx.compose.runtime.ReadOnlyComposable
+fun pageMargin(): androidx.compose.ui.unit.Dp = if (isTv()) 40.dp else 16.dp
