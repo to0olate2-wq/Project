@@ -61,8 +61,13 @@ abstract class ScreenshotBase {
 
     // ---------- helpers ----------
 
-    protected fun mainScreens(layout: String, theme: String = "dark", block: (LibraryViewModel, (String) -> Unit) -> Unit) {
-        seed(layout, theme)
+    protected fun mainScreens(
+        layout: String,
+        theme: String = "dark",
+        hidden: List<String> = emptyList(),
+        block: (LibraryViewModel, (String) -> Unit) -> Unit,
+    ) {
+        seed(layout, theme, hidden)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -86,7 +91,7 @@ abstract class ScreenshotBase {
     }
 
     /** Saves sample playlist + settings, as if the user had set the app up. */
-    private fun seed(layout: String, theme: String = "dark"): Playlist {
+    private fun seed(layout: String, theme: String = "dark", hidden: List<String> = emptyList()): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
         m3u.writeText(buildM3u(dir))
@@ -95,7 +100,10 @@ abstract class ScreenshotBase {
             s.copy(
                 playlists = listOf(p),
                 lastPlaylistId = p.id,
-                settings = s.settings.copy(layout = layout, player = "exo", openLast = true, themeMode = theme),
+                settings = s.settings.copy(
+                    layout = layout, player = "exo", openLast = true, themeMode = theme,
+                    hiddenGroups = mapOf(p.id to hidden),
+                ),
             )
         }
         return p
@@ -390,10 +398,16 @@ class PhoneShelfScreens : ScreenshotBase() {
     // A very tall phone shows every Home shelf, including the films group with a long
     // provider-style name: its title must stay on one line.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneShelves() = mainScreens("phone") { vm, shoot ->
-        shoot("phone-11-home-all-shelves")
-        // Hidden groups leave Home entirely, slideshow included.
-        app.repo.setGroupsHidden(vm.playlist!!.id, listOf("Drama", "News"), hidden = true)
+    fun phoneShelves() = mainScreens("phone") { _, shoot -> shoot("phone-11-home-all-shelves") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneHiddenGroupsScreens : ScreenshotBase() {
+    // Hidden groups leave Home entirely, slideshow included. (Set before the screen opens:
+    // changing Home after it is drawn stalls Robolectric.)
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneHidden() = mainScreens("phone", hidden = listOf("Drama", "News")) { _, shoot ->
         shoot("phone-12-home-drama-news-hidden")
     }
 }
