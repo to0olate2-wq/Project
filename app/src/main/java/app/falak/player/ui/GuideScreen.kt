@@ -182,11 +182,20 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                 Box(Modifier.width(totalWidth).fillMaxHeight()) {
                     var t = windowStart
                     while (t < windowEnd) {
+                        val labelX = xOf(t, windowStart)
                         Text(
                             timeFormat.format(Date(t)),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.offset(x = xOf(t, windowStart)).padding(start = 4.dp),
+                            // A label already scrolling out of view is hidden rather than cut in half.
+                            modifier = Modifier
+                                .offset(x = labelX)
+                                .padding(start = 4.dp)
+                                .layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    val cut = hScroll.value > labelX.roundToPx()
+                                    layout(placeable.width, placeable.height) { if (!cut) placeable.place(0, 0) }
+                                },
                         )
                         t += HALF_HOUR
                     }
@@ -357,13 +366,17 @@ private fun GuideRow(
                                 // A programme that started before the visible part keeps its title in view
                                 // (read while placing, so scrolling doesn't recompose the guide).
                                 modifier = Modifier.layout { measurable, constraints ->
-                                    // Scrolling re-places the title only (no recomposition).
-                                    val keep = 48.dp.roundToPx()
-                                    val hidden = (hScroll.value - cellX.roundToPx()).coerceIn(0, (constraints.maxWidth - keep).coerceAtLeast(0))
-                                    val placeable = measurable.measure(
-                                        constraints.copy(minWidth = 0, maxWidth = (constraints.maxWidth - hidden).coerceAtLeast(0)),
-                                    )
-                                    layout(constraints.maxWidth, placeable.height) { placeable.place(hidden, 0) }
+                                    // Scrolling re-places the title only (no recomposition). A sliver of a
+                                    // programme too narrow to read shows no title at all.
+                                    val keep = 56.dp.roundToPx()
+                                    val hidden = (hScroll.value - cellX.roundToPx()).coerceAtLeast(0)
+                                    val visible = constraints.maxWidth - hidden
+                                    if (visible < keep) {
+                                        layout(constraints.maxWidth, 0) {}
+                                    } else {
+                                        val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = visible))
+                                        layout(constraints.maxWidth, placeable.height) { placeable.place(hidden, 0) }
+                                    }
                                 },
                             )
                         }

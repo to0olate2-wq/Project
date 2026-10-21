@@ -45,6 +45,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
@@ -68,21 +70,34 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     LaunchedEffect(ch.id) { runCatching { playFocus.requestFocus() } }
 
     val poster = info?.poster?.takeIf { it.isNotBlank() } ?: ch.logo
-    val backdrop = info?.backdrop?.takeIf { it.isNotBlank() } ?: poster
 
     val tv = isTv()
     Box(Modifier.fillMaxSize()) {
-        // The film's picture across the top, fading into the page.
+        // The film's picture across the top, fading out into the page. Without wide artwork, the poster
+        // decoded tiny and stretched: a soft wash of its colours (no ghost of its lettering).
         val top = if (tv) 420.dp else 320.dp
+        val wide = info?.backdrop?.takeIf { it.isNotBlank() }
+        val model: Any? = wide ?: poster.takeIf { it.isNotBlank() }?.let {
+            coil.request.ImageRequest.Builder(context).data(it).size(24, 36).memoryCacheKey("$it#wash").build()
+        }
         AsyncImage(
-            model = backdrop.ifBlank { null },
+            model = model,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(top).alpha(0.5f),
-        )
-        Box(
-            Modifier.fillMaxWidth().height(top)
-                .background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.3f), colors.background))),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(top)
+                .graphicsLayer {
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                    alpha = if (wide != null) 0.55f else 0.45f
+                }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Black, 0.55f to Color.Black.copy(alpha = 0.6f), 1f to Color.Transparent),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
         )
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = pageMargin()),
