@@ -32,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.layout
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import app.falak.player.data.AppState
@@ -152,21 +152,16 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ((-replayDays)..1).forEach { d ->
-                FilterChip(
-                    selected = d == day,
-                    onClick = { day = d },
-                    label = {
-                        Text(
-                            when (d) {
-                                0 -> "Today"
-                                -1 -> "Yesterday"
-                                1 -> "Tomorrow"
-                                else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
-                                    .format(Date(System.currentTimeMillis() + d * 86_400_000L))
-                            },
-                        )
+                TagChip(
+                    when (d) {
+                        0 -> "Today"
+                        -1 -> "Yesterday"
+                        1 -> "Tomorrow"
+                        else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
+                            .format(Date(System.currentTimeMillis() + d * 86_400_000L))
                     },
-                )
+                    d == day,
+                ) { day = d }
             }
         }
 
@@ -361,10 +356,14 @@ private fun GuideRow(
                                 overflow = TextOverflow.Ellipsis,
                                 // A programme that started before the visible part keeps its title in view
                                 // (read while placing, so scrolling doesn't recompose the guide).
-                                modifier = Modifier.offset {
-                                    val hidden = hScroll.value - cellX.roundToPx()
-                                    val room = (cellWidth - 96.dp).roundToPx().coerceAtLeast(0)
-                                    androidx.compose.ui.unit.IntOffset(hidden.coerceIn(0, room), 0)
+                                modifier = Modifier.layout { measurable, constraints ->
+                                    // Scrolling re-places the title only (no recomposition).
+                                    val keep = 48.dp.roundToPx()
+                                    val hidden = (hScroll.value - cellX.roundToPx()).coerceIn(0, (constraints.maxWidth - keep).coerceAtLeast(0))
+                                    val placeable = measurable.measure(
+                                        constraints.copy(minWidth = 0, maxWidth = (constraints.maxWidth - hidden).coerceAtLeast(0)),
+                                    )
+                                    layout(constraints.maxWidth, placeable.height) { placeable.place(hidden, 0) }
                                 },
                             )
                         }

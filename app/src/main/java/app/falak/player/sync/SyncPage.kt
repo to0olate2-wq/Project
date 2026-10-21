@@ -37,11 +37,16 @@ internal object SyncPage {
   button, .btn { font:600 15px/1 system-ui,sans-serif; border-radius:999px; padding:12px 18px; border:1px solid var(--line); background:transparent; color:var(--paper); cursor:pointer; text-decoration:none; display:inline-block; }
   button.primary { background:var(--paper); color:var(--ink); border-color:var(--paper); }
   button.small { padding:8px 12px; font-size:13px; }
-  .tabs { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .tabs { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px; }
+  .tabs button { padding:10px 6px; font-size:14px; }
   .tabs button[aria-pressed="true"] { background:var(--paper); color:var(--ink); }
-  .msg { min-height:22px; margin-top:10px; color:var(--muted); }
+  .msg { margin-top:10px; color:var(--muted); }
+  .msg:empty { display:none; }
   .msg.err { color:var(--signal); }
   .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  .actions .primary { flex:1; }
+  .actions.two { display:grid; grid-template-columns:1fr 1fr; }
+  .actions.two > * { text-align:center; }
   .hidden { display:none; }
   .empty { color:var(--faint); padding:8px 0; }
   .code { font:600 28px/1 ui-monospace,Menlo,monospace; letter-spacing:.3em; text-align:center; }
@@ -87,7 +92,7 @@ internal object SyncPage {
     <h2>Backup</h2>
     <div class="card">
       <div class="meta">Playlists, favourites, your lists and hidden groups, in one file. Load it on any device running The Player.</div>
-      <div class="actions" style="margin-top:12px">
+      <div class="actions two" style="margin-top:12px">
         <a class="btn" id="download" href="#">Download backup</a>
         <button onclick="document.getElementById('restore').click()">Load a backup</button>
         <input id="restore" type="file" accept=".json,application/json" class="hidden" onchange="restore(this)">
