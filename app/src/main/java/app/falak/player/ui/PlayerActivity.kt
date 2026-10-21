@@ -119,9 +119,11 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var speedButton: TextView
     private lateinit var favButton: TextView
     private lateinit var menuButton: TextView
-    private lateinit var settingsButton: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
+
+    /** The Menu (Home, Films, Series, Settings…) is over the picture. */
+    private var menuOpen by mutableStateOf(false)
 
     // In-player channel & group browser
     private var browserOpen by mutableStateOf(false)
@@ -131,7 +133,7 @@ class PlayerActivity : ComponentActivity() {
     private var currentChannelId by mutableStateOf<String?>(null)
     /** The key that opened/closed the browser: its release must not reach the newly shown views. */
     private var swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
-    private val hideBrowserView = Runnable { if (!browserOpen) browserView.visibility = View.GONE }
+    private val hideBrowserView = Runnable { if (!browserOpen && !menuOpen) browserView.visibility = View.GONE }
     private val trackNames by lazy { DefaultTrackNameProvider(resources) }
     private var autoSubtitlesDone = false
     private var bannerFor: Channel? = null
@@ -241,8 +243,6 @@ class PlayerActivity : ComponentActivity() {
         // Leave the player for another part of the app (Films, Series, Settings…).
         menuButton = pill("Menu", R.drawable.ic_pl_menu) { showAppMenu() }
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
-        settingsButton = pill("", R.drawable.ic_pl_settings) { leaveTo("SETTINGS") }
-            .apply { contentDescription = "Settings" }
         // Add what's playing to Favorites without leaving the player.
         favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
@@ -261,7 +261,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton, settingsButton)) {
+            for (b in listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -394,6 +394,14 @@ class PlayerActivity : ComponentActivity() {
                         onShowGroups = { setBrowserGroups(it) },
                         onPick = { list, ch -> pickFromBrowser(list, ch) },
                         onClose = { closeBrowser() },
+                    )
+                    // Drawn above the channel list (only one of them is open at a time).
+                    PlayerMenu(
+                        open = menuOpen,
+                        nowPlaying = queue.getOrNull(index)?.name,
+                        places = menuPlaces(),
+                        onPick = { leaveTo(it) },
+                        onClose = { closeMenu() },
                     )
                 }
             }
@@ -967,6 +975,17 @@ class PlayerActivity : ComponentActivity() {
             swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
             return true
         }
+        // The Menu takes the remote while it is open; Back closes it.
+        if (menuOpen) {
+            if (event.action == KeyEvent.ACTION_DOWN &&
+                (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
+            ) {
+                closeMenu()
+                swallowUpKey = event.keyCode
+                return true
+            }
+            return super.dispatchKeyEvent(event)
+        }
         if (browserOpen && event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
         ) {
@@ -1046,7 +1065,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** Screenshot tests: the controls (or the channel list) over a stand-in player, nothing playing. */
     @androidx.annotation.VisibleForTesting
-    internal fun previewControls(stand: Player, browser: Boolean = false, groups: Boolean = false) {
+    internal fun previewControls(stand: Player, browser: Boolean = false, groups: Boolean = false, menu: Boolean = false) {
         handler.removeCallbacksAndMessages(null)
         releaseEngine()
         hideMessage()
@@ -1056,6 +1075,7 @@ class PlayerActivity : ComponentActivity() {
         updateTimeViews()
         if (browser) openBrowser() else playerView.showController()
         if (browser && groups) setBrowserGroups(true)
+        if (menu) showAppMenu()
     }
 
     /** Finger position when a sideways swipe started (−1 = not swiping). */
@@ -1657,29 +1677,47 @@ class PlayerActivity : ComponentActivity() {
 
     // ---- leaving for other parts of the app ----
 
-    /** Films, Series, the guide, Settings… from inside the player: closes it and opens that page. */
-    private fun showAppMenu() {
+    /** The places the Menu offers, for this playlist. */
+    private fun menuPlaces(): List<MenuPlace> {
         val idx = repo.currentIndex
-        val items = buildList {
-            add("Home" to "HOME")
-            if (idx.live.isNotEmpty()) add("Live TV" to "LIVE")
-            if (idx.movies.isNotEmpty()) add("Films" to "MOVIES")
-            if (idx.series.isNotEmpty()) add("Series" to "SERIES")
-            add("Favorites" to "FAVORITES")
-            if (idx.live.isNotEmpty()) add("TV guide" to "GUIDE")
-            add("What's new" to "NOTICES")
-            add("Settings" to "SETTINGS")
+        return buildList {
+            add(MenuPlace("HOME", "Home", Section.HOME))
+            if (idx.live.isNotEmpty()) add(MenuPlace("LIVE", "Live TV", Section.LIVE))
+            if (idx.movies.isNotEmpty()) add(MenuPlace("MOVIES", "Films", Section.MOVIES))
+            if (idx.series.isNotEmpty()) add(MenuPlace("SERIES", "Series", Section.SERIES))
+            add(MenuPlace("FAVORITES", "Favorites", Section.FAVORITES))
+            if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
+            add(MenuPlace("NOTICES", "What's new"))
+            add(MenuPlace("SETTINGS", "Settings"))
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Go to")
-            .setItems(items.map { it.first }.toTypedArray()) { _, which -> leaveTo(items[which].second) }
-            .setNegativeButton("Keep watching", null)
-            .show()
+    }
+
+    /** Films, Series, the guide, Settings… from inside the player, in the app's own side menu. */
+    private fun showAppMenu() {
+        if (inPip || menuOpen) return
+        if (browserOpen) closeBrowser()
+        handler.removeCallbacks(hideBrowserView)
+        playerView.hideController()
+        playerView.useController = false
+        bannerView.visibility = View.GONE
+        browserView.visibility = View.VISIBLE
+        menuOpen = true
+        browserView.requestFocus()
+    }
+
+    private fun closeMenu() {
+        if (!menuOpen) return
+        menuOpen = false
+        handler.postDelayed(hideBrowserView, 300)
+        playerView.useController = !inPip
+        playerView.requestFocus()
     }
 
     private fun leaveTo(where: String) {
         FreezeWatch.note("player → $where")
         repo.pendingNav = where
+        // Settings, the guide and What's new are a detour: Back there brings this back.
+        repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES")) index else null
         finish()
     }
 

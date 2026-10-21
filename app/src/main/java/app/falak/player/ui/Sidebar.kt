@@ -215,7 +215,7 @@ fun SidebarFrame(
 // ---------- side menu ----------
 
 @Composable
-private fun navIcon(s: Section): Painter = when (s) {
+internal fun navIcon(s: Section): Painter = when (s) {
     Section.HOME -> rememberVectorPainter(Icons.Outlined.Home)
     Section.LIVE -> painterResource(R.drawable.ic_nav_live)
     Section.MOVIES -> painterResource(R.drawable.ic_nav_films)
@@ -224,7 +224,7 @@ private fun navIcon(s: Section): Painter = when (s) {
     Section.RECENT -> painterResource(R.drawable.ic_nav_recent)
 }
 
-private fun navLabel(s: Section): String = if (s == Section.LIVE) "Live TV" else s.label
+internal fun navLabel(s: Section): String = if (s == Section.LIVE) "Live TV" else s.label
 
 @Composable
 fun Sidebar(
@@ -258,7 +258,7 @@ fun Sidebar(
                 NavItem(navIcon(s), navLabel(s), counts[s], s == selected) { onSelect(s) }
             }
             if (hasGuide) {
-                item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onGuide) }
+                item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onClick = onGuide) }
             }
             if (recent.isNotEmpty()) {
                 item(key = "recentTitle") {
@@ -304,11 +304,18 @@ fun Sidebar(
 }
 
 @Composable
-private fun NavItem(icon: Painter, label: String, count: Int?, selected: Boolean, onClick: () -> Unit) {
+internal fun NavItem(
+    icon: Painter,
+    label: String,
+    count: Int?,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(8.dp)
     val bg by animateColorAsState(if (selected) Ink3 else Color.Transparent, tween(180), label = "navBg")
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .focusRing(shape)

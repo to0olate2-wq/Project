@@ -581,6 +581,24 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- What's new, and pages asked for from elsewhere (the player, a notification) ----
 
+    /** Set when Settings, the guide or What's new was opened from the player's Menu: Back returns to it. */
+    var backToPlayer: Int? = null
+
+    /** The item to play again (index in the play queue); MainActivity starts the player. */
+    var resumePlayerAt by mutableStateOf<Int?>(null)
+
+    /**
+     * Back from Settings, the guide or What's new. Returns true when that page was a detour from
+     * the player: the player comes back with what was playing (films resume where they were).
+     */
+    fun leaveDetour(): Boolean {
+        val i = backToPlayer ?: return false
+        backToPlayer = null
+        screen = if (playlist != null) Screen.LIBRARY else Screen.PLAYLISTS
+        resumePlayerAt = i
+        return true
+    }
+
     fun markNoticesRead() = repo.markNoticesRead()
 
     fun clearNotices() = repo.clearNotices()
@@ -810,6 +828,15 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * Playlists can change from another device or a browser (Your devices): follow a rename of the
      * open playlist, and close it if it was removed.
      */
+    /** Going on to the library, a series or a film ends a detour from the player. */
+    private fun forgetDetourOnLeave() {
+        viewModelScope.launch {
+            androidx.compose.runtime.snapshotFlow { screen }.collect { s ->
+                if (s == Screen.LIBRARY || s == Screen.PLAYLISTS || s == Screen.SERIES || s == Screen.DETAILS) backToPlayer = null
+            }
+        }
+    }
+
     private fun followOutsideChanges() {
         // Hiding or showing live groups (here or from the phone page) changes which channels get
         // a guide: reload it, from the saved copy when that already covers them.
@@ -848,6 +875,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     // Runs last, after every property above exists (opening a playlist touches many of them).
     init {
         followOutsideChanges()
+        forgetDetourOnLeave()
         renameAddressNamedPlaylists()
         crashReport = repo.takeCrashReport()
         val s = state.value

@@ -135,10 +135,11 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val timeFormat = rememberTimeFormat()
     var details by remember { mutableStateOf<Pair<Channel, Program>?>(null) }
 
-    BackHandler { vm.screen = Screen.LIBRARY }
+    val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = Screen.LIBRARY }
+    BackHandler { back() }
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = { vm.screen = Screen.LIBRARY }) {
+        PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = back) {
             IconButton(onClick = { vm.loadGuide(force = true) }, enabled = !vm.guideLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Reload guide", tint = Paper)
             }

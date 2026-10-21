@@ -64,6 +64,9 @@ class Repository(private val context: Context) {
     /** A page the player asked to open when it closed ("MOVIES", "SETTINGS"…), for the main screen. */
     @Volatile var pendingNav: String? = null
 
+    /** With [pendingNav]: the item that was playing, to go back to when leaving that page. */
+    @Volatile var pendingReturnIndex: Int? = null
+
     /**
      * The open playlist, ready to show, kept for as long as the app is in memory: closing and
      * reopening the app (or its main screen being rebuilt) shows it at once, with no reload.

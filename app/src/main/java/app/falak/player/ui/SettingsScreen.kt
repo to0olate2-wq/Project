@@ -83,7 +83,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             action()
         }
     }
-    val back: () -> Unit = { vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS }
+    val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS }
     // Group names come from the pre-built index (walking every channel here made Settings slow to open).
     val index = vm.index
     val groups = remember(index) {

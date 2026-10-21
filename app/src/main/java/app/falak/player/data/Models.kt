@@ -297,8 +297,8 @@ data class Settings(
     val theme: Int = 0,
     /** "auto" (light from sunrise, dark from sunset, see SunTimes), "light" or "dark". */
     val themeMode: String = "auto",
-    /** "classic" (tabs on top, slideshow) or "sidebar" (side menu, big continue cards, filter chips). */
-    val look: String = "classic",
+    /** "sidebar" (side menu, big continue cards, filter chips; the default) or "classic" (tabs on top, slideshow). */
+    val look: String = "sidebar",
     /** Sidebar look: sections shown as a grid rather than a list. */
     val gridSections: List<String> = listOf("MOVIES", "SERIES"),
     /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */

@@ -186,6 +186,19 @@ class MainActivity : ComponentActivity() {
                     }
                     vm.guideFixFor?.let { ch -> GuideFixDialog(vm, ch) { vm.guideFixFor = null } }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
+                    // Back from a page opened in the player's Menu: play again what was playing.
+                    vm.resumePlayerAt?.let { i ->
+                        LaunchedEffect(i) {
+                            vm.resumePlayerAt = null
+                            if (repo.playQueue.isNotEmpty()) {
+                                fromPlayer = true
+                                startActivity(
+                                    Intent(this@MainActivity, PlayerActivity::class.java)
+                                        .putExtra(PlayerActivity.EXTRA_INDEX, i.coerceIn(0, repo.playQueue.lastIndex)),
+                                )
+                            }
+                        }
+                    }
                     UpdateDialogs(vm)
                     LaunchedEffect(Unit) { vm.checkForUpdates(manual = false) }
                 }
@@ -227,7 +240,11 @@ class MainActivity : ComponentActivity() {
         // A page asked for from inside the player (Menu: Films, Series, Settings…).
         repo.pendingNav?.let { where ->
             repo.pendingNav = null
+            val back = repo.pendingReturnIndex
+            repo.pendingReturnIndex = null
             vm.navigate(where)
+            // Settings, the guide or What's new from the player: Back there returns to the player.
+            vm.backToPlayer = back
         }
         FreezeWatch.note(if (fromPlayer) "back from the player" else "app in front")
         vm.onReturnFromPlayer()
@@ -246,6 +263,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun play(list: List<Channel>, channel: Channel) {
+        vm.backToPlayer = null // something new is playing: no detour to go back to
         vm.prepareQueue(list, channel)
         val index = list.indexOf(channel).coerceAtLeast(0)
         if (vm.state.value.settings.player == app.falak.player.player.Engine.EXTERNAL.key) {

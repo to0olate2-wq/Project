@@ -82,7 +82,14 @@ abstract class ScreenshotBase {
         block(vm) { name -> capture(activity, name) }
     }
 
-    protected fun player(tv: Boolean, live: Boolean, browser: Boolean = false, groups: Boolean = false, block: ((String) -> Unit) -> Unit) {
+    protected fun player(
+        tv: Boolean,
+        live: Boolean,
+        browser: Boolean = false,
+        groups: Boolean = false,
+        menu: Boolean = false,
+        block: ((String) -> Unit) -> Unit,
+    ) {
         seed(if (tv) "tv" else "phone")
         val channels = sampleChannels()
         val queue = channels.filter { it.kind == (if (live) Kind.LIVE else Kind.MOVIE) }
@@ -93,7 +100,7 @@ abstract class ScreenshotBase {
         val intent = Intent(app, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, 2)
         val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
         idle(500)
-        activity.previewControls(StandIn(live, queue[2].name), browser, groups)
+        activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
         block { name -> capture(activity, name) }
     }
 
@@ -401,6 +408,13 @@ class TvChannelListScreens : ScreenshotBase() {
 class TvChannelGroupsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = TV)
     fun tvChannelGroups() = player(tv = true, live = true, browser = true, groups = true) { shoot -> shoot("tv-14-channel-list-groups") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvPlayerMenuScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvPlayerMenu() = player(tv = true, live = true, menu = true) { shoot -> shoot("tv-18-player-menu") }
 }
 
 // ---------- Sidebar look ----------
