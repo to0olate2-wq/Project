@@ -11,8 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,7 +28,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -79,13 +76,8 @@ fun PlayerMenu(open: Boolean, nowPlaying: String?, places: List<MenuPlace>, onPi
                 Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, top = if (tv) 24.dp else 16.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = if (tv) 20.dp else 16.dp, bottom = 8.dp),
             ) {
-                Row(Modifier.padding(start = 6.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BrandMark(if (tv) 34.dp else 30.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Wordmark(if (tv) 21 else 19)
-                }
                 if (!nowPlaying.isNullOrBlank()) {
                     Box(Modifier.padding(start = 10.dp, bottom = 2.dp)) { Kicker("Now playing", color = Faint) }
                     Text(
