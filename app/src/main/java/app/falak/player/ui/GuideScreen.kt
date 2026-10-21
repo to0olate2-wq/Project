@@ -180,6 +180,16 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
             }
         }
 
+        if (guideGroups.size > 1) {
+            LazyRow(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "__all") { TagChip("All · ${guided.size}", group == null) { vm.group = null } }
+                items(guideGroups, key = { "g:$it" }) { g -> TagChip(g, group == g) { vm.group = g } }
+            }
+        }
+
         // Time ruler
         Row(Modifier.fillMaxWidth().height(26.dp)) {
             Spacer(Modifier.width(ChannelColumn + 4.dp))
@@ -196,16 +206,6 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                         t += HALF_HOUR
                     }
                 }
-            }
-        }
-
-        if (guideGroups.size > 1) {
-            LazyRow(
-                Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item(key = "__all") { TagChip("All · ${guided.size}", group == null) { vm.group = null } }
-                items(guideGroups, key = { "g:$it" }) { g -> TagChip(g, group == g) { vm.group = g } }
             }
         }
 

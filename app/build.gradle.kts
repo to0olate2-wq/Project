@@ -18,7 +18,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "4.0"
+        versionName = "4.1"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // TVs and phones are ARM; leaving out x86 keeps the download much smaller now that VLC is built in.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -140,6 +140,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // QR code for "Your devices" (scan with a phone to open the sharing page).
+    implementation("com.google.zxing:core:3.5.3")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.15.1")

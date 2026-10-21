@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC }
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -688,8 +688,33 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Playlists can change from another device or a browser (Your devices): follow a rename of the
+     * open playlist, and close it if it was removed.
+     */
+    private fun followOutsideChanges() {
+        viewModelScope.launch {
+            state.collect { s ->
+                val p = playlist ?: return@collect
+                val now = s.playlists.firstOrNull { it.id == p.id }
+                if (now == null) {
+                    loadJob?.cancel()
+                    playlist = null
+                    channels = emptyList()
+                    index = LibraryIndex.EMPTY
+                    loading = false
+                    repo.clearEpg()
+                    if (screen != Screen.SYNC && screen != Screen.SETTINGS) screen = Screen.PLAYLISTS
+                } else if (now.name != p.name) {
+                    playlist = p.copy(name = now.name)
+                }
+            }
+        }
+    }
+
     // Runs last, after every property above exists (opening a playlist touches many of them).
     init {
+        followOutsideChanges()
         renameAddressNamedPlaylists()
         crashReport = repo.takeCrashReport()
         val s = state.value

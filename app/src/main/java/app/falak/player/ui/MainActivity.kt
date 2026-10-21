@@ -57,6 +57,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -144,6 +145,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.GUIDE -> GuideScreen(vm, state, onPlay = ::play)
                                 Screen.SETTINGS -> SettingsScreen(vm, state)
                                 Screen.GROUPS -> GroupsScreen(vm, state)
+                                Screen.SYNC -> SyncScreen(vm, state)
                             }
                         }
                     }
@@ -172,7 +174,7 @@ class MainActivity : ComponentActivity() {
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE -> 2
         Screen.SETTINGS -> 3
-        Screen.GROUPS -> 4
+        Screen.GROUPS, Screen.SYNC -> 4
     }
 
     private fun play(list: List<Channel>, channel: Channel) {
@@ -270,7 +272,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(if (tv) 44.dp else 38.dp)
             Spacer(Modifier.weight(1f))
-            Clock(Modifier.padding(horizontal = 8.dp))
+            if (tv) Clock(Modifier.padding(horizontal = 8.dp))
             IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
                 Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
             }
@@ -290,6 +292,8 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         Row(verticalAlignment = Alignment.Bottom) {
             Kicker("Your playlists", color = Muted)
             Spacer(Modifier.weight(1f))
+            GhostButton("Devices", Icons.Filled.Share) { vm.screen = Screen.SYNC }
+            Spacer(Modifier.width(10.dp))
             PaperButton("Add playlist", Icons.Filled.Add) { adding = true }
         }
         Spacer(Modifier.height(10.dp))

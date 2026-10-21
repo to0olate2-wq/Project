@@ -98,7 +98,7 @@ jobs:
         continue-on-error: true
         run: |
           chmod +x gradlew
-          ./gradlew testPlayDebugUnitTest --tests 'app.falak.player.screens.*' --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
+          ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
       - name: Publish to the screenshots branch
         if: always() && github.ref == 'refs/heads/main'

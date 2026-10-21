@@ -41,86 +41,27 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.Duration
+import app.falak.player.screens.ScreenshotBase.Companion.PHONE
+import app.falak.player.screens.ScreenshotBase.Companion.PHONE_LAND
+import app.falak.player.screens.ScreenshotBase.Companion.PHONE_TALL
+import app.falak.player.screens.ScreenshotBase.Companion.TV
+import app.falak.player.screens.ScreenshotBase.Companion.TV_TALL
 
 /**
  * Draws the app's main screens with made-up sample channels (no network, no real broadcasters)
  * into PNGs under build/screens, for checking layout and spacing on TV and phone sizes.
+ * One small class per screen group: Gradle starts a fresh JVM per test class (forkEvery = 1),
+ * which Compose needs between Robolectric runs.
  * Run: ./gradlew testPlayDebugUnitTest --tests 'app.falak.player.screens.*'
  */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
-class ScreensTest {
+abstract class ScreenshotBase {
 
-    private val app: FalakApp get() = ApplicationProvider.getApplicationContext()
-
-    // ---------- TV (1920 × 1080) ----------
-
-    @Test @Config(qualifiers = TV)
-    fun tvHome() = mainScreens("tv") { vm, shoot ->
-        shoot("tv-01-home")
-        vm.section = Section.LIVE
-        shoot("tv-02-live")
-        vm.section = Section.MOVIES
-        shoot("tv-03-films")
-        vm.screen = Screen.GUIDE
-        shoot("tv-04-guide")
-        vm.screen = Screen.PLAYLISTS
-        shoot("tv-05-playlists")
-    }
-
-    @Test @Config(qualifiers = TV)
-    fun tvLight() = mainScreens("tv", theme = "light") { vm, shoot ->
-        shoot("tv-07-home-light")
-        vm.section = Section.LIVE
-        shoot("tv-08-live-light")
-    }
-
-    @Test @Config(qualifiers = TV_TALL)
-    fun tvSettings() = mainScreens("tv") { vm, shoot ->
-        vm.screen = Screen.SETTINGS
-        shoot("tv-06-settings-full")
-    }
-
-    @Test @Config(qualifiers = TV)
-    fun tvPlayerFilm() = player(tv = true, live = false) { shoot -> shoot("tv-10-player-film") }
-
-    @Test @Config(qualifiers = TV)
-    fun tvPlayerLive() = player(tv = true, live = true) { shoot -> shoot("tv-11-player-live") }
-
-    @Test @Config(qualifiers = TV)
-    fun tvChannelList() = player(tv = true, live = true, browser = true) { shoot -> shoot("tv-12-channel-list") }
-
-    // ---------- Phone (1080 × 2340) ----------
-
-    @Test @Config(qualifiers = PHONE)
-    fun phoneHome() = mainScreens("phone") { vm, shoot ->
-        shoot("phone-01-home")
-        vm.section = Section.LIVE
-        shoot("phone-02-live")
-        vm.screen = Screen.PLAYLISTS
-        shoot("phone-05-playlists")
-    }
-
-    @Test @Config(qualifiers = PHONE)
-    fun phoneLight() = mainScreens("phone", theme = "light") { vm, shoot ->
-        shoot("phone-07-home-light")
-        vm.screen = Screen.GUIDE
-        shoot("phone-08-guide-light")
-    }
-
-    @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneSettings() = mainScreens("phone") { vm, shoot ->
-        vm.screen = Screen.SETTINGS
-        shoot("phone-06-settings-full")
-    }
-
-    @Test @Config(qualifiers = PHONE_LAND)
-    fun phonePlayerFilm() = player(tv = false, live = false) { shoot -> shoot("phone-10-player-film-landscape") }
+    protected val app: FalakApp get() = ApplicationProvider.getApplicationContext()
 
     // ---------- helpers ----------
 
-    private fun mainScreens(layout: String, theme: String = "dark", block: (LibraryViewModel, (String) -> Unit) -> Unit) {
+    protected fun mainScreens(layout: String, theme: String = "dark", block: (LibraryViewModel, (String) -> Unit) -> Unit) {
         seed(layout, theme)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
@@ -129,7 +70,7 @@ class ScreensTest {
         block(vm) { name -> capture(activity, name) }
     }
 
-    private fun player(tv: Boolean, live: Boolean, browser: Boolean = false, block: ((String) -> Unit) -> Unit) {
+    protected fun player(tv: Boolean, live: Boolean, browser: Boolean = false, block: ((String) -> Unit) -> Unit) {
         seed(if (tv) "tv" else "phone")
         val channels = sampleChannels()
         val queue = channels.filter { it.kind == (if (live) Kind.LIVE else Kind.MOVIE) }
@@ -325,11 +266,119 @@ class ScreensTest {
         override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> = Futures.immediateVoidFuture()
     }
 
-    private companion object {
+    companion object {
         const val TV = "w960dp-h540dp-land-xhdpi"
         const val TV_TALL = "w960dp-h2400dp-port-xhdpi"
         const val PHONE = "w411dp-h891dp-port-xxhdpi"
         const val PHONE_TALL = "w411dp-h2600dp-port-xxhdpi"
         const val PHONE_LAND = "w891dp-h411dp-land-xxhdpi"
     }
+}
+
+// ---------- TV (1920 × 1080) ----------
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvHomeScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvHome() = mainScreens("tv") { vm, shoot ->
+        shoot("tv-01-home")
+        vm.section = Section.LIVE
+        shoot("tv-02-live")
+        vm.section = Section.MOVIES
+        shoot("tv-03-films")
+        vm.screen = Screen.GUIDE
+        shoot("tv-04-guide")
+        vm.screen = Screen.PLAYLISTS
+        shoot("tv-05-playlists")
+        vm.screen = Screen.SYNC
+        shoot("tv-09-devices")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvLightScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvLight() = mainScreens("tv", theme = "light") { vm, shoot ->
+        shoot("tv-07-home-light")
+        vm.section = Section.LIVE
+        shoot("tv-08-live-light")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSettingsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV_TALL)
+    fun tvSettings() = mainScreens("tv") { vm, shoot ->
+        vm.screen = Screen.SETTINGS
+        shoot("tv-06-settings-full")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvPlayerFilmScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvPlayerFilm() = player(tv = true, live = false) { shoot -> shoot("tv-10-player-film") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvPlayerLiveScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvPlayerLive() = player(tv = true, live = true) { shoot -> shoot("tv-11-player-live") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvChannelListScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvChannelList() = player(tv = true, live = true, browser = true) { shoot -> shoot("tv-12-channel-list") }
+}
+
+// ---------- Phone (1080 × 2340) ----------
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneHomeScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneHome() = mainScreens("phone") { vm, shoot ->
+        shoot("phone-01-home")
+        vm.section = Section.LIVE
+        shoot("phone-02-live")
+        vm.screen = Screen.PLAYLISTS
+        shoot("phone-05-playlists")
+        vm.screen = Screen.SYNC
+        shoot("phone-09-devices")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneLightScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneLight() = mainScreens("phone", theme = "light") { vm, shoot ->
+        shoot("phone-07-home-light")
+        vm.screen = Screen.GUIDE
+        shoot("phone-08-guide-light")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSettingsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneSettings() = mainScreens("phone") { vm, shoot ->
+        vm.screen = Screen.SETTINGS
+        shoot("phone-06-settings-full")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhonePlayerScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phonePlayerFilm() = player(tv = false, live = false) { shoot -> shoot("phone-10-player-film-landscape") }
 }

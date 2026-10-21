@@ -502,6 +502,123 @@ class Repository(private val context: Context) {
         return "Guide for ${c.matched}$of channels · updated $age"
     }
 
+    // ---- moving playlists between devices (Settings → Your devices) ----
+
+    /** Everything another device needs to show the same playlists, lists and favourites. */
+    fun exportBundle(deviceName: String): SyncBundle {
+        val s = _state.value
+        return SyncBundle(
+            from = deviceName,
+            createdAt = System.currentTimeMillis(),
+            playlists = s.playlists.map { p ->
+                val text = if (p.type == SourceType.M3U_FILE) {
+                    try {
+                        File(p.url).takeIf { it.exists() && it.length() < 40L * 1024 * 1024 }?.readText()
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else {
+                    null
+                }
+                SyncPlaylist(p, text)
+            },
+            favorites = s.favorites,
+            favLists = s.favLists,
+            hiddenGroups = s.settings.hiddenGroups,
+            guideOverrides = s.settings.guideOverrides,
+        )
+    }
+
+    /**
+     * Adds what [bundle] has and this device doesn't. A playlist already here (same id, or the same
+     * link and login) gets the incoming name and logins; favourites, lists and hidden groups are
+     * merged, never removed.
+     */
+    fun importBundle(bundle: SyncBundle): ImportResult {
+        val before = _state.value.playlists
+        val idMap = HashMap<String, String>()
+        val incoming = ArrayList<Playlist>()
+        var added = 0
+        var updated = 0
+        var unchanged = 0
+        for (sp in bundle.playlists) {
+            val inc = sp.playlist
+            val match = before.firstOrNull { it.id == inc.id } ?: before.firstOrNull {
+                it.type == inc.type && it.type != SourceType.M3U_FILE &&
+                    it.url.trimEnd('/').equals(inc.url.trimEnd('/'), ignoreCase = true) && it.username == inc.username
+            }
+            if (match != null) {
+                idMap[inc.id] = match.id
+                val merged = inc.copy(
+                    id = match.id,
+                    url = if (inc.type == SourceType.M3U_FILE) match.url else inc.url,
+                    extraEpg = (match.extraEpg + inc.extraEpg).distinct(),
+                )
+                if (merged != match) {
+                    incoming += merged
+                    updated++
+                } else {
+                    unchanged++
+                }
+                continue
+            }
+            var p = inc
+            if (inc.type == SourceType.M3U_FILE) {
+                val text = sp.m3u ?: continue // the file itself didn't come along
+                val f = File(importDir, "${inc.id}.m3u")
+                try {
+                    f.writeText(text)
+                } catch (e: Exception) {
+                    continue
+                }
+                p = p.copy(url = f.absolutePath)
+            }
+            idMap[inc.id] = p.id
+            incoming += p
+            added++
+        }
+        fun <V> remap(m: Map<String, V>): Map<String, V> =
+            m.mapNotNull { (k, v) -> idMap[k]?.let { it to v } }.toMap()
+        update { s ->
+            val byId = s.playlists.associateBy { it.id }.toMutableMap()
+            val order = s.playlists.map { it.id }.toMutableList()
+            for (p in incoming) {
+                if (p.id !in byId) order += p.id
+                byId[p.id] = p
+            }
+            val favs = s.favorites.toMutableMap()
+            for ((id, list) in remap(bundle.favorites)) favs[id] = unionIds(favs[id].orEmpty(), list)
+            val lists = s.favLists.toMutableMap()
+            for ((id, theirs) in remap(bundle.favLists)) {
+                val mine = lists[id].orEmpty().toMutableList()
+                for (l in theirs) {
+                    val i = mine.indexOfFirst { it.id == l.id || it.name.equals(l.name, ignoreCase = true) }
+                    if (i < 0) mine += l else mine[i] = mine[i].copy(ids = unionIds(mine[i].ids, l.ids))
+                }
+                lists[id] = mine
+            }
+            val hidden = s.settings.hiddenGroups.toMutableMap()
+            for ((id, groups) in remap(bundle.hiddenGroups)) hidden[id] = unionIds(hidden[id].orEmpty(), groups)
+            val picked = s.settings.guideOverrides.toMutableMap()
+            for ((id, m) in remap(bundle.guideOverrides)) picked[id] = m + picked[id].orEmpty()
+            s.copy(
+                playlists = order.mapNotNull { byId[it] },
+                favorites = favs,
+                favLists = lists,
+                settings = s.settings.copy(hiddenGroups = hidden, guideOverrides = picked),
+                lastPlaylistId = s.lastPlaylistId ?: order.firstOrNull(),
+            )
+        }
+        return ImportResult(added, updated, unchanged)
+    }
+
+    /** Saves the text of an M3U file sent from another device or a browser; returns its path. */
+    fun saveImportedM3u(id: String, text: String): String {
+        val f = File(importDir, "$id.m3u")
+        f.writeText(text)
+        return f.absolutePath
+    }
+
     fun updatePlaylist(p: Playlist) = update { s ->
         s.copy(playlists = s.playlists.map { if (it.id == p.id) p else it })
     }

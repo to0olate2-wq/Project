@@ -422,8 +422,13 @@ private fun FeatureCarousel(
 
             if (size > 1) {
                 val active = pager.currentPage % size
+                // Phone: along the top, clear of the buttons; TV: bottom right, level with them.
                 Row(
-                    Modifier.align(Alignment.BottomEnd).padding(horizontal = 20.dp, vertical = 26.dp),
+                    if (compact) {
+                        Modifier.align(Alignment.TopEnd).padding(horizontal = 18.dp, vertical = 16.dp)
+                    } else {
+                        Modifier.align(Alignment.BottomEnd).padding(horizontal = 22.dp, vertical = 34.dp)
+                    },
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     val paper = Paper

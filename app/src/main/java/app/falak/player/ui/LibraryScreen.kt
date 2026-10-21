@@ -251,7 +251,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     )
                 }
             }
-            Clock(Modifier.padding(horizontal = 8.dp))
+            if (tv) Clock(Modifier.padding(horizontal = 8.dp))
             if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
                 if (index.live.isNotEmpty()) {
                     IconButton(onClick = { vm.screen = Screen.GUIDE }) {

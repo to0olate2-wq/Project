@@ -118,9 +118,11 @@ fun Wordmark(size: Int = 22) {
             fontWeight = FontWeight.Medium,
             fontSize = (size * 0.66f).sp,
             color = Muted,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(bottom = (size * 0.12f).dp),
         )
-        Text("Player", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = size.sp, color = Paper)
+        Text("Player", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = size.sp, color = Paper, maxLines = 1, softWrap = false)
         Box(
             Modifier
                 .padding(start = (size * 0.08f).dp, bottom = (size * 0.24f).dp)

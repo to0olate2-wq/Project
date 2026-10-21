@@ -270,6 +270,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         item { SectionTitle("General") }
+        item {
+            ClickRow("Your devices", "Copy your playlists to other TVs and phones, or manage them from a phone or computer") {
+                vm.screen = Screen.SYNC
+            }
+        }
         if (p != null) {
             item {
                 ClickRow("Show & hide groups", "Hide groups you never watch, or bring them back") { vm.screen = Screen.GROUPS }
