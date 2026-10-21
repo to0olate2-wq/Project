@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -239,61 +240,62 @@ fun Sidebar(
     modifier: Modifier = Modifier,
 ) {
     val tv = isTv()
-    LazyColumn(
-        modifier.fillMaxHeight().background(Ink2),
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = if (tv) 22.dp else 14.dp, bottom = 12.dp),
-    ) {
-        item(key = "brand") {
-            Row(Modifier.padding(start = 6.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                BrandMark(if (tv) 34.dp else 30.dp)
-                Spacer(Modifier.width(10.dp))
-                Wordmark(if (tv) 21 else 19)
+    Column(modifier.fillMaxHeight().background(Ink2)) {
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = if (tv) 22.dp else 14.dp, bottom = 12.dp),
+        ) {
+            item(key = "brand") {
+                Row(Modifier.padding(start = 6.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BrandMark(if (tv) 34.dp else 30.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Wordmark(if (tv) 21 else 19)
+                }
+            }
+            items(sections, key = { "nav:" + it.name }) { s ->
+                NavItem(navIcon(s), navLabel(s), counts[s], s == selected) { onSelect(s) }
+            }
+            if (hasGuide) {
+                item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onGuide) }
+            }
+            if (recent.isNotEmpty()) {
+                item(key = "recentTitle") {
+                    Box(Modifier.padding(start = 10.dp, top = 22.dp, bottom = 6.dp)) { Kicker("Recently watched", color = Faint) }
+                }
+                items(recent, key = { "recent:" + it.id }) { ch -> RecentItem(ch, onClick = { onRecent(ch) }) }
             }
         }
-        items(sections, key = { "nav:" + it.name }) { s ->
-            NavItem(navIcon(s), navLabel(s), counts[s], s == selected) { onSelect(s) }
-        }
-        if (hasGuide) {
-            item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onGuide) }
-        }
-        if (recent.isNotEmpty()) {
-            item(key = "recentTitle") {
-                Box(Modifier.padding(start = 10.dp, top = 22.dp, bottom = 6.dp)) { Kicker("Recently watched", color = Faint) }
+        // The playlist and Settings stay at the bottom, however long the menu gets.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            val shape = RoundedCornerShape(10.dp)
+            Row(
+                Modifier
+                    .weight(1f)
+                    .focusRing(shape)
+                    .clip(shape)
+                    .background(Ink3)
+                    .clickable(onClick = onPlaylists)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(playlist.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        when (playlist.type) {
+                            SourceType.XTREAM -> "Xtream"
+                            SourceType.M3U_URL -> "M3U link"
+                            SourceType.M3U_FILE -> "M3U file"
+                        } + "  ·  Switch",
+                        fontFamily = Sans,
+                        fontSize = 11.sp,
+                        color = Faint,
+                        maxLines = 1,
+                    )
+                }
             }
-            items(recent, key = { "recent:" + it.id }) { ch -> RecentItem(ch, onClick = { onRecent(ch) }) }
-        }
-        item(key = "account") {
-            Spacer(Modifier.height(20.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val shape = RoundedCornerShape(10.dp)
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .focusRing(shape)
-                        .clip(shape)
-                        .background(Ink3)
-                        .clickable(onClick = onPlaylists)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(playlist.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            when (playlist.type) {
-                                SourceType.XTREAM -> "Xtream"
-                                SourceType.M3U_URL -> "M3U link"
-                                SourceType.M3U_FILE -> "M3U file"
-                            } + "  ·  Switch",
-                            fontFamily = Sans,
-                            fontSize = 11.sp,
-                            color = Faint,
-                            maxLines = 1,
-                        )
-                    }
-                }
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Muted)
-                }
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Muted)
             }
         }
     }
@@ -387,8 +389,10 @@ fun SidebarTopBar(
         }
         val shape = RoundedCornerShape(12.dp)
         Row(
-            // TV: a fixed, comfortable width with the buttons at the far right; phone: all the room.
-            (if (tv) Modifier.width(560.dp) else Modifier.weight(1f))
+            // Takes the free width up to a comfortable 560 dp; the buttons stay at the far right.
+            Modifier
+                .weight(1f)
+                .widthIn(max = 560.dp)
                 .panel(shape)
                 .padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -421,7 +425,6 @@ fun SidebarTopBar(
                 }
             }
         }
-        if (tv) Spacer(Modifier.weight(1f))
         Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))
             if (hasGuide && onMenu != null) {
@@ -449,16 +452,28 @@ fun SectionHead(
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 26.sp else 22.sp, color = Paper, maxLines = 1)
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "${countLabel(count)} $unit",
-            style = Tabular.copy(fontSize = 12.sp),
-            color = Muted,
-            maxLines = 1,
-            modifier = Modifier.background(Ink3, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 3.dp),
-        )
-        Spacer(Modifier.weight(1f))
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                fontFamily = Serif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (tv) 26.sp else 22.sp,
+                color = Paper,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "${countLabel(count)} $unit",
+                style = Tabular.copy(fontSize = 12.sp),
+                color = Muted,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.background(Ink3, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 3.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         if (sorts.size > 1) SortMenu(sorts, sort, onSort)
         if (grid != null) {
             Spacer(Modifier.width(8.dp))
@@ -481,10 +496,12 @@ private fun SortMenu(sorts: List<Sort>, sort: Sort, onSort: (Sort) -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painterResource(R.drawable.ic_sort), contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
+            Icon(painterResource(R.drawable.ic_sort), contentDescription = "Sort", tint = Muted, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Sort", fontFamily = Sans, fontSize = 12.sp, color = Faint)
-            Spacer(Modifier.width(6.dp))
+            if (isTv()) {
+                Text("Sort", fontFamily = Sans, fontSize = 12.sp, color = Faint)
+                Spacer(Modifier.width(6.dp))
+            }
             Text(sort.label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1)
             Text("  ▾", fontSize = 11.sp, color = Muted)
         }
@@ -578,7 +595,16 @@ private fun CountChip(label: String, count: Int?, selected: Boolean, onLongClick
             .padding(horizontal = 13.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = fg, maxLines = 1)
+        Text(
+            label,
+            fontFamily = Sans,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+            color = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 220.dp),
+        )
         if (count != null) {
             Spacer(Modifier.width(7.dp))
             Text(countLabel(count), style = Tabular.copy(fontSize = 11.sp), color = fg.copy(alpha = 0.55f), maxLines = 1)

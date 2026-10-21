@@ -650,7 +650,14 @@ private fun PosterGrid(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(if (isTv()) 140.dp else 108.dp),
+        // The Sidebar look fits more, smaller posters per row (with their details underneath).
+        columns = GridCells.Adaptive(
+            when {
+                LocalCardDetails.current -> if (isTv()) 116.dp else 100.dp
+                isTv() -> 140.dp
+                else -> 108.dp
+            },
+        ),
         state = state,
         modifier = modifier,
         contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 32.dp),

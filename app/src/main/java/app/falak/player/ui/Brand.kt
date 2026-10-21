@@ -143,7 +143,7 @@ fun Clock(modifier: Modifier = Modifier) {
             value = System.currentTimeMillis()
         }
     }
-    Text(format.format(Date(now)), style = Tabular.copy(fontSize = 15.sp), color = Muted, modifier = modifier)
+    Text(format.format(Date(now)), style = Tabular.copy(fontSize = 15.sp), color = Muted, maxLines = 1, softWrap = false, modifier = modifier)
 }
 
 /** Small red caps line above titles, like a newspaper kicker. */
