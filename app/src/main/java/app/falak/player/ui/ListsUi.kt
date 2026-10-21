@@ -74,7 +74,7 @@ fun ItemSheet(vm: LibraryViewModel, state: AppState, ch: Channel, orderInList: S
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
                 Kicker("Save to", color = Muted)
                 Spacer(Modifier.height(4.dp))
-                CheckLine("Favourites", ch.id in favIds) { on -> vm.setInList(DEFAULT_LIST, ch, on) }
+                CheckLine("Favorites", ch.id in favIds) { on -> vm.setInList(DEFAULT_LIST, ch, on) }
                 lists.forEach { l -> CheckLine(l.name, ch.id in l.ids) { on -> vm.setInList(l.id, ch, on) } }
                 if (creating) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
@@ -178,14 +178,14 @@ private fun InlineField(value: String, hint: String, modifier: Modifier = Modifi
     }
 }
 
-/** Chips across the top of Saved: Favourites, your lists, and "New list". Long-press a list to edit it. */
+/** Chips across the top of Favorites: Favorites, your lists, and "New list". Long-press a list to edit it. */
 @Composable
 fun ListChips(lists: List<FavList>, favCount: Int, selected: String, onSelect: (String) -> Unit, onEdit: (FavList) -> Unit, onNew: () -> Unit) {
     LazyRow(
         Modifier.fillMaxWidth().padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = DEFAULT_LIST) { TagChip("Favourites · $favCount", selected == DEFAULT_LIST) { onSelect(DEFAULT_LIST) } }
+        item(key = DEFAULT_LIST) { TagChip("Favorites · $favCount", selected == DEFAULT_LIST) { onSelect(DEFAULT_LIST) } }
         items(lists, key = { it.id }) { l ->
             TagChip("${l.name} · ${l.ids.size}", selected == l.id, onLongClick = { onEdit(l) }) {
                 if (selected == l.id) onEdit(l) else onSelect(l.id)

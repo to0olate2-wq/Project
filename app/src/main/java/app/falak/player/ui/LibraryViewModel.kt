@@ -44,7 +44,7 @@ enum class Section(val label: String, val kind: Kind?) {
     LIVE("Live", Kind.LIVE),
     MOVIES("Films", Kind.MOVIE),
     SERIES("Series", Kind.SERIES),
-    FAVORITES("Saved", null),
+    FAVORITES("Favorites", null),
     RECENT("Recent", null),
 }
 
@@ -411,7 +411,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 if (delayMs > 0) delay(delayMs)
                 val p = playlist?.takeIf { it.id == p0.id } ?: return@launch
-                guideStatus = repo.loadGuide(p, channels, p.epgUrl.ifBlank { providerEpg }, force)
+                guideStatus = repo.loadGuide(p, guideTargets(), p.epgUrl.ifBlank { providerEpg }, force)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -516,20 +516,24 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleHiddenGroup(group: String) {
         val p = playlist ?: return
-        repo.updateSettings { s ->
-            val cur = s.hiddenGroups[p.id].orEmpty()
-            s.copy(hiddenGroups = s.hiddenGroups + (p.id to if (group in cur) cur - group else cur + group))
-        }
-        if (this.group == group) this.group = null
+        val hide = group !in state.value.settings.hiddenGroups[p.id].orEmpty()
+        repo.setGroupsHidden(p.id, listOf(group), hide)
+        if (hide && this.group == group) this.group = null
     }
 
     fun setGroupsHidden(groups: Collection<String>, hidden: Boolean) {
         val p = playlist ?: return
-        repo.updateSettings { s ->
-            val cur = s.hiddenGroups[p.id].orEmpty().toMutableSet()
-            if (hidden) cur += groups else cur -= groups.toSet()
-            s.copy(hiddenGroups = s.hiddenGroups + (p.id to cur.toList()))
-        }
+        repo.setGroupsHidden(p.id, groups, hidden)
+    }
+
+    /** Hidden groups of the open playlist. */
+    private fun hiddenNow(): Set<String> =
+        playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet()
+
+    /** Live channels outside hidden groups: the only ones the guide is matched and kept for. */
+    private fun guideTargets(): List<Channel> {
+        val hidden = hiddenNow()
+        return if (hidden.isEmpty()) index.live else index.live.filter { it.group !in hidden }
     }
 
     /** Hidden groups plus PIN-locked ones (while locked). */
@@ -611,10 +615,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshGuideSuggestions() {
         val p = playlist ?: return
-        val key = index to p.extraEpg
+        // Suggest guides for the channels you keep, not for groups you hid.
+        val key = Triple(index, p.extraEpg, hiddenNow())
         if (key == suggestionKey) return
         suggestionKey = key
-        val live = index.live
+        val live = guideTargets()
         val extra = p.extraEpg
         viewModelScope.launch {
             guideSuggestions = try {
@@ -706,6 +711,21 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * open playlist, and close it if it was removed.
      */
     private fun followOutsideChanges() {
+        // Hiding or showing live groups (here or from the phone page) changes which channels get
+        // a guide: reload it, from the saved copy when that already covers them.
+        viewModelScope.launch {
+            var last: Pair<String, Set<String>>? = null
+            state.collect { s ->
+                val p = playlist ?: return@collect
+                val hidden = s.settings.hiddenGroups[p.id].orEmpty().toSet()
+                val before = last
+                last = p.id to hidden
+                if (before == null || before.first != p.id || before.second == hidden || channels.isEmpty()) return@collect
+                val changed = (before.second - hidden) + (hidden - before.second)
+                val liveGroups = index.groupsOf(Kind.LIVE)
+                if (changed.any { it in liveGroups }) loadGuide(force = false, delayMs = 2_500)
+            }
+        }
         viewModelScope.launch {
             state.collect { s ->
                 val p = playlist ?: return@collect

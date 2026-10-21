@@ -48,10 +48,32 @@ internal object SyncPage {
   .actions .primary { flex:1; }
   .actions.two { display:grid; grid-template-columns:1fr 1fr; }
   .actions.two > * { text-align:center; }
-  .hidden { display:none; }
+  .hidden { display:none !important; }
   .empty { color:var(--faint); padding:8px 0; }
   .code { font:600 28px/1 ui-monospace,Menlo,monospace; letter-spacing:.3em; text-align:center; }
   footer { color:var(--faint); font-size:13px; margin-top:34px; }
+  /* show & hide groups */
+  select { appearance:none; -webkit-appearance:none; margin:0 0 12px; background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%); background-position:calc(100% - 20px) 52%,calc(100% - 14px) 52%; background-size:6px 6px; background-repeat:no-repeat; padding-right:40px; }
+  .gctl { position:sticky; top:0; z-index:2; background:var(--ink2); margin:-16px -16px 0; padding:16px 16px 10px; border-radius:14px 14px 0 0; border-bottom:1px solid var(--line); }
+  .tabs button .n { font-weight:500; opacity:.6; margin-left:4px; font-variant-numeric:tabular-nums; }
+  .find { position:relative; }
+  .find svg { position:absolute; left:14px; top:50%; transform:translateY(-50%); width:17px; height:17px; stroke:var(--faint); fill:none; stroke-width:2; pointer-events:none; }
+  .find input { padding-left:40px; margin:0; }
+  .find input::-webkit-search-cancel-button { filter:grayscale(1); }
+  .gbar { display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .gbar .meta { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .gbar button:disabled { opacity:.35; cursor:default; }
+  .grow { display:flex; align-items:center; gap:12px; padding:12px 2px; border-bottom:1px solid var(--line); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .grow:last-child { border-bottom:0; }
+  .gname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:color .15s; }
+  .gcount { color:var(--faint); font-size:13px; font-variant-numeric:tabular-nums; }
+  .grow.off .gname { color:var(--faint); }
+  .sw { appearance:none; -webkit-appearance:none; flex:none; width:46px; height:28px; margin:0; padding:0; border-radius:999px; border:1px solid var(--line); background:var(--ink3); position:relative; cursor:pointer; transition:background .18s,border-color .18s; }
+  .sw::after { content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:var(--faint); transition:transform .18s,background .18s; }
+  .sw:checked { background:var(--signal); border-color:var(--signal); }
+  .sw:checked::after { transform:translateX(18px); background:#fff; }
+  .sw:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .gempty { color:var(--faint); padding:18px 2px 6px; }
 </style>
 </head>
 <body>
@@ -69,6 +91,27 @@ internal object SyncPage {
   <div id="app" class="hidden">
     <h2>Playlists</h2>
     <div class="card"><div id="list"></div></div>
+
+    <h2>Show &amp; hide groups</h2>
+    <div class="card" id="groups">
+      <div class="gctl">
+        <select id="gpl" class="hidden" aria-label="Playlist" onchange="loadGroups(this.value)"></select>
+        <div id="gbody">
+          <div class="tabs" id="gtabs"></div>
+          <div class="find">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="gq" type="search" placeholder="Find a group" autocomplete="off" oninput="renderGroups()">
+          </div>
+          <div class="gbar">
+            <span id="gsum" class="meta"></span>
+            <button class="small" id="gshow" onclick="bulk(false)">Show all</button>
+            <button class="small" id="ghide" onclick="bulk(true)">Hide all</button>
+          </div>
+        </div>
+      </div>
+      <div id="glist"></div>
+      <div id="gmsg" class="msg"></div>
+    </div>
 
     <h2>Add a playlist</h2>
     <div class="card">
@@ -92,7 +135,7 @@ internal object SyncPage {
 
     <h2>Backup</h2>
     <div class="card">
-      <div class="meta">Playlists, favourites, your lists and hidden groups, in one file. Load it on any device running The Player.</div>
+      <div class="meta">Playlists, favorites, your lists and hidden groups, in one file. Load it on any device running The Player.</div>
       <div class="actions two" style="margin-top:12px">
         <a class="btn" id="download" href="#">Download</a>
         <button onclick="document.getElementById('restore').click()">Load backup</button>
@@ -121,6 +164,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&l
 
 function render(list) {
   const el = ${'$'}('list');
+  fillGroupPlaylists(list);
   if (!list.length) { el.innerHTML = '<div class="empty">No playlists yet. Add one below.</div>'; return; }
   el.innerHTML = list.map(p => '<div class="row"><div class="t"><div class="name">' + esc(p.name) + '</div><div class="meta">' +
     esc([p.type, p.server, p.user].filter(Boolean).join(' · ')) + '</div></div>' +
@@ -183,6 +227,92 @@ async function restore(input) {
     render(await api('/api/playlists'));
   } catch (e) { show('backupMsg', e.message, true); }
   input.value = '';
+}
+// ---- show & hide groups ----
+let gid = null, gData = null, gKind = null;
+function fillGroupPlaylists(list) {
+  const sel = ${'$'}('gpl');
+  if (!list.length) { gid = null; gData = null; renderGroups(); return; }
+  if (!list.some(p => p.id === gid)) gid = (list.find(p => p.last) || list[0]).id;
+  sel.innerHTML = list.map(p => '<option value="' + esc(p.id) + '"' + (p.id === gid ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+  sel.classList.toggle('hidden', list.length < 2);
+  if (!gData || gData.id !== gid) loadGroups(gid);
+}
+async function loadGroups(id) {
+  gid = id; show('gmsg', '');
+  ${'$'}('glist').innerHTML = '<div class="gempty">Loading groups…</div>';
+  try {
+    gData = await api('/api/groups?id=' + encodeURIComponent(id));
+    if (!gData.kinds.some(k => k.kind === gKind)) gKind = gData.kinds.length ? gData.kinds[0].kind : null;
+  } catch (e) { gData = null; show('gmsg', e.message, true); }
+  renderGroups();
+}
+function kindData() { return gData ? gData.kinds.find(k => k.kind === gKind) : null; }
+function shown() {
+  const k = kindData(); if (!k) return [];
+  const q = ${'$'}('gq').value.trim().toLowerCase();
+  const out = [];
+  k.groups.forEach((g, i) => { if (!q || g.name.toLowerCase().includes(q)) out.push(i); });
+  return out;
+}
+function gTab(kind) { gKind = kind; ${'$'}('gq').value = ''; renderGroups(); }
+function gJump(kind) { gKind = kind; renderGroups(); }
+function renderGroups() {
+  const body = ${'$'}('gbody'), list = ${'$'}('glist');
+  if (!gData) { body.classList.add('hidden'); list.innerHTML = gid ? '' : '<div class="gempty">Add a playlist first.</div>'; return; }
+  if (!gData.ready || !gData.kinds.length) {
+    body.classList.add('hidden');
+    list.innerHTML = '<div class="gempty">Open “' + esc(gData.name) + '” on the TV once, and its groups appear here.</div>';
+    return;
+  }
+  body.classList.remove('hidden');
+  const tabs = ${'$'}('gtabs');
+  tabs.style.gridTemplateColumns = 'repeat(' + gData.kinds.length + ', 1fr)';
+  tabs.innerHTML = gData.kinds.map(k => '<button aria-pressed="' + (k.kind === gKind) + '" onclick="gTab(\'' + k.kind + '\')">' +
+    esc(k.label) + '<span class="n">' + k.groups.length + '</span></button>').join('');
+  const k = kindData(), idx = shown(), q = ${'$'}('gq').value.trim();
+  const hiddenHere = idx.filter(i => k.groups[i].hidden).length;
+  ${'$'}('gsum').textContent = hiddenHere + ' of ' + idx.length + ' hidden';
+  // While searching, the buttons say how many groups they change.
+  ${'$'}('gshow').textContent = q ? 'Show ' + idx.length : 'Show all';
+  ${'$'}('ghide').textContent = q ? 'Hide ' + idx.length : 'Hide all';
+  ${'$'}('gshow').disabled = hiddenHere === 0;
+  ${'$'}('ghide').disabled = hiddenHere === idx.length;
+  ${'$'}('gsum').parentNode.classList.toggle('hidden', !idx.length);
+  if (!idx.length) {
+    // Nothing on this tab: point to the tabs that do have it.
+    const ql = q.toLowerCase();
+    const elsewhere = gData.kinds.filter(o => o.kind !== gKind)
+      .map(o => ({ o, n: o.groups.filter(g => g.name.toLowerCase().includes(ql)).length })).filter(x => x.n);
+    list.innerHTML = '<div class="gempty">No ' + esc(k.label.toLowerCase()) + ' group matches “' + esc(q) + '”.' +
+      (elsewhere.length ? '<div class="actions">' + elsewhere.map(x => '<button class="small" onclick="gJump(\'' + x.o.kind + '\')">' +
+        x.n + ' in ' + esc(x.o.label) + '</button>').join('') + '</div>' : '') + '</div>';
+    return;
+  }
+  list.innerHTML = idx.map(i => { const g = k.groups[i];
+    return '<label class="grow' + (g.hidden ? ' off' : '') + '"><span class="gname">' + esc(g.name) + '</span>' +
+      '<span class="gcount">' + g.count + '</span>' +
+      '<input type="checkbox" class="sw" data-i="' + i + '"' + (g.hidden ? '' : ' checked') + ' aria-label="Show ' + esc(g.name) + '"></label>'; }).join('');
+}
+${'$'}('glist').addEventListener('change', e => {
+  const i = e.target.dataset.i; if (i === undefined) return;
+  setHidden([kindData().groups[+i].name], !e.target.checked);
+});
+function bulk(hide) {
+  const k = kindData(); if (!k) return;
+  const names = shown().map(i => k.groups[i]).filter(g => g.hidden !== hide).map(g => g.name);
+  if (names.length) setHidden(names, hide);
+}
+function applyHidden(set) { gData.kinds.forEach(k => k.groups.forEach(g => { g.hidden = set.has(g.name); })); }
+async function setHidden(names, hide) {
+  // Hidden is by group name, as in the app: show it everywhere at once.
+  const before = new Set(); gData.kinds.forEach(k => k.groups.forEach(g => { if (g.hidden) before.add(g.name); }));
+  const next = new Set(before); names.forEach(n => hide ? next.add(n) : next.delete(n));
+  applyHidden(next); renderGroups(); show('gmsg', '');
+  try {
+    const r = await api('/api/groups', { id: gid, groups: names, hidden: hide });
+    applyHidden(new Set(r.hidden)); renderGroups();
+  } catch (e) { applyHidden(before); renderGroups(); show('gmsg', e.message, true); }
 }
 load();
 </script>

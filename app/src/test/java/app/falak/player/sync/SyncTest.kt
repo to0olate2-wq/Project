@@ -87,6 +87,32 @@ class SyncTest {
                     .post("""{"id":"${films.id}"}""".toRequestBody(jsonType)).build(),
             ).execute().close()
             assertEquals(listOf("Home renamed", "Kitchen"), repo.state.value.playlists.map { it.name })
+
+            // Show & hide groups from the browser: listed from the saved playlist, hidden by name.
+            val app = ApplicationProvider.getApplicationContext<FalakApp>()
+            app.falak.player.data.Store.writePlaylist(
+                java.io.File(java.io.File(app.filesDir, "cache").apply { mkdirs() }, "a.bin"),
+                app.falak.player.data.PlaylistCache(
+                    listOf(
+                        app.falak.player.data.Channel(id = "1", name = "One", group = "News", url = "u"),
+                        app.falak.player.data.Channel(id = "2", name = "Two", group = "Sports", url = "u"),
+                        app.falak.player.data.Channel(id = "3", name = "F", group = "Drama", url = "u", kind = app.falak.player.data.Kind.MOVIE),
+                    ),
+                ),
+            )
+            val groups = http.newCall(Request.Builder().url("$base/api/groups?id=a").header("X-Code", server.code).build())
+                .execute().use { it.body!!.string() }
+            assertTrue(groups, groups.contains("\"ready\":true") && groups.contains("\"name\":\"Sports\"") && groups.contains("\"label\":\"Films\""))
+            http.newCall(
+                Request.Builder().url("$base/api/groups").header("X-Code", server.code)
+                    .post("""{"id":"a","groups":["Sports","Drama"],"hidden":true}""".toRequestBody(jsonType)).build(),
+            ).execute().use { assertTrue(it.body!!.string().contains("Sports")) }
+            assertEquals(listOf("Sports", "Drama"), repo.state.value.settings.hiddenGroups["a"])
+            http.newCall(
+                Request.Builder().url("$base/api/groups").header("X-Code", server.code)
+                    .post("""{"id":"a","groups":["Sports"],"hidden":false}""".toRequestBody(jsonType)).build(),
+            ).execute().close()
+            assertEquals(listOf("Drama"), repo.state.value.settings.hiddenGroups["a"])
         } finally {
             server.stop()
         }

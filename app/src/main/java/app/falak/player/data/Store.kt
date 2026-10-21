@@ -16,6 +16,8 @@ object Store {
     private const val PLAYLIST_MAGIC = 0x54504C31 // "TPL1"
     private const val GUIDE_MAGIC = 0x54504731 // "TPG1"
     private const val VERSION = 1
+    /** 2: the guide also records which channels it was matched for ([GuideCache.scope]). */
+    private const val GUIDE_VERSION = 2
 
     // ---- playlist ----
 
@@ -92,13 +94,48 @@ object Store {
             PlaylistCache(list, epgUrl, serverTz, savedAt)
         }
 
+    /**
+     * Only the groups of a saved playlist and how many items each has, per kind, in playlist
+     * order. Streams through the file without building the entries, so it is cheap even for
+     * very big playlists (used by the phone page that shows and hides groups).
+     */
+    fun readGroups(file: File): Map<Kind, LinkedHashMap<String, Int>> =
+        DataInputStream(BufferedInputStream(file.inputStream(), 256 * 1024)).use { inp ->
+            if (inp.readInt() != PLAYLIST_MAGIC || inp.readInt() != VERSION) throw IOException("Old cache format")
+            inp.readLong()
+            skipStr(inp) // guide link
+            skipStr(inp) // server time zone
+            val table = Array(inp.readInt()) { str(inp) }
+            val kinds = Kind.entries
+            val out = kinds.associateWith { LinkedHashMap<String, Int>() }
+            repeat(inp.readInt()) {
+                skipStr(inp) // id
+                skipStr(inp) // name
+                val group = table[inp.readInt()]
+                skipStr(inp) // url
+                skipStr(inp) // logo
+                skipStr(inp) // tvg-id
+                val kind = kinds[inp.readByte().toInt()]
+                skip(inp, 8) // user agent, referrer
+                skipStr(inp) // series id
+                skipStr(inp) // info
+                skip(inp, 8) // added
+                skipStr(inp) // rating
+                skip(inp, 2 + 4) // catch-up days, type
+                skipStr(inp) // catch-up source
+                val m = out.getValue(kind)
+                m[group] = (m[group] ?: 0) + 1
+            }
+            out
+        }
+
     // ---- guide ----
 
     fun writeGuide(file: File, cache: GuideCache) {
         val tmp = File(file.path + ".tmp")
         DataOutputStream(BufferedOutputStream(tmp.outputStream(), 256 * 1024)).use { out ->
             out.writeInt(GUIDE_MAGIC)
-            out.writeInt(VERSION)
+            out.writeInt(GUIDE_VERSION)
             out.writeLong(cache.savedAt)
             out.writeInt(cache.matched)
             out.writeInt(cache.total)
@@ -119,6 +156,8 @@ object Store {
                 str(out, c.name)
                 str(out, c.source)
             }
+            out.writeInt(cache.scope.size)
+            for (k in cache.scope) str(out, k)
         }
         if (!tmp.renameTo(file)) {
             file.delete()
@@ -126,17 +165,29 @@ object Store {
         }
     }
 
-    fun readGuide(file: File): GuideCache =
+    /**
+     * Reads the saved guide. With [only], programmes of other channels (hidden groups) are
+     * skipped without being loaded, so they cost no memory.
+     */
+    fun readGuide(file: File, only: Set<String>? = null): GuideCache =
         DataInputStream(BufferedInputStream(file.inputStream(), 256 * 1024)).use { inp ->
-            if (inp.readInt() != GUIDE_MAGIC || inp.readInt() != VERSION) throw IOException("Old guide format")
+            if (inp.readInt() != GUIDE_MAGIC || inp.readInt() != GUIDE_VERSION) throw IOException("Old guide format")
             val savedAt = inp.readLong()
-            val matched = inp.readInt()
+            inp.readInt() // matched: worked out again below, for the channels actually read
             val total = inp.readInt()
             val keys = inp.readInt()
             val programs = HashMap<String, List<Program>>(keys * 2)
             repeat(keys) {
                 val key = str(inp)
                 val n = inp.readInt()
+                if (only != null && key !in only) {
+                    repeat(n) {
+                        skip(inp, 12)
+                        skipStr(inp)
+                        skipStr(inp)
+                    }
+                    return@repeat
+                }
                 val list = ArrayList<Program>(n)
                 repeat(n) {
                     val start = inp.readLong()
@@ -148,7 +199,10 @@ object Store {
             val chans = inp.readInt()
             val channels = ArrayList<GuideChannel>(chans)
             repeat(chans) { channels += GuideChannel(str(inp), str(inp), str(inp)) }
-            GuideCache(savedAt, programs, matched, total, channels)
+            val scopeSize = inp.readInt()
+            val scope = HashSet<String>(scopeSize * 2)
+            repeat(scopeSize) { scope += str(inp) }
+            GuideCache(savedAt, programs, programs.count { it.value.isNotEmpty() }, if (only != null) only.size else total, channels, scope)
         }
 
     // ---- helpers ----
@@ -162,6 +216,25 @@ object Store {
         val b = s.toByteArray(Charsets.UTF_8)
         out.writeInt(b.size)
         out.write(b)
+    }
+
+    private fun skip(inp: DataInputStream, n: Int) {
+        var left = n
+        while (left > 0) {
+            val k = inp.skipBytes(left)
+            if (k <= 0) {
+                inp.readByte() // at least one byte, or EOFException on a cut-off file
+                left--
+            } else {
+                left -= k
+            }
+        }
+    }
+
+    private fun skipStr(inp: DataInputStream) {
+        val n = inp.readInt()
+        if (n < 0 || n > 8_000_000) throw IOException("Corrupt cache")
+        skip(inp, n)
     }
 
     private fun str(inp: DataInputStream): String {

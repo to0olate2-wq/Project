@@ -390,7 +390,12 @@ class PhoneShelfScreens : ScreenshotBase() {
     // A very tall phone shows every Home shelf, including the films group with a long
     // provider-style name: its title must stay on one line.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneShelves() = mainScreens("phone") { _, shoot -> shoot("phone-11-home-all-shelves") }
+    fun phoneShelves() = mainScreens("phone") { vm, shoot ->
+        shoot("phone-11-home-all-shelves")
+        // Hidden groups leave Home entirely, slideshow included.
+        app.repo.setGroupsHidden(vm.playlist!!.id, listOf("Drama", "News"), hidden = true)
+        shoot("phone-12-home-drama-news-hidden")
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)

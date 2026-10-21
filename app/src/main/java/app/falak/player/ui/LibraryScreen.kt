@@ -352,7 +352,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         progress = state.progress, playlistId = p.id,
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                         focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
-                                        emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to save it here."
+                                        emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to add it to Favorites."
                                         else "This list is empty. Long-press any channel, film or series and tick this list.",
                                     )
                                 }

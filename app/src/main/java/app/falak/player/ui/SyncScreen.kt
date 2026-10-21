@@ -338,7 +338,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                 item { Title("Backup file") }
                 item {
                     Text(
-                        "Keep a copy of your playlists, favourites and lists, or move them by sending the file to yourself.",
+                        "Keep a copy of your playlists, favorites and lists, or move them by sending the file to yourself.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Muted,
                         modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),

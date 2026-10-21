@@ -58,6 +58,7 @@ import app.falak.player.data.Epg
 import app.falak.player.data.Kind
 import app.falak.player.data.Program
 import app.falak.player.data.progressKey
+import app.falak.player.data.ADULT_GROUP
 import coil.compose.AsyncImage
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.runtime.CompositionLocalProvider
@@ -124,9 +125,12 @@ fun HomeContent(
     val seriesGroups = remember(index, locked) {
         index.groupsOf(Kind.SERIES).entries.filter { it.key !in locked && it.value.size >= 3 }.take(4).map { it.key to it.value }
     }
-    val hero = remember(newMovies, newSeries, index) {
-        (newMovies.filter { it.logo.isNotBlank() }.take(4) + newSeries.filter { it.logo.isNotBlank() }.take(2))
-            .ifEmpty { (index.movies + index.series).filter { it.logo.isNotBlank() && ok(it) }.take(5) }
+    // The slideshow features only what you can see: never hidden or locked groups (keyed on them
+    // too, so hiding a group takes its films out at once), and never adult groups.
+    val hero = remember(newMovies, newSeries, index, locked) {
+        fun featured(ch: Channel) = ch.logo.isNotBlank() && ok(ch) && !ADULT_GROUP.containsMatchIn(ch.group)
+        (newMovies.filter(::featured).take(4) + newSeries.filter(::featured).take(2))
+            .ifEmpty { (index.movies.asSequence() + index.series.asSequence()).filter(::featured).take(5).toList() }
     }
     LaunchedEffect(hero) { vm.loadHeroArt(hero) }
 
@@ -182,7 +186,7 @@ fun HomeContent(
         }
         if (favLive.isNotEmpty()) {
             item(key = "favLive") {
-                LiveShelf("On now", favLive, epg, now, onPlay, onLongPress = sheet) {
+                LiveShelf("Favorite channels", favLive, epg, now, onPlay, onLongPress = sheet) {
                     vm.savedList = app.falak.player.data.DEFAULT_LIST
                     seeAll(Section.FAVORITES, null, Sort.DEFAULT)
                 }
@@ -209,7 +213,7 @@ fun HomeContent(
         }
         if (favVod.isNotEmpty()) {
             item(key = "favVod") {
-                Shelf("Your list", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
+                Shelf("Favorite films & series", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
                     items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }, onLongClick = { sheet(ch) }) }
                 }
             }

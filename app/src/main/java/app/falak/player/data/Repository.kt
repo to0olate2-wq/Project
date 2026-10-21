@@ -209,6 +209,24 @@ class Repository(private val context: Context) {
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
+    /** Hides or shows whole groups of a playlist (from this device or the phone page). */
+    fun setGroupsHidden(playlistId: String, groups: Collection<String>, hidden: Boolean) = updateSettings { s ->
+        val cur = LinkedHashSet(s.hiddenGroups[playlistId].orEmpty())
+        if (hidden) cur += groups else cur -= groups.toSet()
+        s.copy(hiddenGroups = s.hiddenGroups + (playlistId to cur.toList()))
+    }
+
+    /** A saved playlist's groups per kind with item counts, or null if it was never loaded here. */
+    fun savedGroups(playlistId: String): Map<Kind, LinkedHashMap<String, Int>>? {
+        val f = File(cacheDir, "$playlistId.bin")
+        if (!f.exists()) return null
+        return try {
+            Store.readGroups(f)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** pos = 0 clears the entry (finished or barely started). Keeps the most recent 300. */
     fun saveProgress(key: String, pos: Long, dur: Long, ch: Channel? = null, seriesId: String = "") = update { s ->
         val next = LinkedHashMap(s.progress)
@@ -361,10 +379,13 @@ class Repository(private val context: Context) {
             val file = File(cacheDir, "${p.id}.guide.bin")
             File(cacheDir, "${p.id}.guide.json").delete() // pre-3.2 format
             val now = System.currentTimeMillis()
+            // [channels] are the visible ones: hidden groups get no guide (no matching, no memory).
+            val overrides = _state.value.settings.guideOverrides[p.id].orEmpty()
+            val matcher = GuideMatcher(channels, overrides)
             var hadGuide = false
             if (file.exists()) {
                 val cached = try {
-                    Store.readGuide(file)
+                    Store.readGuide(file, only = matcher.keys)
                 } catch (e: Exception) {
                     null
                 }
@@ -374,13 +395,14 @@ class Repository(private val context: Context) {
                     guideChannels = cached.channels
                     publishGuide(p.epgShiftMinutes)
                     _guideStats.value = readGuideStats(p.id)
-                    if (!force && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
+                    // A group shown again since the last download has channels the saved guide
+                    // never looked for: download again rather than leave them empty.
+                    val covers = matcher.keys.all { it in cached.scope }
+                    if (!force && covers && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
                 }
             }
             val sources = (listOf(providerUrl) + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             if (sources.isEmpty()) return@withContext "No TV guide for this playlist yet"
-            val overrides = _state.value.settings.guideOverrides[p.id].orEmpty()
-            val matcher = GuideMatcher(channels, overrides)
             if (matcher.keys.isEmpty()) return@withContext ""
             val merged = HashMap<String, List<Program>>()
             val listed = ArrayList<GuideChannel>()
@@ -432,7 +454,7 @@ class Repository(private val context: Context) {
             guideChannels = listed
             _guideStats.value = stats
             writeGuideStats(p.id, stats)
-            val result = GuideCache(now, merged, matched = merged.size, total = matcher.keys.size, channels = listed)
+            val result = GuideCache(now, merged, matched = merged.size, total = matcher.keys.size, channels = listed, scope = matcher.keys)
             try {
                 Store.writeGuide(file, result)
             } catch (e: Throwable) {

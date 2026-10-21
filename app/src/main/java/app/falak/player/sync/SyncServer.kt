@@ -1,5 +1,6 @@
 package app.falak.player.sync
 
+import app.falak.player.data.Kind
 import app.falak.player.data.Playlist
 import app.falak.player.data.Repository
 import app.falak.player.data.SourceType
@@ -8,12 +9,16 @@ import app.falak.player.data.XtreamApi
 import app.falak.player.data.maskHost
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -210,6 +215,11 @@ class SyncServer(
                 sendJson(out, 200, buildJsonObject { put("message", result.describe()) }.toString())
             }
             "POST /api/playlists" -> addPlaylist(req, out, who)
+            "GET /api/groups" -> {
+                val text = groupsJson(req.query["id"].orEmpty()) ?: return error(out, 404, "No such playlist")
+                sendJson(out, 200, text)
+            }
+            "POST /api/groups" -> setGroups(req, out)
             "POST /api/playlists/rename" -> {
                 val o = body(req) ?: return error(out, 400, "Bad request")
                 val id = o.str("id")
@@ -276,12 +286,61 @@ class SyncServer(
         sendJson(out, 200, playlistsJson())
     }
 
+    /** A playlist's groups per kind (Live, Films, Series) with item counts and hidden state. */
+    private fun groupsJson(id: String): String? {
+        val s = repo.state.value
+        val p = s.playlists.firstOrNull { it.id == id } ?: return null
+        val hidden = s.settings.hiddenGroups[id].orEmpty().toHashSet()
+        val groups = repo.savedGroups(id)
+        return buildJsonObject {
+            put("id", p.id)
+            put("name", p.name)
+            put("ready", groups != null)
+            putJsonArray("kinds") {
+                for ((kind, label) in listOf(Kind.LIVE to "Live", Kind.MOVIE to "Films", Kind.SERIES to "Series")) {
+                    val m = groups?.get(kind)
+                    if (m.isNullOrEmpty()) continue
+                    addJsonObject {
+                        put("kind", kind.name.lowercase())
+                        put("label", label)
+                        putJsonArray("groups") {
+                            for ((g, n) in m) addJsonObject {
+                                put("name", g)
+                                put("count", n)
+                                put("hidden", g in hidden)
+                            }
+                        }
+                    }
+                }
+            }
+        }.toString()
+    }
+
+    private fun setGroups(req: Request, out: OutputStream) {
+        val o = body(req) ?: return error(out, 400, "Bad request")
+        val p = repo.state.value.playlists.firstOrNull { it.id == o.str("id") } ?: return error(out, 404, "No such playlist")
+        val hide = (o["hidden"] as? JsonPrimitive)?.booleanOrNull ?: return error(out, 400, "Bad request")
+        val groups = (o["groups"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+        if (groups.isEmpty()) return error(out, 400, "Choose a group")
+        repo.setGroupsHidden(p.id, groups, hide)
+        val verb = if (hide) "Hid" else "Showed"
+        onEvent(if (groups.size == 1) "$verb “${groups[0]}” in “${p.name}”" else "$verb ${groups.size} groups in “${p.name}”")
+        sendJson(
+            out, 200,
+            buildJsonObject {
+                putJsonArray("hidden") { repo.state.value.settings.hiddenGroups[p.id].orEmpty().forEach { add(JsonPrimitive(it)) } }
+            }.toString(),
+        )
+    }
+
     private fun playlistsJson(): String = buildJsonArray {
+        val last = repo.state.value.lastPlaylistId
         for (p in repo.state.value.playlists) {
             add(
                 buildJsonObject {
                     put("id", p.id)
                     put("name", p.name)
+                    put("last", p.id == last)
                     put("type", when (p.type) { SourceType.M3U_URL -> "M3U link"; SourceType.M3U_FILE -> "M3U file"; SourceType.XTREAM -> "Xtream" })
                     put("server", if (p.type == SourceType.M3U_FILE) "" else maskHost(p.url))
                     put("user", p.username)

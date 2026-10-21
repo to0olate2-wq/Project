@@ -821,7 +821,7 @@ class PlayerActivity : ComponentActivity() {
             val favs = repo.state.value.favorites[pl.id].orEmpty()
                 .mapNotNull { idx.byId[it] }
                 .filter { it.kind == ch.kind && it.group !in excluded }
-            if (favs.isNotEmpty()) out["★ Favourites"] = favs
+            if (favs.isNotEmpty()) out["★ Favorites"] = favs
             for (l in repo.state.value.favLists[pl.id].orEmpty()) {
                 val items = l.ids.mapNotNull { idx.byId[it] }.filter { it.kind == ch.kind && it.group !in excluded }
                 if (items.isNotEmpty()) out["★ ${l.name}"] = items

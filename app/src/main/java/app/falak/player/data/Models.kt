@@ -76,6 +76,11 @@ class GuideCache(
     val total: Int = 0,
     /** Every channel the guide sources offer, for fixing a channel's guide by hand. */
     val channels: List<GuideChannel> = emptyList(),
+    /**
+     * Guide keys of the channels it was matched for (hidden groups are left out). Showing a
+     * group again needs a fresh download only if one of its channels isn't in here.
+     */
+    val scope: Set<String> = emptySet(),
 )
 
 /**
