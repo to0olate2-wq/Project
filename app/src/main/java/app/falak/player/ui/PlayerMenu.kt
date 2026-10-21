@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -72,9 +73,13 @@ fun PlayerMenu(open: Boolean, nowPlaying: String?, places: List<MenuPlace>, onPi
                     .width(if (tv) 300.dp else 260.dp)
                     .fillMaxHeight()
                     .background(Ink2)
-                    .pointerInput(Unit) { detectTapGestures { } }
+                    .pointerInput(Unit) { detectTapGestures { } },
+            ) {
+            Column(
+                Modifier
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = if (tv) 24.dp else 16.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = if (tv) 24.dp else 16.dp, bottom = 8.dp),
             ) {
                 Row(Modifier.padding(start = 6.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     BrandMark(if (tv) 34.dp else 30.dp)
@@ -103,8 +108,12 @@ fun PlayerMenu(open: Boolean, nowPlaying: String?, places: List<MenuPlace>, onPi
                         modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
                     ) { onPick(place.key) }
                 }
-                Spacer(Modifier.height(14.dp))
+            }
+            // Always in view at the bottom, however many places there are above.
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 NavItem(rememberVectorPainter(Icons.Outlined.Close), "Keep watching", null, false, onClick = onClose)
+            }
             }
         }
     }
