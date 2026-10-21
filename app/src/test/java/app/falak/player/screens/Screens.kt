@@ -379,6 +379,9 @@ class PhoneLightScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE)
     fun phoneLight() = mainScreens("phone", theme = "light") { vm, shoot ->
         shoot("phone-07-home-light")
+        // The film shelves at the end of Home: a long provider group name must stay on one line.
+        vm.homeState = androidx.compose.foundation.lazy.LazyListState(firstVisibleItemIndex = 1_000)
+        shoot("phone-07b-home-shelves-light")
         vm.screen = Screen.GUIDE
         shoot("phone-08-guide-light")
     }
