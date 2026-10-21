@@ -259,7 +259,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 // The saved copy shows at once; a fresh one is fetched only if it is missing or old.
                 val cached = if (refresh) null else repo.cachedChannels(p)
-                val data = cached ?: repo.loadChannels(p, refresh = true)
+                val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId)
                 show(data)
                 if (loadToken === token) loading = false
                 loadGuide(force = refresh)
@@ -279,6 +279,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun show(data: app.falak.player.data.PlaylistCache) {
         val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
+        val old = index
         index = withContext(Dispatchers.Default) {
             LibraryIndex.build(list).also { idx ->
                 // Work out every live channel's guide key now, off the main thread, so the guide
@@ -286,6 +287,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 for (ch in idx.live) ch.epgKey
             }
         }
+        // The player keeps its own reference for its channel list: point it at the new copy so
+        // the old one can be freed (it otherwise stayed in memory beside the new one).
+        if (repo.currentIndex === old) repo.currentIndex = index
         channels = list
         providerEpg = data.epgUrl
         serverTz = data.serverTz
@@ -309,9 +313,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         delay(20_000)
         guideJob?.join()
         if (loadToken !== token || playlist?.id != p.id) return
+        // A refresh needs room to work beside the list on screen; with little left (a very big
+        // playlist and a film buffering), wait for the next time the app comes to the front.
+        if (heapUsed() > 0.6 && withContext(Dispatchers.Default) { Runtime.getRuntime().gc(); heapUsed() } > 0.6) return
         refreshing = true
         try {
-            val fresh = repo.loadChannels(p, refresh = true, quietly = true)
+            val fresh = repo.loadChannels(p, refresh = true, quietly = true, keep = index.byId)
             if (loadToken !== token || playlist?.id != p.id) return
             show(fresh)
             // New channels pick up the guide on its next load; don't restart one that's running.
@@ -325,6 +332,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             refreshing = false
         }
+    }
+
+    /** Share of the app's memory limit in use (0–1). */
+    private fun heapUsed(): Double {
+        val r = Runtime.getRuntime()
+        return (r.totalMemory() - r.freeMemory()).toDouble() / r.maxMemory()
     }
 
     /** Called when the app comes back to the front: refresh quietly if the playlist got old. */

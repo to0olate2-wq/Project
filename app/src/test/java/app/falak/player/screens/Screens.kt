@@ -163,7 +163,8 @@ abstract class ScreenshotBase {
         }
         for ((i, title) in films.withIndex()) {
             val poster = image(dir, "poster-$i.png", 300, 450, palette[(i + 3) % palette.size], title, round = false)
-            val group = if (i % 2 == 0) "Drama" else "Adventure"
+            // A long provider-style group name: the shelf title must stay on one line.
+            val group = if (i % 2 == 0) "Drama" else "TOP MOVIES 4K 3840P DOLBY AUDIO (MULTI-SUBS)"
             append("#EXTINF:-1 tvg-logo=\"file://${poster.path}\" group-title=\"$group\",$title\n")
             append("http://127.0.0.1:1/movie/u/p/$i.mp4\n")
         }

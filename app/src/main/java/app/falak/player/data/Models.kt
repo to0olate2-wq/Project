@@ -50,11 +50,17 @@ data class Channel(
     val catchupType: String = "",
     val catchupSource: String = "",
 ) {
+    // A plain field, not `by lazy`: a lazy holder costs ~40 bytes on every entry, which adds up
+    // to several MB on playlists with 100,000+ films. Racing threads just compute the same string.
+    @kotlinx.serialization.Transient
+    private var guideKey: String? = null
+
     /** Guide key: the tvg-id, or the cleaned-up name when the playlist has no id. */
-    val epgKey: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        // Name-only keys carry the country, so "FR: beIN Sports 1" and "AR: beIN Sports 1" stay apart.
-        tvgId.lowercase().ifEmpty { "name:" + (countryOf(name, group) ?: "") + ":" + normName(name) }
-    }
+    val epgKey: String
+        get() = guideKey ?: run {
+            // Name-only keys carry the country, so "FR: beIN Sports 1" and "AR: beIN Sports 1" stay apart.
+            tvgId.lowercase().ifEmpty { "name:" + (countryOf(name, group) ?: "") + ":" + normName(name) }
+        }.also { guideKey = it }
     val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
     val hasCatchup: Boolean get() = kind == Kind.LIVE && catchupDays > 0
 }
@@ -335,6 +341,22 @@ fun stableId(s: String): String {
  * Some providers list the same stream twice. Lists key their rows by id and crash on duplicates,
  * so later copies get "_2", "_3"… (the first keeps its id, so favourites stay put).
  */
+/**
+ * Refreshing rebuilds the whole playlist while the old one is still on screen. Swapping each fresh
+ * entry for the identical one already in memory means a big playlist is never held twice (holding
+ * two copies of 150,000 films, plus a playing 4K film's buffer, ran phones out of memory).
+ */
+fun interface Reuse {
+    fun of(ch: Channel): Channel
+
+    companion object {
+        val NONE = Reuse { it }
+
+        fun from(old: Map<String, Channel>): Reuse =
+            if (old.isEmpty()) NONE else Reuse { ch -> old[ch.id]?.takeIf { it == ch } ?: ch }
+    }
+}
+
 fun ensureUniqueIds(list: List<Channel>): List<Channel> {
     val seen = HashSet<String>(list.size * 2)
     var out: ArrayList<Channel>? = null

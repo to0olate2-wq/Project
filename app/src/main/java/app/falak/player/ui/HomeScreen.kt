@@ -218,27 +218,27 @@ fun HomeContent(
             val open = { vm.section = Section.FAVORITES; vm.savedList = l.id }
             Column {
                 if (live.isNotEmpty()) {
-                    LiveShelf(l.name, live.take(30), epg, now, { _, ch -> onPlay(live, ch) }, count = live.size, onLongPress = sheet) { open() }
+                    LiveShelf(l.name, live.take(30), epg, now, { _, ch -> onPlay(live, ch) }, onLongPress = sheet) { open() }
                 }
                 if (vod.isNotEmpty()) {
-                    Shelf(if (live.isNotEmpty()) "${l.name} · films & series" else l.name, count = vod.size, onSeeAll = open) {
+                    Shelf(if (live.isNotEmpty()) "${l.name} · films & series" else l.name, onSeeAll = open) {
                         items(vod.take(30), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(vod, ch) }, onLongClick = { sheet(ch) }) }
                     }
                 }
             }
         }
         items(liveGroups, key = { "live:" + it.first }) { (group, list) ->
-            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, count = list.size, onLongPress = sheet) {
+            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, onLongPress = sheet) {
                 seeAll(Section.LIVE, group, Sort.DEFAULT)
             }
         }
         items(movieGroups, key = { "movies:" + it.first }) { (group, list) ->
-            Shelf(group, count = list.size, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
+            Shelf(group, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
                 items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
             }
         }
         items(seriesGroups, key = { "series:" + it.first }) { (group, list) ->
-            Shelf(group, count = list.size, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
+            Shelf(group, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
                 items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
             }
         }
@@ -254,11 +254,10 @@ private fun LiveShelf(
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
-    count: Int? = null,
     onLongPress: ((Channel) -> Unit)? = null,
     onSeeAll: (() -> Unit)?,
 ) {
-    Shelf(title, count = count, onSeeAll = onSeeAll) {
+    Shelf(title, onSeeAll = onSeeAll) {
         items(list, key = { it.id }) { ch ->
             ChannelCard(
                 ch, Epg.current(epg[ch.epgKey], now), now, onClick = { onPlay(list, ch) },

@@ -224,10 +224,10 @@ fun minutesLeft(p: Program, now: Long): String {
 /** A titled horizontal shelf. */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun Shelf(title: String, count: Int? = null, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
+fun Shelf(title: String, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
     val scroller = LocalHomeScroller.current
     Column(Modifier.fillMaxWidth().pinToTop().padding(top = 22.dp)) {
-        SectionHeader(title, count, onSeeAll)
+        SectionHeader(title, onSeeAll)
         // The page itself scrolls whole rows into place (see HomeScroller); the row keeps the
         // normal sideways behaviour.
         CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {

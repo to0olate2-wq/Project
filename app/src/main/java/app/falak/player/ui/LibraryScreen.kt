@@ -165,7 +165,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             when (sort) {
                 Sort.DEFAULT -> out
                 Sort.NEWEST -> out.sortedByDescending { it.added }
-                Sort.AZ -> out.sortedBy { it.name.lowercase() }
+                // Compare without making a lowercase copy of a name on every comparison: on 100,000 films
+                // that churned millions of strings.
+                Sort.AZ -> out.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 Sort.RATING -> out.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
             }
         }

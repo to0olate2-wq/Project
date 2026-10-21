@@ -8,9 +8,13 @@ class M3uResult(val channels: List<Channel>, val epgUrl: String)
 object M3uParser {
     private val attrRegex = Regex("([\\w-]+)\\s*=\\s*\"([^\"]*)\"")
 
-    fun parse(reader: BufferedReader): M3uResult {
+    /** [reuse] keeps identical entries from a previous load (see [Reuse]). */
+    fun parse(reader: BufferedReader, reuse: Reuse = Reuse.NONE): M3uResult {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
+        // Groups, user agents and catch-up types repeat on thousands of lines: keep one copy of each.
+        val pool = HashMap<String, String>()
+        fun shared(s: String): String = if (s.isEmpty()) "" else pool.getOrPut(s) { s }
         var epgUrl = ""
         var headerCatchup: Map<String, String> = emptyMap()
         var attrs: Map<String, String> = emptyMap()
@@ -49,7 +53,7 @@ object M3uParser {
                     else -> {
                         val name = title.ifBlank { attrs["tvg-name"].orEmpty() }
                             .ifBlank { line.substringAfterLast('/') }
-                        val group = attrs["group-title"].orEmpty().ifBlank { extGroup }.ifBlank { "Uncategorized" }
+                        val group = shared(attrs["group-title"].orEmpty().ifBlank { extGroup }.ifBlank { "Uncategorized" })
                         val kind = when {
                             line.contains("/movie/", true) -> Kind.MOVIE
                             line.contains("/series/", true) -> Kind.SERIES
@@ -60,17 +64,17 @@ object M3uParser {
                         var n = 1
                         while (!ids.add(id)) id = baseId + "_" + n++
                         val cu = headerCatchup + attrs.filterKeys { it.startsWith("catchup") || it == "timeshift" || it == "tvg-rec" }
-                        val cuType = (cu["catchup"] ?: cu["catchup-type"]).orEmpty().lowercase()
+                        val cuType = shared((cu["catchup"] ?: cu["catchup-type"]).orEmpty().lowercase())
                         val cuDays = (cu["catchup-days"] ?: cu["timeshift"] ?: cu["tvg-rec"])?.toIntOrNull()
                             ?: if (cuType.isNotEmpty()) 1 else 0
-                        out += Channel(
+                        out += reuse.of(Channel(
                             id = id, name = name, group = group, url = line,
                             logo = attrs["tvg-logo"].orEmpty(), tvgId = attrs["tvg-id"].orEmpty(),
-                            kind = kind, userAgent = ua, referrer = ref,
+                            kind = kind, userAgent = shared(ua), referrer = shared(ref),
                             catchupDays = if (kind == Kind.LIVE && (cuType.isNotEmpty() || cuDays > 0)) cuDays.coerceAtLeast(1) else 0,
                             catchupType = cuType,
                             catchupSource = cu["catchup-source"].orEmpty(),
-                        )
+                        ))
                         attrs = emptyMap(); title = ""; extGroup = ""; ua = ""; ref = ""
                     }
                 }

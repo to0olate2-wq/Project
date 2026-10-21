@@ -494,13 +494,18 @@ class PlayerActivity : ComponentActivity() {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(SEEK_STEP_MS)
             .setSeekForwardIncrementMs(SEEK_STEP_MS)
-        if (s.bigBuffer) {
-            builder.setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(30_000, 120_000, 4_000, 8_000)
-                    .build(),
-            )
-        }
+        // Buffered video sits in the app's own memory. ExoPlayer's default limit (~140 MB) fills up
+        // with 4K films and, next to a big playlist, ran phones out of memory: size it to this device.
+        val bufferBytes = (Runtime.getRuntime().maxMemory() / 6).coerceIn(24L shl 20, 96L shl 20).toInt()
+        builder.setLoadControl(
+            DefaultLoadControl.Builder()
+                .apply {
+                    if (s.bigBuffer) setBufferDurationsMs(30_000, 120_000, 4_000, 8_000)
+                }
+                .setTargetBufferBytes(bufferBytes)
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .build(),
+        )
         val p = builder.build()
         // Language preferences from Settings.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().apply {

@@ -54,7 +54,8 @@ class XtreamApi(
         ""
     }
 
-    fun loadAll(): List<Channel> {
+    /** Every live channel, film and series. [reuse] keeps identical entries from a previous load. */
+    fun loadAll(reuse: Reuse = Reuse.NONE): List<Channel> {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
 
@@ -62,9 +63,10 @@ class XtreamApi(
         val livePrefix = prefix("live")
         forEachObject("get_live_streams") { o ->
             val sid = o["stream_id"].orEmpty()
-            if (sid.isEmpty() || !ids.add("l$sid")) return@forEachObject
-            out += Channel(
-                id = "l$sid",
+            val id = "l$sid"
+            if (sid.isEmpty() || !ids.add(id)) return@forEachObject
+            out += reuse.of(Channel(
+                id = id,
                 name = o["name"].orEmpty().ifBlank { "Channel $sid" },
                 group = o["category_id"]?.let { liveCats[it] } ?: "Uncategorized",
                 url = "$livePrefix/$sid.ts",
@@ -74,7 +76,7 @@ class XtreamApi(
                 added = o["added"]?.toLongOrNull() ?: 0L,
                 catchupDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toIntOrNull() ?: 1).coerceAtLeast(1) else 0,
                 catchupType = if (o["tv_archive"] == "1") "xc" else "",
-            )
+            ))
         }
 
         // Movies are optional: some servers time out here; keep live TV working regardless.
@@ -83,10 +85,11 @@ class XtreamApi(
             val vodPrefix = prefix("movie")
             forEachObject("get_vod_streams") { o ->
                 val sid = o["stream_id"].orEmpty()
-                if (sid.isEmpty() || !ids.add("m$sid")) return@forEachObject
+                val id = "m$sid"
+                if (sid.isEmpty() || !ids.add(id)) return@forEachObject
                 val ext = o["container_extension"].orEmpty().ifBlank { "mp4" }
-                out += Channel(
-                    id = "m$sid",
+                out += reuse.of(Channel(
+                    id = id,
                     name = o["name"].orEmpty().ifBlank { "Movie $sid" },
                     group = o["category_id"]?.let { vodCats[it] } ?: "Uncategorized",
                     url = "$vodPrefix/$sid.$ext",
@@ -94,7 +97,7 @@ class XtreamApi(
                     kind = Kind.MOVIE,
                     added = o["added"]?.toLongOrNull() ?: 0L,
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
-                )
+                ))
             }
         } catch (e: Exception) {
             // ignore: films and series are optional (some servers time out or send broken lists)
@@ -105,9 +108,10 @@ class XtreamApi(
             val seriesCats = categories("get_series_categories")
             forEachObject("get_series") { o ->
                 val sid = o["series_id"].orEmpty()
-                if (sid.isEmpty() || !ids.add("s$sid")) return@forEachObject
-                out += Channel(
-                    id = "s$sid",
+                val id = "s$sid"
+                if (sid.isEmpty() || !ids.add(id)) return@forEachObject
+                out += reuse.of(Channel(
+                    id = id,
                     name = o["name"].orEmpty().ifBlank { "Series $sid" },
                     group = o["category_id"]?.let { seriesCats[it] } ?: "Uncategorized",
                     url = "",
@@ -116,7 +120,7 @@ class XtreamApi(
                     seriesId = sid,
                     added = o["last_modified"]?.toLongOrNull() ?: 0L,
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
-                )
+                ))
             }
         } catch (e: Exception) {
             // ignore: films and series are optional (some servers time out or send broken lists)

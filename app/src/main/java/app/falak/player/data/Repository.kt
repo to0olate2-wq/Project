@@ -282,19 +282,25 @@ class Repository(private val context: Context) {
         }
     }
 
-    /** Returns the cached list unless [refresh] is true or there is no cache yet. */
-    suspend fun loadChannels(p: Playlist, refresh: Boolean, quietly: Boolean = false): PlaylistCache =
+    /**
+     * Returns the cached list unless [refresh] is true or there is no cache yet. [keep] is the
+     * list already in memory: unchanged entries are reused instead of being held twice.
+     */
+    suspend fun loadChannels(
+        p: Playlist, refresh: Boolean, quietly: Boolean = false, keep: Map<String, Channel> = emptyMap(),
+    ): PlaylistCache =
         withContext(if (quietly) background else Dispatchers.IO) {
         if (!refresh) cachedChannels(p)?.let { return@withContext it }
+        val reuse = Reuse.from(keep)
         val result = when (p.type) {
-            SourceType.M3U_URL -> loadXtreamStyleLink(p) ?: downloadM3u(p)
+            SourceType.M3U_URL -> loadXtreamStyleLink(p, reuse) ?: downloadM3u(p, reuse)
             SourceType.M3U_FILE -> {
-                val parsed = M3uParser.parse(File(p.url).bufferedReader())
+                val parsed = M3uParser.parse(File(p.url).bufferedReader(), reuse)
                 PlaylistCache(parsed.channels, parsed.epgUrl)
             }
             SourceType.XTREAM -> {
                 val api = XtreamApi(http, p.url, p.username, p.password, p.userAgent)
-                PlaylistCache(api.loadAll(), api.epgUrl, api.serverTimezone())
+                PlaylistCache(api.loadAll(reuse), api.epgUrl, api.serverTimezone())
             }
         }.copy(savedAt = System.currentTimeMillis())
         if (result.channels.isEmpty()) throw IOException("No channels found in this playlist")
@@ -312,11 +318,11 @@ class Repository(private val context: Context) {
      * Many providers block get.php downloads (e.g. HTTP 884), so load those through the
      * Xtream API instead. Returns null when the link isn't that kind or the API doesn't answer.
      */
-    private fun loadXtreamStyleLink(p: Playlist): PlaylistCache? {
+    private fun loadXtreamStyleLink(p: Playlist, reuse: Reuse): PlaylistCache? {
         val (server, user, pass) = XtreamApi.fromM3uLink(p.url) ?: return null
         return try {
             val api = XtreamApi(http, server, user, pass, p.userAgent)
-            val list = api.loadAll()
+            val list = api.loadAll(reuse)
             if (list.isEmpty()) null else PlaylistCache(list, api.epgUrl, api.serverTimezone())
         } catch (e: Exception) {
             null // fall back to downloading the M3U file
@@ -324,7 +330,7 @@ class Repository(private val context: Context) {
     }
 
     /** Downloads an M3U file, retrying with other common player User-Agents if the provider refuses. */
-    private fun downloadM3u(p: Playlist): PlaylistCache {
+    private fun downloadM3u(p: Playlist, reuse: Reuse): PlaylistCache {
         val agents = if (p.userAgent.isNotBlank()) listOf(p.userAgent) else FALLBACK_UAS
         var lastCode = 0
         for (ua in agents) {
@@ -332,7 +338,7 @@ class Repository(private val context: Context) {
             http.newCall(req).execute().use { res ->
                 if (res.isSuccessful) {
                     val body = res.body ?: throw IOException("Empty playlist")
-                    val parsed = M3uParser.parse(body.charStream().buffered())
+                    val parsed = M3uParser.parse(body.charStream().buffered(), reuse)
                     return PlaylistCache(parsed.channels, parsed.epgUrl)
                 }
                 lastCode = res.code
