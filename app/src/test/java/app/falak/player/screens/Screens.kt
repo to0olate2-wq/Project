@@ -70,7 +70,7 @@ abstract class ScreenshotBase {
         block(vm) { name -> capture(activity, name) }
     }
 
-    protected fun player(tv: Boolean, live: Boolean, browser: Boolean = false, block: ((String) -> Unit) -> Unit) {
+    protected fun player(tv: Boolean, live: Boolean, browser: Boolean = false, groups: Boolean = false, block: ((String) -> Unit) -> Unit) {
         seed(if (tv) "tv" else "phone")
         val channels = sampleChannels()
         val queue = channels.filter { it.kind == (if (live) Kind.LIVE else Kind.MOVIE) }
@@ -81,7 +81,7 @@ abstract class ScreenshotBase {
         val intent = Intent(app, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, 2)
         val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
         idle(500)
-        activity.previewControls(StandIn(live, queue[2].name), browser)
+        activity.previewControls(StandIn(live, queue[2].name), browser, groups)
         block { name -> capture(activity, name) }
     }
 
@@ -293,6 +293,8 @@ class TvHomeScreens : ScreenshotBase() {
         shoot("tv-02-live")
         vm.section = Section.MOVIES
         shoot("tv-03-films")
+        vm.openDetails(vm.index.movies.first())
+        shoot("tv-13-film-details")
         vm.screen = Screen.GUIDE
         shoot("tv-04-guide")
         vm.screen = Screen.PLAYLISTS
@@ -344,6 +346,13 @@ class TvChannelListScreens : ScreenshotBase() {
     fun tvChannelList() = player(tv = true, live = true, browser = true) { shoot -> shoot("tv-12-channel-list") }
 }
 
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvChannelGroupsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvChannelGroups() = player(tv = true, live = true, browser = true, groups = true) { shoot -> shoot("tv-14-channel-list-groups") }
+}
+
 // ---------- Phone (1080 × 2340) ----------
 
 @RunWith(RobolectricTestRunner::class)
@@ -354,6 +363,8 @@ class PhoneHomeScreens : ScreenshotBase() {
         shoot("phone-01-home")
         vm.section = Section.LIVE
         shoot("phone-02-live")
+        vm.openDetails(vm.index.movies.first())
+        shoot("phone-03-film-details")
         vm.screen = Screen.PLAYLISTS
         shoot("phone-05-playlists")
         vm.screen = Screen.SYNC

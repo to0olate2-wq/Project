@@ -1008,7 +1008,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** Screenshot tests: the controls (or the channel list) over a stand-in player, nothing playing. */
     @androidx.annotation.VisibleForTesting
-    internal fun previewControls(stand: Player, browser: Boolean = false) {
+    internal fun previewControls(stand: Player, browser: Boolean = false, groups: Boolean = false) {
         handler.removeCallbacksAndMessages(null)
         releaseEngine()
         hideMessage()
@@ -1017,6 +1017,7 @@ class PlayerActivity : ComponentActivity() {
         updateTrackButtons()
         updateTimeViews()
         if (browser) openBrowser() else playerView.showController()
+        if (browser && groups) setBrowserGroups(true)
     }
 
     /** Finger position when a sideways swipe started (−1 = not swiping). */
