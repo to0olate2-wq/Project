@@ -108,7 +108,7 @@ jobs:
         run: |
           mkdir -p /tmp/screens
           cp app/build/screens/*.png /tmp/screens/ 2>/dev/null || true
-          grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
+          grep -E "^e: |^w: .*screens|STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
           cd /tmp/screens
           git init -q

@@ -89,9 +89,9 @@ class SyncTest {
             assertEquals(listOf("Home renamed", "Kitchen"), repo.state.value.playlists.map { it.name })
 
             // Show & hide groups from the browser: listed from the saved playlist, hidden by name.
-            val app = ApplicationProvider.getApplicationContext<FalakApp>()
+            val ctx = ApplicationProvider.getApplicationContext<FalakApp>()
             app.falak.player.data.Store.writePlaylist(
-                java.io.File(java.io.File(app.filesDir, "cache").apply { mkdirs() }, "a.bin"),
+                java.io.File(java.io.File(ctx.filesDir, "cache").apply { mkdirs() }, "a.bin"),
                 app.falak.player.data.PlaylistCache(
                     listOf(
                         app.falak.player.data.Channel(id = "1", name = "One", group = "News", url = "u"),
