@@ -426,6 +426,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             }
                         }
                     }
+                    NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
                     IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
                         Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
                     }

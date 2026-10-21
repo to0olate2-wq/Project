@@ -320,10 +320,31 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
+                Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1 to "1 h", 3 to "3 h", 6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
                         TagChip(label, s.autoRefreshHours == h) { vm.updateSettings { it.copy(autoRefreshHours = h) } }
                     }
+                }
+            }
+        }
+
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+            ) { }
+            SwitchRow(
+                "Tell me what's new",
+                "A notification when a refresh finds new channels, films or series (What's new always lists them)",
+                s.notifyNew,
+            ) {
+                val on = !s.notifyNew
+                vm.updateSettings { it.copy(notifyNew = on, askedNotify = true) }
+                if (on && android.os.Build.VERSION.SDK_INT >= 33 &&
+                    androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
         }

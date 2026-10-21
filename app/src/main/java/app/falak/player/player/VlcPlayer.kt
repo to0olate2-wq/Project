@@ -24,7 +24,15 @@ import org.videolan.libvlc.util.VLCVideoLayout
  * zapping and progress saving work with either engine. VLC draws the picture and its own
  * subtitles (closed captions, teletext, DVB…) into a [VLCVideoLayout].
  */
-class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : SimpleBasePlayer(Looper.getMainLooper()) {
+class VlcPlayer(
+    context: Context,
+    cachingMs: Int,
+    levelVolume: Boolean,
+    /** Preferred audio language (ISO 639, "" = the stream's choice). */
+    audioLang: String = "",
+    /** Subtitle language to switch on by itself ("" = no subtitles unless chosen). */
+    subtitleLang: String = "",
+) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     private val libVlc = LibVLC(
         context.applicationContext,
@@ -40,6 +48,9 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
         ).apply {
             // VLC's own volume normaliser evens out loud and quiet channels.
             if (levelVolume) addAll(listOf("--audio-filter=normvol", "--norm-buff-size=20", "--norm-max-level=2.0"))
+            // Same language choices as ExoPlayer (Settings → Playback).
+            if (audioLang.isNotBlank()) add("--audio-language=$audioLang")
+            if (subtitleLang.isNotBlank()) add("--sub-language=$subtitleLang")
         },
     )
     private val vlc = MediaPlayer(libVlc)

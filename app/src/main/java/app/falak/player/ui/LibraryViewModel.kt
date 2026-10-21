@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES }
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -47,6 +47,9 @@ enum class Section(val label: String, val kind: Kind?) {
     FAVORITES("Favorites", null),
     RECENT("Recent", null),
 }
+
+/** The automatic playlist refresh starts this long after the app opens or comes back. */
+private const val REFRESH_DELAY_MS = 3 * 60_000L
 
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = app.repo
@@ -253,7 +256,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             gridStates.clear()
             homeState = LazyListState()
             lastListKey = null
-            repo.clearEpg()
+            // The guide in memory stays when it is this playlist's (the app was only in the background).
+            if (!repo.hasGuideFor(p.id)) repo.clearEpg()
         }
         playlist = p
         error = null
@@ -263,10 +267,27 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadToken = token
         loadJob = viewModelScope.launch {
             try {
+                // Still in memory from before (the app only went to the background, or its screen
+                // was rebuilt): show it at once, nothing to read.
+                val kept = if (refresh) null else repo.openLibrary?.takeIf { it.playlistId == p.id }
+                if (kept != null) {
+                    index = kept.index
+                    channels = kept.index.all
+                    providerEpg = kept.epgUrl
+                    serverTz = kept.serverTz
+                    loadedAt = kept.savedAt
+                    if (loadToken === token) loading = false
+                    loadGuide(force = false)
+                    if (isStale(kept.savedAt)) {
+                        refreshJob?.cancel()
+                        refreshJob = viewModelScope.launch { backgroundRefresh(p, token) }
+                    }
+                    return@launch
+                }
                 // The saved copy shows at once; a fresh one is fetched only if it is missing or old.
                 val cached = if (refresh) null else repo.cachedChannels(p)
                 val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId)
-                show(data)
+                show(data, announce = refresh)
                 if (loadToken === token) loading = false
                 loadGuide(force = refresh)
                 if (cached != null && isStale(cached.savedAt)) {
@@ -286,16 +307,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun show(data: app.falak.player.data.PlaylistCache) {
+    /** Shows a loaded playlist. With [announce], what's new since the list on screen goes to What's new. */
+    private suspend fun show(data: app.falak.player.data.PlaylistCache, announce: Boolean = false) {
         val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
         val old = index
-        index = withContext(Dispatchers.Default) {
-            LibraryIndex.build(list).also { idx ->
-                // Work out every live channel's guide key now, off the main thread, so the guide
-                // and channel lists don't do it while drawing (it made the TV guide slow to open).
-                for (ch in idx.live) ch.epgKey
-            }
+        val added = if (announce && old.all.isNotEmpty()) {
+            withContext(Dispatchers.Default) { list.filter { it.id !in old.byId } }
+        } else {
+            emptyList()
         }
+        // Live channels' guide keys get worked out by the guide load that follows (off the main
+        // thread), not here: the lists show as soon as the index is ready.
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list) }
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index
@@ -303,6 +326,19 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         providerEpg = data.epgUrl
         serverTz = data.serverTz
         loadedAt = data.savedAt
+        playlist?.let { pl -> repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(pl.id, index, data.epgUrl, data.serverTz, data.savedAt) }
+        if (added.isNotEmpty()) playlist?.let { pl -> announceNew(pl, added, list.size) }
+    }
+
+    /** New channels, films and series found by a refresh: a What's new entry and a notification. */
+    private fun announceNew(p: Playlist, added: List<Channel>, total: Int) {
+        // A changed playlist link can make everything look new: that isn't news.
+        if (added.size > maxOf(500, total / 4)) return
+        val hidden = currentExclusions()
+        val shown = if (hidden.isEmpty()) added else added.filter { it.group !in hidden }
+        if (shown.isEmpty()) return
+        val notice = repo.addNotice(p, shown)
+        if (state.value.settings.notifyNew) app.falak.player.data.Notifier.newContent(getApplication<Application>(), notice)
     }
 
     /** When the open playlist was downloaded (epoch ms). */
@@ -318,13 +354,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun backgroundRefresh(p: Playlist, token: Any) {
-        // Let the app settle and the guide finish first: one heavy job at a time keeps things smooth.
-        delay(20_000)
+        // A few minutes after the app opens, once it has settled (and the guide is done): one
+        // heavy job at a time keeps it smooth and avoids memory spikes right at start.
+        delay(REFRESH_DELAY_MS)
         guideJob?.join()
         if (loadToken !== token || playlist?.id != p.id) return
-        // Never while a film or channel plays: it would compete with the stream for memory and
-        // bandwidth. The next return to the app tries again.
-        if (repo.playerOpen) return
+        // Never while a film or channel plays (it would compete with the stream for memory and
+        // bandwidth): wait until the player closes, then give the app a minute.
+        if (repo.playerOpen) {
+            while (repo.playerOpen) delay(10_000)
+            delay(60_000)
+            if (loadToken !== token || playlist?.id != p.id) return
+        }
         lastRefreshTry = System.currentTimeMillis()
         // A refresh needs room to work beside the list on screen; with little left (a very big
         // playlist and a film buffering), wait for the next time the app comes to the front.
@@ -333,7 +374,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val fresh = repo.loadChannels(p, refresh = true, quietly = true, keep = index.byId)
             if (loadToken !== token || playlist?.id != p.id) return
-            show(fresh)
+            show(fresh, announce = true)
             // New channels pick up the guide on its next load; don't restart one that's running.
             if (guideJob?.isActive != true) loadGuide(force = false)
         } catch (e: CancellationException) {
@@ -361,7 +402,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshIfStale() {
         val p = playlist ?: return
         if (loading || refreshing || loadedAt == 0L || !isStale(loadedAt)) return
-        if (refreshJob?.isActive == true) return // one at a time (it waits 20 s before starting)
+        if (refreshJob?.isActive == true) return // one at a time (it waits a few minutes before starting)
         if (System.currentTimeMillis() - lastRefreshTry < 30 * 60_000L) return
         val token = loadToken
         refreshJob = viewModelScope.launch { backgroundRefresh(p, token) }
@@ -537,6 +578,39 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
+
+    // ---- What's new, and pages asked for from elsewhere (the player, a notification) ----
+
+    fun markNoticesRead() = repo.markNoticesRead()
+
+    fun clearNotices() = repo.clearNotices()
+
+    /** Opens the group a What's new entry points at (switching playlist if needed). */
+    fun showNoticeGroup(n: app.falak.player.data.Notice, g: app.falak.player.data.NoticeGroup) {
+        val p = state.value.playlists.firstOrNull { it.id == n.playlistId } ?: return
+        if (playlist?.id != p.id) open(p)
+        screen = Screen.LIBRARY
+        section = sectionFor(g)
+        group = g.group
+        query = ""
+    }
+
+    /** "HOME", "MOVIES", "SETTINGS", "NOTICES"…: opens that page. */
+    fun navigate(where: String) {
+        when (where) {
+            "SETTINGS" -> screen = Screen.SETTINGS
+            "NOTICES" -> screen = Screen.NOTICES
+            "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
+            else -> {
+                val s = Section.entries.firstOrNull { it.name == where } ?: return
+                if (playlist == null) return
+                screen = Screen.LIBRARY
+                section = s
+                group = null
+                query = ""
+            }
+        }
+    }
 
     // ---- hidden groups ----
 

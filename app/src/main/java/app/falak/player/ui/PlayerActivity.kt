@@ -118,6 +118,8 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var engineButton: TextView
     private lateinit var speedButton: TextView
     private lateinit var favButton: TextView
+    private lateinit var menuButton: TextView
+    private lateinit var settingsButton: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
 
@@ -236,7 +238,11 @@ class PlayerActivity : ComponentActivity() {
 
         // Channels / Audio / Subtitles / Picture size / Player: one tidy row on the bottom line of the
         // screen, under the seek bar, shown and hidden together with the player controls.
+        // Leave the player for another part of the app (Films, Series, Settings…).
+        menuButton = pill("Menu", R.drawable.ic_pl_menu) { showAppMenu() }
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
+        settingsButton = pill("", R.drawable.ic_pl_settings) { leaveTo("SETTINGS") }
+            .apply { contentDescription = "Settings" }
         // Add what's playing to Favorites without leaving the player.
         favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
@@ -255,7 +261,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton, settingsButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -540,7 +546,12 @@ class PlayerActivity : ComponentActivity() {
 
     private fun createVlc() {
         val caching = if (repo.state.value.settings.bigBuffer) 5_000 else 1_500
-        val v = VlcPlayer(this, caching, repo.state.value.settings.levelVolume)
+        val st = repo.state.value.settings
+        val v = VlcPlayer(
+            this, caching, st.levelVolume,
+            audioLang = st.audioLang,
+            subtitleLang = if (st.subtitlesOn) st.subtitleLang.ifBlank { "en" } else "",
+        )
         val layout = VLCVideoLayout(this)
         // Underneath the controls; ExoPlayer's own picture surface steps aside.
         root.addView(layout, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -795,6 +806,8 @@ class PlayerActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 runCatching { setPictureInPictureParams(pipParams()) }
             }
+            // The quality is known a moment after the picture starts: add it to the banner on screen.
+            if (::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
     }
 
@@ -1550,10 +1563,16 @@ class PlayerActivity : ComponentActivity() {
             it.setBounds(0, 0, size, size)
             setCompoundDrawablesRelative(it, null, null, null)
         }
-        compoundDrawablePadding = dp(8)
+        // An icon-only button (Settings) is a neat circle-ish pill with even sides.
+        compoundDrawablePadding = if (label.isEmpty()) 0 else dp(8)
         compoundDrawableTintList = contentColors()
         background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
-        setPadding(dp(if (tvLayout) 18 else 14), 0, dp(if (tvLayout) 20 else 16), 0)
+        if (label.isEmpty()) {
+            val side = dp(if (tvLayout) 13 else 11)
+            setPadding(side, 0, side, 0)
+        } else {
+            setPadding(dp(if (tvLayout) 18 else 14), 0, dp(if (tvLayout) 20 else 16), 0)
+        }
         isFocusable = true
         isClickable = true
         setOnClickListener { onClick() }
@@ -1613,6 +1632,55 @@ class PlayerActivity : ComponentActivity() {
             }
             is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
         }
+    }
+
+    // ---- picture quality ----
+
+    /** "4K", "1080p", "720p"… from the size of the video being played; null until it is known. */
+    private fun qualityLabel(): String? {
+        val vs = player?.videoSize ?: return null
+        val w = vs.width
+        val h = vs.height
+        if (w <= 0 || h <= 0) return null
+        val lines = minOf(w, h) // a portrait video is measured across
+        val long = maxOf(w, h)
+        return when {
+            lines >= 2000 || long >= 3600 -> "4K"
+            lines >= 1400 || long >= 2500 -> "1440p"
+            lines >= 1000 || long >= 1800 -> "1080p"
+            lines >= 700 || long >= 1200 -> "720p"
+            lines >= 560 -> "576p"
+            lines >= 470 -> "480p"
+            else -> "${lines}p"
+        }
+    }
+
+    // ---- leaving for other parts of the app ----
+
+    /** Films, Series, the guide, Settings… from inside the player: closes it and opens that page. */
+    private fun showAppMenu() {
+        val idx = repo.currentIndex
+        val items = buildList {
+            add("Home" to "HOME")
+            if (idx.live.isNotEmpty()) add("Live TV" to "LIVE")
+            if (idx.movies.isNotEmpty()) add("Films" to "MOVIES")
+            if (idx.series.isNotEmpty()) add("Series" to "SERIES")
+            add("Favorites" to "FAVORITES")
+            if (idx.live.isNotEmpty()) add("TV guide" to "GUIDE")
+            add("What's new" to "NOTICES")
+            add("Settings" to "SETTINGS")
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Go to")
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> leaveTo(items[which].second) }
+            .setNegativeButton("Keep watching", null)
+            .show()
+    }
+
+    private fun leaveTo(where: String) {
+        FreezeWatch.note("player → $where")
+        repo.pendingNav = where
+        finish()
     }
 
     // ---- favorites ----
@@ -1748,6 +1816,15 @@ class PlayerActivity : ComponentActivity() {
             text.append("${index + 1}   ", ForegroundColorSpan(0xFFFF4F2E.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        // The picture's real quality, from the video being played (not from the channel's name).
+        qualityLabel()?.let { q ->
+            text.append("   ")
+            val start = text.length
+            text.append(q)
+            text.setSpan(ForegroundColorSpan(0xFFF2B33D.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(StyleSpan(Typeface.BOLD), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(android.text.style.RelativeSizeSpan(0.85f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (current != null) {
             text.append("\nNow   ${time(current.start)}–${time(current.stop)}   ${current.title}")
         }

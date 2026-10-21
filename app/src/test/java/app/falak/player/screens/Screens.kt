@@ -21,6 +21,8 @@ import androidx.test.core.app.ApplicationProvider
 import app.falak.player.FalakApp
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
+import app.falak.player.data.Notice
+import app.falak.player.data.NoticeGroup
 import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
@@ -122,6 +124,24 @@ abstract class ScreenshotBase {
                 },
                 favorites = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"))),
                 recents = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"), liveId("Pulse Sports 1"))),
+                // What's new: one fresh entry and one seen earlier.
+                notices = if (!watching) emptyList() else listOf(
+                    Notice(
+                        id = System.currentTimeMillis() - 20 * 60_000L, playlistId = p.id, playlistName = p.name,
+                        live = 2, films = 3, series = 0,
+                        groups = listOf(
+                            NoticeGroup(Kind.MOVIE, "TOP MOVIES 4K 3840P DOLBY AUDIO (MULTI-SUBS)", 2),
+                            NoticeGroup(Kind.MOVIE, "Drama", 1),
+                            NoticeGroup(Kind.LIVE, "Sports", 2),
+                        ),
+                        items = films.take(3).withIndex().map { (i, t) -> stableId("$t|http://127.0.0.1:1/movie/u/p/$i.mp4") } +
+                            listOf(liveId("Arena Live"), liveId("Fairway Golf")),
+                    ),
+                    Notice(
+                        id = System.currentTimeMillis() - 26 * 3_600_000L, playlistId = p.id, playlistName = p.name,
+                        live = 0, films = 0, series = 4, read = true,
+                    ),
+                ),
             )
         }
         return p
@@ -406,6 +426,8 @@ class PhoneSidebarScreens : ScreenshotBase() {
         shoot("phone-13-sidebar-home")
         vm.section = Section.MOVIES
         shoot("phone-14-sidebar-films")
+        vm.screen = Screen.NOTICES
+        shoot("phone-16-whats-new")
     }
 }
 

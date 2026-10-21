@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 21 October 2026 (version 4.1)_
+_Last updated: 21 October 2026 (version 4.6)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -60,7 +60,9 @@ anyone.
 ## Permissions
 
 The app uses the Internet permission to load your playlists, guides and streams, and the network
-state permission, which the video engine uses to adapt playback to your connection. The version downloaded from
+state permission, which the video engine uses to adapt playback to your connection. On Android 13
+and later it may ask to show notifications: they only tell you, on your device, when a playlist
+refresh finds new channels, films or series. Nothing is sent anywhere to do this. The version downloaded from
 Google Play asks for nothing else: no location, contacts, camera, microphone or storage access.
 
 ## Changes

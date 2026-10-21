@@ -188,6 +188,8 @@ fun SidebarFrame(
                     loading = vm.loading,
                     onGuide = { vm.screen = Screen.GUIDE },
                     onRefresh = { vm.open(p, refresh = true) },
+                    unread = state.notices.count { !it.read },
+                    onNotices = { vm.screen = Screen.NOTICES },
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -379,6 +381,8 @@ fun SidebarTopBar(
     loading: Boolean,
     onGuide: () -> Unit,
     onRefresh: () -> Unit,
+    unread: Int = 0,
+    onNotices: () -> Unit = {},
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -430,6 +434,7 @@ fun SidebarTopBar(
             if (hasGuide && onMenu != null) {
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
+            NoticeBell(unread, onNotices)
             IconButton(onClick = onRefresh, enabled = !loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
             }

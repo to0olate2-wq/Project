@@ -237,13 +237,20 @@ object Store {
         skip(inp, n)
     }
 
+    /** One reusable read buffer per thread: a big playlist has over a million strings to read. */
+    private val buffers = ThreadLocal<ByteArray>()
+
     private fun str(inp: DataInputStream): String {
         val n = inp.readInt()
         if (n == 0) return ""
         if (n < 0 || n > 8_000_000) throw IOException("Corrupt cache")
-        val b = ByteArray(n)
-        inp.readFully(b)
-        return String(b, Charsets.UTF_8)
+        var b = buffers.get()
+        if (b == null || b.size < n) {
+            b = ByteArray(maxOf(n, 1024))
+            if (n <= 64 * 1024) buffers.set(b) // don't keep a rare huge one
+        }
+        inp.readFully(b, 0, n)
+        return String(b, 0, n, Charsets.UTF_8)
     }
 
     private class Pool {

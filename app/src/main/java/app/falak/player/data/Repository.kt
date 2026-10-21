@@ -61,6 +61,25 @@ class Repository(private val context: Context) {
     /** The player is on screen: heavy background work (playlist refresh) waits until it closes. */
     @Volatile var playerOpen = false
 
+    /** A page the player asked to open when it closed ("MOVIES", "SETTINGS"…), for the main screen. */
+    @Volatile var pendingNav: String? = null
+
+    /**
+     * The open playlist, ready to show, kept for as long as the app is in memory: closing and
+     * reopening the app (or its main screen being rebuilt) shows it at once, with no reload.
+     */
+    class OpenLibrary(val playlistId: String, val index: LibraryIndex, val epgUrl: String, val serverTz: String, val savedAt: Long)
+
+    @Volatile var openLibrary: OpenLibrary? = null
+
+    /** Which playlist the guide in memory belongs to, when it was saved, and which channels it covers. */
+    private class GuideMemo(val playlistId: String, val savedAt: Long, val scope: Set<String>, val matched: Int, val total: Int)
+
+    @Volatile private var guideMemo: GuideMemo? = null
+
+    /** The guide in memory is this playlist's. */
+    fun hasGuideFor(playlistId: String): Boolean = guideMemo?.playlistId == playlistId
+
     /**
      * Returns (and clears) the crash saved by FalakApp on the previous run, or else a report of a
      * stop Android recorded that the app couldn't see itself (native crash, freeze, memory).
@@ -143,8 +162,10 @@ class Repository(private val context: Context) {
                 ),
                 recents = s.recents - id,
                 lastPlaylistId = s.lastPlaylistId.takeIf { it != id },
+                notices = s.notices.filterNot { it.playlistId == id },
             )
         }
+        if (openLibrary?.playlistId == id) openLibrary = null
         File(cacheDir, "$id.json").delete()
         File(cacheDir, "$id.bin").delete()
         File(cacheDir, "$id.guide.json").delete()
@@ -221,6 +242,36 @@ class Repository(private val context: Context) {
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
+
+    // ---- What's new ----
+
+    /** Records what a refresh added to [p] and returns the entry. */
+    fun addNotice(p: Playlist, added: List<Channel>): Notice {
+        val groups = added.groupingBy { it.kind to it.group }.eachCount().entries
+            .sortedByDescending { it.value }.take(8)
+            .map { (k, n) -> NoticeGroup(k.first, k.second, n) }
+        // Films and series with pictures first: they make the best preview.
+        val items = added.sortedByDescending { (if (it.kind != Kind.LIVE) 2 else 0) + (if (it.logo.isNotBlank()) 1 else 0) }
+            .take(12).map { it.id }
+        val notice = Notice(
+            id = System.currentTimeMillis(),
+            playlistId = p.id,
+            playlistName = p.name,
+            live = added.count { it.kind == Kind.LIVE },
+            films = added.count { it.kind == Kind.MOVIE },
+            series = added.count { it.kind == Kind.SERIES },
+            groups = groups,
+            items = items,
+        )
+        update { s -> s.copy(notices = (listOf(notice) + s.notices).take(40)) }
+        return notice
+    }
+
+    fun markNoticesRead() {
+        if (_state.value.notices.any { !it.read }) update { s -> s.copy(notices = s.notices.map { it.copy(read = true) }) }
+    }
+
+    fun clearNotices() = update { it.copy(notices = emptyList()) }
 
     /** Hides or shows whole groups of a playlist (from this device or the phone page). */
     fun setGroupsHidden(playlistId: String, groups: Collection<String>, hidden: Boolean) = updateSettings { s ->
@@ -395,6 +446,12 @@ class Repository(private val context: Context) {
             // [channels] are the visible ones: hidden groups get no guide (no matching, no memory).
             val overrides = _state.value.settings.guideOverrides[p.id].orEmpty()
             val matcher = GuideMatcher(channels, overrides)
+            // Already in memory, fresh and covering these channels: nothing to read or download.
+            guideMemo?.let { m ->
+                if (!force && m.playlistId == p.id && now - m.savedAt < 8 * 3_600_000L && matcher.keys.all { it in m.scope } && _epg.value.isNotEmpty()) {
+                    return@withContext guideStatus(GuideCache(m.savedAt, emptyMap(), m.matched, m.total))
+                }
+            }
             var hadGuide = false
             if (file.exists()) {
                 val cached = try {
@@ -411,6 +468,7 @@ class Repository(private val context: Context) {
                     // A group shown again since the last download has channels the saved guide
                     // never looked for: download again rather than leave them empty.
                     val covers = matcher.keys.all { it in cached.scope }
+                    guideMemo = GuideMemo(p.id, cached.savedAt, cached.scope, cached.matched, cached.total)
                     if (!force && covers && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
                 }
             }
@@ -482,6 +540,7 @@ class Repository(private val context: Context) {
             _guideStats.value = stats
             writeGuideStats(p.id, stats)
             val result = GuideCache(now, merged, matched = merged.size, total = matcher.keys.size, channels = listed, scope = matcher.keys)
+            guideMemo = GuideMemo(p.id, now, matcher.keys, result.matched, result.total)
             try {
                 Store.writeGuide(file, result)
             } catch (e: Throwable) {
@@ -679,6 +738,7 @@ class Repository(private val context: Context) {
     }
 
     fun clearEpg() {
+        guideMemo = null
         setRawGuide(emptyMap())
         guideChannels = emptyList()
         _guideStats.value = emptyList()

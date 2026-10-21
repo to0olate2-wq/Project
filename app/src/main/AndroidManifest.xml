@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- "New in your playlist" alerts (asked once; Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Runs on phones, tablets and Android TV boxes -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

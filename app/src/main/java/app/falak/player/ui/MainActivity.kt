@@ -111,6 +111,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Back on the first page leaves the app but keeps it as it is (Android 12+ does this for
+        // phones already): opening it again shows the playlist at once instead of reloading it.
+        // Registered first, so every page's own Back handling comes before it.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                moveTaskToBack(true)
+            }
+        })
+        handleOpen(intent)
+        askForNotificationsOnce()
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
@@ -166,6 +176,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.SETTINGS -> SettingsScreen(vm, state)
                                 Screen.GROUPS -> GroupsScreen(vm, state)
                                 Screen.SYNC -> SyncScreen(vm, state)
+                                Screen.NOTICES -> NoticesScreen(vm, state, onPlay = ::play)
                             }
                         }
                     }
@@ -185,8 +196,39 @@ class MainActivity : ComponentActivity() {
     /** Set when we open the player, so coming back from it isn't taken for a return to the app. */
     private var fromPlayer = false
 
+    /** Opens What's new when started from a "New in …" notification. */
+    private fun handleOpen(intent: Intent?) {
+        intent?.getStringExtra(app.falak.player.data.Notifier.EXTRA_OPEN)?.let { where ->
+            intent.removeExtra(app.falak.player.data.Notifier.EXTRA_OPEN)
+            vm.navigate(where)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOpen(intent)
+    }
+
+    /** Android 13+: ask once whether "New in your playlist" notifications may be shown. */
+    private val notifyPermission = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+
+    private fun askForNotificationsOnce() {
+        val s = vm.state.value.settings
+        if (android.os.Build.VERSION.SDK_INT < 33 || !s.notifyNew || s.askedNotify) return
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        vm.updateSettings { it.copy(askedNotify = true) }
+        if (!granted) notifyPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     override fun onResume() {
         super.onResume()
+        // A page asked for from inside the player (Menu: Films, Series, Settings…).
+        repo.pendingNav?.let { where ->
+            repo.pendingNav = null
+            vm.navigate(where)
+        }
         FreezeWatch.note(if (fromPlayer) "back from the player" else "app in front")
         vm.onReturnFromPlayer()
         // Leaving a film or channel must not start a playlist reload: only a return to the app
@@ -198,7 +240,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC -> 4
     }

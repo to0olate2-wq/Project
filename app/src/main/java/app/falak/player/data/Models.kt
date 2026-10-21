@@ -278,11 +278,11 @@ data class Settings(
     val softwareAudio: Boolean = false,
     val preferHls: Boolean = false,
     val openLast: Boolean = true,
-    /** ISO 639 code like "ar" or "en"; empty = what the stream prefers. */
-    val audioLang: String = "",
+    /** ISO 639 code like "ar" or "en"; empty = what the stream prefers. English unless changed. */
+    val audioLang: String = "en",
     /** Show subtitles/closed captions automatically when a stream has them. */
     val subtitlesOn: Boolean = false,
-    val subtitleLang: String = "",
+    val subtitleLang: String = "en",
     /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */
     val osApiKey: String = "",
     val osUser: String = "",
@@ -295,12 +295,8 @@ data class Settings(
     val hiddenGroups: Map<String, List<String>> = emptyMap(),
     /** Old theme index (before 4.1); no longer used. */
     val theme: Int = 0,
-    /** "auto" (light by day, dark in the evening), "light" or "dark". */
+    /** "auto" (light from sunrise, dark from sunset, see SunTimes), "light" or "dark". */
     val themeMode: String = "auto",
-    /** Automatic theme: dark from this hour (24 h clock)… */
-    val darkFrom: Int = 18,
-    /** …until this hour. */
-    val lightFrom: Int = 6,
     /** "classic" (tabs on top, slideshow) or "sidebar" (side menu, big continue cards, filter chips). */
     val look: String = "classic",
     /** Sidebar look: sections shown as a grid rather than a list. */
@@ -314,7 +310,11 @@ data class Settings(
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
     val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */
-    val autoRefreshHours: Int = 12,
+    val autoRefreshHours: Int = 6,
+    /** Tell the user (notification + What's new) when a refresh finds new channels, films or series. */
+    val notifyNew: Boolean = true,
+    /** Asked Android for permission to show notifications (Android 13+), so it isn't asked again. */
+    val askedNotify: Boolean = false,
     /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */
     val guideOverrides: Map<String, Map<String, String>> = emptyMap(),
 )
@@ -344,7 +344,35 @@ data class AppState(
     val settings: Settings = Settings(),
     /** progressKey(playlistId, channelId) -> position */
     val progress: Map<String, Watch> = emptyMap(),
+    /** What's new: what playlist refreshes added, newest first (last 40). */
+    val notices: List<Notice> = emptyList(),
 )
+
+/** One refresh's worth of new channels, films and series (What's new). */
+@Serializable
+data class Notice(
+    val id: Long,
+    val playlistId: String,
+    val playlistName: String,
+    val live: Int,
+    val films: Int,
+    val series: Int,
+    /** The groups they went into, biggest first (up to 8). */
+    val groups: List<NoticeGroup> = emptyList(),
+    /** A few of the new items, to show and open (up to 12). */
+    val items: List<String> = emptyList(),
+    val read: Boolean = false,
+) {
+    /** "27 films · 3 channels · 2 series" */
+    fun summary(): String = listOfNotNull(
+        films.takeIf { it > 0 }?.let { "$it new film" + if (it == 1) "" else "s" },
+        series.takeIf { it > 0 }?.let { "$it new series" },
+        live.takeIf { it > 0 }?.let { "$it new channel" + if (it == 1) "" else "s" },
+    ).joinToString(" · ")
+}
+
+@Serializable
+data class NoticeGroup(val kind: Kind, val group: String, val count: Int)
 
 val ADULT_GROUP = Regex("(?i)(xxx|adult|18\\s*\\+|porn)")
 
