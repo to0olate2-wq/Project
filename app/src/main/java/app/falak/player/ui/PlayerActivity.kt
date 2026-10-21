@@ -114,6 +114,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var rotateButton: TextView
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
+    private lateinit var speedButton: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
 
@@ -239,6 +240,8 @@ class PlayerActivity : ComponentActivity() {
         rotateButton = pill(rotationLabel(), R.drawable.ic_pl_rotate) { cycleRotation() }
             .apply { visibility = if (tvLayout) View.GONE else View.VISIBLE }
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
+        // Films and episodes only (live TV always plays at normal speed).
+        speedButton = pill(speedLabel(speed), R.drawable.ic_pl_speed) { showSpeedDialog() }.apply { visibility = View.GONE }
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -246,7 +249,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(browseButton, audioButton, ccButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(browseButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -638,6 +641,7 @@ class PlayerActivity : ComponentActivity() {
             currentDataSource = null
             v.load(url, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = true)
             updateTrackButtons()
+            applySpeed()
             if (showInfo) showBanner(ch)
             return
         }
@@ -673,6 +677,7 @@ class PlayerActivity : ComponentActivity() {
         p.prepare()
         p.playWhenReady = true
         updateTrackButtons()
+        applySpeed()
         if (showInfo) showBanner(ch)
     }
 
@@ -1542,12 +1547,16 @@ class PlayerActivity : ComponentActivity() {
         if (controls != null) {
             // No slide-away animation: the row and the bars above it disappear together.
             playerView.setControllerAnimationEnabled(false)
+            tidyMediaControls(controls)
+            // Media3 keeps the seek bar (48 dp tall) 52 dp above the bottom of the controls: with this
+            // padding it sits just above the row.
+            val pad = (rowHeight - dp(48)).coerceAtLeast(0)
             controls.clipToPadding = false
-            controls.setPadding(0, 0, 0, rowHeight)
+            controls.setPadding(0, 0, 0, pad)
             controls.addView(
                 toolbar,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight, Gravity.BOTTOM)
-                    .apply { bottomMargin = -rowHeight },
+                    .apply { bottomMargin = -pad },
             )
         } else {
             // Fallback: a separate row at the bottom of the screen that follows the controls.
@@ -1561,7 +1570,7 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Media3's own buttons (play, previous/next, ±10 s, settings): the same white highlight. */
+    /** Media3's own buttons (play, previous/next, ±10 s): the same white highlight. */
     private fun styleControls(v: View) {
         when (v) {
             is android.widget.ImageButton -> {
@@ -1582,9 +1591,76 @@ class PlayerActivity : ComponentActivity() {
     /** Live channels have no real position or length: hide "00:13 · 00:00" and the empty seek bar. */
     private fun updateTimeViews() {
         if (!::playerView.isInitialized) return
-        val state = if (canSeek()) View.VISIBLE else View.INVISIBLE
-        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_time)?.visibility = state
-        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.visibility = state
+        val seekable = canSeek()
+        val state = if (seekable) View.VISIBLE else View.INVISIBLE
+        for (id in intArrayOf(androidx.media3.ui.R.id.exo_position, androidx.media3.ui.R.id.exo_duration, androidx.media3.ui.R.id.exo_progress)) {
+            playerView.findViewById<View>(id)?.visibility = state
+        }
+        if (::speedButton.isInitialized) speedButton.visibility = if (seekable) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Media3's bottom bar goes: its settings gear only held speed and audio, which are buttons in our
+     * row now, and its time readout moves to either end of the seek bar. One line for the seek bar,
+     * one for the buttons.
+     */
+    private fun tidyMediaControls(controls: FrameLayout) {
+        val ids = androidx.media3.ui.R.id
+        val position = controls.findViewById<TextView>(ids.exo_position)
+        val duration = controls.findViewById<TextView>(ids.exo_duration)
+        controls.findViewById<View>(ids.exo_bottom_bar)?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        val side = dp(if (tvLayout) 96 else 72)
+        controls.findViewById<View>(ids.exo_progress)?.let { bar ->
+            (bar.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                lp.leftMargin = side
+                lp.rightMargin = side
+                bar.layoutParams = lp
+            }
+        }
+        for ((label, edge) in listOf(position to Gravity.START, duration to Gravity.END)) {
+            if (label == null) continue
+            (label.parent as? ViewGroup)?.removeView(label)
+            label.setTextColor(0xE6FFFFFF.toInt())
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 14f else 13f)
+            label.typeface = ResourcesCompat.getFont(this, R.font.inter_medium)
+            label.fontFeatureSettings = "tnum"
+            label.gravity = Gravity.CENTER
+            label.setPadding(0, 0, 0, 0)
+            // Same height and distance from the bottom as the seek bar, so the numbers sit level with it.
+            controls.addView(label, FrameLayout.LayoutParams(side, dp(48), Gravity.BOTTOM or edge).apply { bottomMargin = dp(52) })
+        }
+    }
+
+    // ---- playback speed (films and episodes) ----
+
+    private var speed = 1f
+    private val speeds = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+    private fun speedLabel(s: Float): String = if (s == 1f) "Speed" else formatSpeed(s)
+
+    private fun formatSpeed(s: Float): String =
+        (if (s == s.toInt().toFloat()) s.toInt().toString() else s.toString().trimEnd('0')) + "×"
+
+    private fun showSpeedDialog() {
+        val labels = speeds.map { if (it == 1f) "Normal (1×)" else formatSpeed(it) }.toTypedArray()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Playback speed")
+            .setSingleChoiceItems(labels, speeds.indexOfFirst { it == speed }) { d, which ->
+                d.dismiss()
+                speed = speeds[which]
+                speedButton.text = speedLabel(speed)
+                applySpeed()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** The chosen speed for films and episodes; live channels always play at normal speed. */
+    private fun applySpeed() {
+        val p = playerView.player ?: return
+        if (!p.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) return
+        val live = queue.getOrNull(index)?.kind == Kind.LIVE
+        p.setPlaybackSpeed(if (live) 1f else speed)
     }
 
     private fun showBanner(ch: Channel) {

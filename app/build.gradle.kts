@@ -99,6 +99,8 @@ android {
             isIncludeAndroidResources = true
             all {
                 it.maxHeapSize = "4g"
+                // Compose's frame clock doesn't survive Robolectric's reset between tests: one JVM per test.
+                it.forkEvery = 1
                 it.systemProperty("screens.dir", layout.buildDirectory.dir("screens").get().asFile.path)
             }
         }

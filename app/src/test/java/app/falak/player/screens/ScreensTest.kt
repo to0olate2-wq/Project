@@ -147,7 +147,11 @@ class ScreensTest {
     }
 
     private fun capture(activity: Activity, name: String) {
-        idle(1500)
+        // Pictures load on background threads: give them real time as well as frames.
+        repeat(6) {
+            idle(400)
+            Thread.sleep(150)
+        }
         val root = activity.window.decorView
         val bmp = Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bmp))

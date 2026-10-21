@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.VideoSize
@@ -53,6 +54,7 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
     private var seekable = false
     private var videoSize = VideoSize.UNKNOWN
     private var released = false
+    private var speed = 1f
 
     /** Called (on the main thread) when VLC finds or changes audio/subtitle tracks. */
     var onTracksChanged: (() -> Unit)? = null
@@ -90,6 +92,7 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
         videoSize = VideoSize.UNKNOWN
         state = Player.STATE_BUFFERING
         if (playWhenReady) vlc.play()
+        if (speed != 1f) vlc.rate = speed
         invalidateState()
     }
 
@@ -174,6 +177,7 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
             Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
             Player.COMMAND_GET_TIMELINE,
             Player.COMMAND_GET_METADATA,
+            Player.COMMAND_SET_SPEED_AND_PITCH,
         )
         val canSeek = seekable && lengthMs > 0
         if (canSeek) {
@@ -191,6 +195,7 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
             .setVideoSize(videoSize)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
+            .setPlaybackParameters(PlaybackParameters(speed))
         val current = item
         if (current == null || released) return builder.setPlaybackState(Player.STATE_IDLE).build()
         val live = lengthMs <= 0
@@ -229,6 +234,13 @@ class VlcPlayer(context: Context, cachingMs: Int, levelVolume: Boolean) : Simple
     override fun handleStop(): ListenableFuture<*> {
         if (!released) vlc.stop()
         state = Player.STATE_IDLE
+        return Futures.immediateVoidFuture()
+    }
+
+    /** Playback speed (films and episodes). */
+    override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> {
+        speed = playbackParameters.speed
+        if (!released) vlc.rate = speed
         return Futures.immediateVoidFuture()
     }
 
