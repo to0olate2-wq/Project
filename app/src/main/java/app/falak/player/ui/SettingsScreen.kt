@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -58,7 +60,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.falak.player.BuildConfig
 import app.falak.player.data.AppState
-import app.falak.player.data.GUIDE_SOURCES
 import app.falak.player.data.guideSourceName
 
 /** Public privacy policy (also linked from the Google Play listing). */
@@ -70,7 +71,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val p = vm.playlist
     val pinSet = s.pin.isNotEmpty()
     var editPin by remember { mutableStateOf(false) }
-    var addGuide by remember { mutableStateOf(false) }
+    var guideSources by remember { mutableStateOf(false) }
+    var guideShift by remember { mutableStateOf(false) }
     var editSubs by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
@@ -112,9 +114,40 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("Appearance") }
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
-                items(Palettes.indices.toList(), key = { it }) { i ->
-                    ThemeCard(Palettes[i], selected = s.theme == i) { vm.updateSettings { it.copy(theme = i) } }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val hour: (Int) -> String = { h -> hourLabel(context, h) }
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text("Theme", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    when (s.themeMode) {
+                        "light" -> "Always light."
+                        "dark" -> "Always dark."
+                        else -> "Light by day, dark from ${hour(s.darkFrom)} until ${hour(s.lightFrom)}. Switches by itself."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette)) {
+                        vm.updateSettings { it.copy(themeMode = "auto") }
+                    }
+                    ThemeOption("Light", s.themeMode == "light", listOf(LightPalette)) {
+                        vm.updateSettings { it.copy(themeMode = "light") }
+                    }
+                    ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette)) {
+                        vm.updateSettings { it.copy(themeMode = "dark") }
+                    }
+                }
+                if (s.themeMode == "auto") {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Evening starts at", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(17, 18, 19, 20).forEach { h ->
+                            TagChip(hour(h), s.darkFrom == h) { vm.updateSettings { it.copy(darkFrom = h) } }
+                        }
+                    }
                 }
             }
         }
@@ -205,100 +238,24 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         if (p != null) {
-            item { SectionTitle("TV guide · ${p.name}") }
-            if (vm.guideStatus.isNotEmpty()) {
-                item {
-                    Text(vm.guideStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            item { SectionTitle("TV guide") }
+            item {
+                val extra = p.extraEpg.distinct().size
+                ClickRow(
+                    "Guide sources",
+                    when {
+                        vm.guideLoading -> "Loading the guide…"
+                        vm.guideStatus.isNotEmpty() -> vm.guideStatus
+                        else -> "Where the TV guide comes from"
+                    } + " · " + if (extra == 0) "provider only" else "provider + $extra more",
+                ) { guideSources = true }
             }
             item {
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Guide time correction", style = MaterialTheme.typography.bodyLarge, color = Paper)
-                        Text(
-                            "If shows appear earlier or later than they air",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    val shift = p.epgShiftMinutes
-                    TextButton(onClick = { vm.shiftGuide(-30) }) { Text("−30m") }
-                    Text(formatShift(shift), style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { vm.shiftGuide(30) }) { Text("+30m") }
-                }
-            }
-            val suggestions = vm.guideSuggestions.filter { it.source.url !in p.extraEpg }
-            if (suggestions.isNotEmpty()) {
-                item {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                            .panel(RoundedCornerShape(10.dp))
-                            .padding(14.dp),
-                    ) {
-                        Text("Better guide for your channels", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = Paper)
-                        Text(
-                            "These free guides match where your channels come from. Add them and the guide fills in channels your provider's guide misses.",
-                            fontSize = 13.sp,
-                            color = Muted,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-                        )
-                        suggestions.forEach { sug ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(sug.source.name, fontSize = 15.sp, color = Paper)
-                                    Text("about ${sug.channels} of your channels", fontSize = 12.sp, color = Faint)
-                                }
-                                TextButton(onClick = { vm.addGuideSources(listOf(sug.source.url)) }) { Text("Add") }
-                            }
-                        }
-                        if (suggestions.size > 1) {
-                            Spacer(Modifier.height(6.dp))
-                            PaperButton("Add all ${suggestions.size}") {
-                                vm.addGuideSources(suggestions.map { it.source.url })
-                            }
-                        }
-                    }
-                }
-            }
-            items(p.extraEpg.distinct(), key = { "epg:$it" }) { url ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        guideSourceName(url),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = { vm.removeGuideSource(url) }) { Text("Remove") }
-                }
-            }
-            item {
-                ClickRow("Add a guide source", "Free regional guides fill in channels your provider's guide misses") {
-                    addGuide = true
-                }
-            }
-            item {
-                ClickRow(if (vm.guideLoading) "Loading guide…" else "Reload guide now", "Downloads all guide sources again") {
-                    vm.loadGuide(force = true)
-                }
-            }
-            val fixed = s.guideOverrides[p.id].orEmpty()
-            if (fixed.isNotEmpty()) {
-                item {
-                    ClickRow("Undo ${fixed.size} hand-picked guide" + if (fixed.size == 1) "" else "s", "Go back to automatic matching for every channel") {
-                        vm.updateSettings { it.copy(guideOverrides = it.guideOverrides - p.id) }
-                        vm.loadGuide(force = true)
-                    }
-                }
-            }
-            item {
-                Text(
-                    "Wrong or missing guide on a channel? Long-press it in the list and choose Fix TV guide.",
-                    fontSize = 12.sp,
-                    color = Faint,
-                    modifier = Modifier.padding(vertical = 6.dp),
-                )
+                ClickRow(
+                    "Guide time correction",
+                    if (p.epgShiftMinutes == 0) "Off · for guides that show programmes too early or too late"
+                    else "${formatShift(p.epgShiftMinutes)} · tap to change",
+                ) { guideShift = true }
             }
         }
 
@@ -446,13 +403,40 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         )
     }
 
-    if (addGuide && p != null) {
-        AddGuideDialog(
-            existing = p.extraEpg,
-            onDismiss = { addGuide = false },
-            onAdd = { url ->
-                addGuide = false
-                vm.addGuideSources(listOf(url))
+    if (guideSources && p != null) {
+        GuideSourcesDialog(vm, p, s.guideOverrides[p.id].orEmpty().size) { guideSources = false }
+    }
+
+    if (guideShift && p != null) {
+        AlertDialog(
+            onDismissRequest = { guideShift = false },
+            title = { Text("Guide time correction") },
+            text = {
+                Column {
+                    Text(
+                        "If every programme in the guide starts too early or too late, move the whole guide.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { vm.shiftGuide(-30) }) { Text("− 30 min") }
+                        Text(
+                            formatShift(p.epgShiftMinutes),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Paper,
+                            modifier = Modifier.widthIn(min = 72.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        TextButton(onClick = { vm.shiftGuide(30) }) { Text("+ 30 min") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { guideShift = false }) { Text("Done") } },
+            dismissButton = if (p.epgShiftMinutes != 0) {
+                { TextButton(onClick = { vm.shiftGuide(-p.epgShiftMinutes) }) { Text("Reset") } }
+            } else {
+                null
             },
         )
     }
@@ -475,10 +459,10 @@ private fun SectionTitle(text: String) {
     Box(Modifier.padding(top = 26.dp, bottom = 6.dp)) { Kicker(text) }
 }
 
-/** A small preview of a theme: its background, text and accent. */
+/** A theme to pick: a small preview (both halves for Automatic) and its name. */
 @Composable
-private fun ThemeCard(p: Palette, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
+private fun ThemeOption(label: String, selected: Boolean, palettes: List<Palette>, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
     Column(
         Modifier
             .width(128.dp)
@@ -486,22 +470,38 @@ private fun ThemeCard(p: Palette, selected: Boolean, onClick: () -> Unit) {
             .clip(shape)
             .border(if (selected) 2.dp else 1.dp, if (selected) Signal else Hairline, shape)
             .clickable(onClick = onClick)
-            .background(p.ink)
-            .padding(12.dp),
+            .padding(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Aa", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = p.paper)
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.size(10.dp).background(p.signal, androidx.compose.foundation.shape.CircleShape))
+        Row(Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(8.dp))) {
+            palettes.forEach { p ->
+                Box(Modifier.weight(1f).fillMaxHeight().background(p.ink).padding(8.dp)) {
+                    Text("Aa", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = p.paper)
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(8.dp)
+                            .background(p.signal, androidx.compose.foundation.shape.CircleShape),
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(p.ink3))
-        Spacer(Modifier.height(5.dp))
-        Box(Modifier.fillMaxWidth(0.6f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(p.ink3))
-        Spacer(Modifier.height(10.dp))
-        Text(p.name, fontFamily = Sans, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = p.muted, maxLines = 1)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            label,
+            fontFamily = Sans,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) Paper else Muted,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 2.dp),
+        )
     }
 }
+
+/** "18:00" or "6 PM", following the device's clock setting. */
+private fun hourLabel(context: android.content.Context, hour: Int): String =
+    if (android.text.format.DateFormat.is24HourFormat(context)) String.format(java.util.Locale.US, "%02d:00", hour)
+    else "${(hour + 11) % 12 + 1} ${if (hour < 12) "AM" else "PM"}"
 
 /** Which video player to use; Automatic shows what it picked for this TV and why. */
 @Composable
@@ -572,50 +572,98 @@ private fun formatShift(minutes: Int): String {
     return if (m % 60 == 0) "$sign${m / 60}h" else "$sign${m / 60}h${m % 60}"
 }
 
+/**
+ * Where the guide comes from, and what each source really adds: how many of your channels it
+ * covers and how many of those no earlier source had. Sources that add nothing can go.
+ */
 @Composable
-private fun AddGuideDialog(existing: List<String>, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+private fun GuideSourcesDialog(vm: LibraryViewModel, p: app.falak.player.data.Playlist, handPicked: Int, onDismiss: () -> Unit) {
+    val stats by vm.guideStats.collectAsState()
     var custom by remember { mutableStateOf("") }
+    val extras = p.extraEpg.distinct()
+    val suggestions = vm.guideSuggestions.filter { it.source.url !in extras }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add a guide source") },
+        title = { Text("Guide sources") },
         text = {
-            Column(Modifier.heightIn(max = 420.dp)) {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                if (vm.guideStatus.isNotEmpty()) {
+                    Text(vm.guideStatus, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Spacer(Modifier.height(10.dp))
+                }
+                // The provider's own guide first, then the extra ones in the order they are used.
+                val rows = if (stats.isNotEmpty()) {
+                    stats
+                } else {
+                    listOf(app.falak.player.data.GuideSourceStat("", "Your provider's guide", true, -1, -1, true)) +
+                        extras.map { app.falak.player.data.GuideSourceStat(it, guideSourceName(it), false, -1, -1, true) }
+                }
+                rows.forEach { st ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(st.label, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val (detail, weak) = when {
+                                !st.ok -> "Couldn't be downloaded last time" to true
+                                st.matched < 0 -> "Not loaded yet" to false
+                                st.provider -> "Covers ${st.matched} of your channels" to (st.matched == 0)
+                                st.added == 0 -> "Covers ${st.matched}, adds nothing new" to true
+                                else -> "Covers ${st.matched} · adds ${st.added} the others miss" to false
+                            }
+                            Text(detail, fontSize = 12.sp, color = if (weak) Signal else Faint)
+                        }
+                        if (!st.provider && st.url.isNotEmpty()) {
+                            TextButton(onClick = { vm.removeGuideSource(st.url) }) { Text("Remove") }
+                        }
+                    }
+                }
+                if (suggestions.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Free guides that match your channels", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    suggestions.forEach { sug ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(sug.source.name, fontSize = 15.sp, color = Paper)
+                                Text("about ${sug.channels} of your channels", fontSize = 12.sp, color = Faint)
+                            }
+                            TextButton(onClick = { vm.addGuideSources(listOf(sug.source.url)) }) { Text("Add") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = custom,
                     onValueChange = { custom = it },
-                    label = { Text("Your XMLTV link (.xml or .xml.gz)") },
+                    label = { Text("Or paste a guide link (XMLTV)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        TextButton(enabled = custom.trim().startsWith("http"), onClick = {
+                            vm.addGuideSources(listOf(custom.trim()))
+                            custom = ""
+                        }) { Text("Add") }
+                    },
                 )
-                Text(
-                    "Or pick a free regional guide:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                )
-                LazyColumn {
-                    items(GUIDE_SOURCES.filter { it.url !in existing }, key = { it.url }) { src ->
-                        val name = src.name
-                        val url = src.url
-                        val shape = RoundedCornerShape(8.dp)
-                        Text(
-                            name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRing(shape)
-                                .clip(shape)
-                                .clickable { onAdd(url) }
-                                .padding(vertical = 10.dp, horizontal = 6.dp),
-                        )
-                    }
+                if (handPicked > 0) {
+                    TextButton(onClick = {
+                        vm.updateSettings { it.copy(guideOverrides = it.guideOverrides - p.id) }
+                        vm.loadGuide(force = true)
+                    }) { Text("Undo $handPicked hand-picked guide" + if (handPicked == 1) "" else "s") }
                 }
+                Text(
+                    "Wrong guide on one channel? Long-press it in the list and choose Fix TV guide.",
+                    fontSize = 12.sp,
+                    color = Faint,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
             }
         },
         confirmButton = {
-            TextButton(enabled = custom.trim().startsWith("http"), onClick = { onAdd(custom.trim()) }) { Text("Add link") }
+            TextButton(enabled = !vm.guideLoading, onClick = { vm.loadGuide(force = true) }) {
+                Text(if (vm.guideLoading) "Loading…" else "Reload guide")
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
 

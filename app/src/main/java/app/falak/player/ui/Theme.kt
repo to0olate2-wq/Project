@@ -64,40 +64,23 @@ class Palette(
     val grain: Float,
 )
 
-val Palettes = listOf(
-    Palette(
-        "Screening room", true,
-        ink = Color(0xFF121110), ink2 = Color(0xFF1B1918), ink3 = Color(0xFF282523), hairline = Color(0x29FFFFFF),
-        paper = Color(0xFFF7F3EC), muted = Color(0xFFD2CBC1), faint = Color(0xFFA0988E),
-        signal = Color(0xFFFF5A3C), amber = Color(0xFFF4BF55), grain = 0.35f,
-    ),
-    Palette(
-        "Midnight", true,
-        ink = Color(0xFF0B1120), ink2 = Color(0xFF121A2C), ink3 = Color(0xFF1B2539), hairline = Color(0x2EFFFFFF),
-        paper = Color(0xFFF1F5FC), muted = Color(0xFFC3CDDF), faint = Color(0xFF8F9BB3),
-        signal = Color(0xFF5BB8FF), amber = Color(0xFFFFCB5C), grain = 0.2f,
-    ),
-    Palette(
-        "Pure black", true,
-        ink = Color(0xFF000000), ink2 = Color(0xFF0F0F0F), ink3 = Color(0xFF1C1C1C), hairline = Color(0x33FFFFFF),
-        paper = Color(0xFFFFFFFF), muted = Color(0xFFD6D6D6), faint = Color(0xFFA3A3A3),
-        signal = Color(0xFFFF453A), amber = Color(0xFFFFD60A), grain = 0f,
-    ),
-    Palette(
-        "Emerald", true,
-        ink = Color(0xFF0C1714), ink2 = Color(0xFF13211D), ink3 = Color(0xFF1C2E28), hairline = Color(0x2EFFFFFF),
-        paper = Color(0xFFF0F7F3), muted = Color(0xFFC2D6CC), faint = Color(0xFF8DA69A),
-        signal = Color(0xFF34D399), amber = Color(0xFFF5C451), grain = 0.2f,
-    ),
-    Palette(
-        "Daylight", false,
-        ink = Color(0xFFF5F1E9), ink2 = Color(0xFFFFFFFF), ink3 = Color(0xFFEAE4D9), hairline = Color(0x24000000),
-        paper = Color(0xFF15120F), muted = Color(0xFF433C35), faint = Color(0xFF6E665D),
-        signal = Color(0xFFE0391A), amber = Color(0xFFA86F12), grain = 0.12f,
-    ),
+/** Evenings and night: warm near-black, like a screening room. */
+val DarkPalette = Palette(
+    "Dark", true,
+    ink = Color(0xFF121110), ink2 = Color(0xFF1B1918), ink3 = Color(0xFF282523), hairline = Color(0x29FFFFFF),
+    paper = Color(0xFFF7F3EC), muted = Color(0xFFD2CBC1), faint = Color(0xFFA0988E),
+    signal = Color(0xFFFF5A3C), amber = Color(0xFFF4BF55), grain = 0.35f,
 )
 
-val LocalPalette = staticCompositionLocalOf { Palettes[0] }
+/** Daytime: warm paper white with ink text. */
+val LightPalette = Palette(
+    "Light", false,
+    ink = Color(0xFFF6F2EA), ink2 = Color(0xFFFFFFFF), ink3 = Color(0xFFEBE5DA), hairline = Color(0x22000000),
+    paper = Color(0xFF16130F), muted = Color(0xFF4A423A), faint = Color(0xFF756C62),
+    signal = Color(0xFFDC3A1C), amber = Color(0xFFA86F12), grain = 0.10f,
+)
+
+val LocalPalette = staticCompositionLocalOf { DarkPalette }
 
 val Ink: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.ink
 val Ink2: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.ink2
@@ -174,8 +157,8 @@ private val Type = Typography().let { t ->
 }
 
 @Composable
-fun FalakTheme(theme: Int = 0, layout: String = "auto", content: @Composable () -> Unit) {
-    val palette = Palettes.getOrElse(theme) { Palettes[0] }
+fun FalakTheme(dark: Boolean = true, layout: String = "auto", content: @Composable () -> Unit) {
+    val palette = if (dark) DarkPalette else LightPalette
     val scheme = remember(palette) { schemeFor(palette) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val tv = when (layout) {
@@ -194,6 +177,28 @@ fun FalakTheme(theme: Int = 0, layout: String = "auto", content: @Composable () 
         }
     }
 }
+
+/**
+ * Dark or light right now. "auto": light from [lightFrom] o'clock, dark from [darkFrom] o'clock;
+ * checked every minute, so the app turns dark in the evening by itself.
+ */
+@Composable
+fun rememberDarkTheme(mode: String, darkFrom: Int, lightFrom: Int): Boolean {
+    if (mode == "dark") return true
+    if (mode == "light") return false
+    val dark by androidx.compose.runtime.produceState(isEvening(darkFrom, lightFrom), darkFrom, lightFrom) {
+        while (true) {
+            value = isEvening(darkFrom, lightFrom)
+            val now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60_000L - now % 60_000L + 50)
+        }
+    }
+    return dark
+}
+
+/** True between [darkFrom] o'clock and [lightFrom] o'clock (wrapping past midnight). */
+fun isEvening(darkFrom: Int, lightFrom: Int, hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)): Boolean =
+    if (darkFrom > lightFrom) hour >= darkFrom || hour < lightFrom else hour in darkFrom until lightFrom
 
 /** TV layout (remote control, big screen) or phone/tablet layout; see Settings → Appearance. */
 val LocalIsTv = staticCompositionLocalOf { false }

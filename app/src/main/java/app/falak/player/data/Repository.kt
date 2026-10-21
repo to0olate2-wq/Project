@@ -41,6 +41,10 @@ class Repository(private val context: Context) {
     private val _epg = MutableStateFlow<Map<String, List<Program>>>(emptyMap())
     val epg: StateFlow<Map<String, List<Program>>> = _epg.asStateFlow()
 
+    /** Per-source results of the open playlist's last guide download (Settings → Guide sources). */
+    private val _guideStats = MutableStateFlow<List<GuideSourceStat>>(emptyList())
+    val guideStats: StateFlow<List<GuideSourceStat>> = _guideStats.asStateFlow()
+
     /** Set right before opening the player: the list to zap through and where it came from. */
     @Volatile var playQueue: List<Channel> = emptyList()
     @Volatile var currentPlaylist: Playlist? = null
@@ -363,6 +367,7 @@ class Repository(private val context: Context) {
                     setRawGuide(cached.programs)
                     guideChannels = cached.channels
                     publishGuide(p.epgShiftMinutes)
+                    _guideStats.value = readGuideStats(p.id)
                     if (!force && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
                 }
             }
@@ -374,8 +379,11 @@ class Repository(private val context: Context) {
             val merged = HashMap<String, List<Program>>()
             val listed = ArrayList<GuideChannel>()
             val failed = ArrayList<String>()
+            val stats = ArrayList<GuideSourceStat>()
             val job = coroutineContext[kotlinx.coroutines.Job]
             for (url in sources) {
+                val isProvider = url == providerUrl.trim()
+                val label = if (isProvider) "Your provider's guide" else sourceLabel(url)
                 val host = url.substringAfter("://").substringBefore('/')
                 coroutineContext.ensureActive()
                 try {
@@ -385,13 +393,24 @@ class Repository(private val context: Context) {
                         if (!res.isSuccessful || body == null) throw IOException("HTTP ${res.code}")
                         val part = Epg.parse(body.byteStream(), matcher, now, source = sourceLabel(url)) { job?.isActive == false }
                         coroutineContext.ensureActive() // a newer load replaced this one
-                        for ((key, list) in part.programs) if (merged[key].isNullOrEmpty()) merged[key] = list
+                        var matched = 0
+                        var added = 0
+                        for ((key, list) in part.programs) {
+                            if (list.isEmpty()) continue
+                            matched++
+                            if (merged[key].isNullOrEmpty()) {
+                                merged[key] = list
+                                added++
+                            }
+                        }
                         listed += part.channels
+                        stats += GuideSourceStat(url, label, isProvider, matched, added, ok = true)
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    failed += if (url == providerUrl.trim()) "provider guide" else sourceLabel(url)
+                    failed += if (isProvider) "provider guide" else sourceLabel(url)
+                    stats += GuideSourceStat(url, label, isProvider, 0, 0, ok = false)
                 }
                 if (!hadGuide) {
                     // First guide ever: show what we have so far. Otherwise keep showing the saved
@@ -405,6 +424,8 @@ class Repository(private val context: Context) {
                 publishGuide(p.epgShiftMinutes)
             }
             guideChannels = listed
+            _guideStats.value = stats
+            writeGuideStats(p.id, stats)
             val result = GuideCache(now, merged, matched = merged.size, total = matcher.keys.size, channels = listed)
             try {
                 Store.writeGuide(file, result)
@@ -413,6 +434,23 @@ class Repository(private val context: Context) {
             }
             guideStatus(result) + if (failed.isNotEmpty()) " · couldn't load: ${failed.joinToString()}" else ""
         }
+
+    private fun guideStatsFile(playlistId: String) = File(cacheDir, "$playlistId.guide-stats.json")
+
+    private fun readGuideStats(playlistId: String): List<GuideSourceStat> = try {
+        val f = guideStatsFile(playlistId)
+        if (f.exists()) json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(GuideSourceStat.serializer()), f.readText()) else emptyList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun writeGuideStats(playlistId: String, stats: List<GuideSourceStat>) {
+        try {
+            guideStatsFile(playlistId).writeText(json.encodeToString(kotlinx.serialization.builtins.ListSerializer(GuideSourceStat.serializer()), stats))
+        } catch (e: Exception) {
+            // only a summary for Settings
+        }
+    }
 
     /** Channels offered by the guide sources last loaded (for fixing a channel's guide by hand). */
     @Volatile var guideChannels: List<GuideChannel> = emptyList()
@@ -471,6 +509,7 @@ class Repository(private val context: Context) {
     fun clearEpg() {
         setRawGuide(emptyMap())
         guideChannels = emptyList()
+        _guideStats.value = emptyList()
         _epg.value = emptyMap()
     }
 

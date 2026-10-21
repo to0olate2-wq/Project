@@ -69,6 +69,13 @@ class ScreensTest {
         shoot("tv-05-playlists")
     }
 
+    @Test @Config(qualifiers = TV)
+    fun tvLight() = mainScreens("tv", theme = "light") { vm, shoot ->
+        shoot("tv-07-home-light")
+        vm.section = Section.LIVE
+        shoot("tv-08-live-light")
+    }
+
     @Test @Config(qualifiers = TV_TALL)
     fun tvSettings() = mainScreens("tv") { vm, shoot ->
         vm.screen = Screen.SETTINGS
@@ -95,6 +102,13 @@ class ScreensTest {
         shoot("phone-05-playlists")
     }
 
+    @Test @Config(qualifiers = PHONE)
+    fun phoneLight() = mainScreens("phone", theme = "light") { vm, shoot ->
+        shoot("phone-07-home-light")
+        vm.screen = Screen.GUIDE
+        shoot("phone-08-guide-light")
+    }
+
     @Test @Config(qualifiers = PHONE_TALL)
     fun phoneSettings() = mainScreens("phone") { vm, shoot ->
         vm.screen = Screen.SETTINGS
@@ -106,8 +120,8 @@ class ScreensTest {
 
     // ---------- helpers ----------
 
-    private fun mainScreens(layout: String, block: (LibraryViewModel, (String) -> Unit) -> Unit) {
-        seed(layout)
+    private fun mainScreens(layout: String, theme: String = "dark", block: (LibraryViewModel, (String) -> Unit) -> Unit) {
+        seed(layout, theme)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -131,7 +145,7 @@ class ScreensTest {
     }
 
     /** Saves sample playlist + settings, as if the user had set the app up. */
-    private fun seed(layout: String): Playlist {
+    private fun seed(layout: String, theme: String = "dark"): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
         m3u.writeText(buildM3u(dir))
@@ -140,7 +154,7 @@ class ScreensTest {
             s.copy(
                 playlists = listOf(p),
                 lastPlaylistId = p.id,
-                settings = s.settings.copy(layout = layout, player = "exo", openLast = true),
+                settings = s.settings.copy(layout = layout, player = "exo", openLast = true, themeMode = theme),
             )
         }
         return p

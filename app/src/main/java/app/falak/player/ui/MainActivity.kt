@@ -100,10 +100,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
-            val theme = state.settings.theme
-            FalakTheme(theme, state.settings.layout) {
+            val s = state.settings
+            val dark = rememberDarkTheme(s.themeMode, s.darkFrom, s.lightFrom)
+            FalakTheme(dark, s.layout) {
                 // Status-bar icons follow the theme (dark icons on the light theme).
-                val dark = LocalPalette.current.dark
                 LaunchedEffect(dark) {
                     val transparent = android.graphics.Color.TRANSPARENT
                     enableEdgeToEdge(

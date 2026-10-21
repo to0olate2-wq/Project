@@ -52,6 +52,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = app.repo
     val state = repo.state
     val epg = repo.epg
+    /** What each guide source covered and added on the last download. */
+    val guideStats = repo.guideStats
 
     var screen by mutableStateOf(Screen.PLAYLISTS)
     var playlist by mutableStateOf<Playlist?>(null)

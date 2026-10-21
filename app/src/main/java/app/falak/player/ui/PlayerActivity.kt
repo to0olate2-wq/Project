@@ -365,7 +365,8 @@ class PlayerActivity : ComponentActivity() {
             setContent {
                 val app by repo.state.collectAsState()
                 val epg by repo.epg.collectAsState()
-                FalakTheme(app.settings.theme, app.settings.layout) {
+                // Over the picture the channel list is always dark, whatever the time of day.
+                FalakTheme(dark = true, layout = app.settings.layout) {
                     ChannelBrowser(
                         open = browserOpen,
                         showGroups = browserShowGroups,
@@ -1605,12 +1606,11 @@ class PlayerActivity : ComponentActivity() {
      * one for the buttons.
      */
     private fun tidyMediaControls(controls: FrameLayout) {
-        val ids = androidx.media3.ui.R.id
-        val position = controls.findViewById<TextView>(ids.exo_position)
-        val duration = controls.findViewById<TextView>(ids.exo_duration)
-        controls.findViewById<View>(ids.exo_bottom_bar)?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        val position = controls.findViewById<TextView>(androidx.media3.ui.R.id.exo_position)
+        val duration = controls.findViewById<TextView>(androidx.media3.ui.R.id.exo_duration)
+        controls.findViewById<View>(androidx.media3.ui.R.id.exo_bottom_bar)?.let { (it.parent as? ViewGroup)?.removeView(it) }
         val side = dp(if (tvLayout) 96 else 72)
-        controls.findViewById<View>(ids.exo_progress)?.let { bar ->
+        controls.findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.let { bar ->
             (bar.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
                 lp.leftMargin = side
                 lp.rightMargin = side

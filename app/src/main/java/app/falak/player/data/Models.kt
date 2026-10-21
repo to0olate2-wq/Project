@@ -72,6 +72,20 @@ class GuideCache(
     val channels: List<GuideChannel> = emptyList(),
 )
 
+/**
+ * What one guide source did on its last download: how many of the playlist's live channels it has
+ * a guide for, and how many of those no earlier source covered (its real contribution).
+ */
+@Serializable
+data class GuideSourceStat(
+    val url: String,
+    val label: String,
+    val provider: Boolean,
+    val matched: Int,
+    val added: Int,
+    val ok: Boolean,
+)
+
 /** A channel listed in a guide source: its XMLTV id, display name and the source's host. */
 class GuideChannel(val id: String, val name: String, val source: String)
 
@@ -254,8 +268,14 @@ data class Settings(
     val lockedGroups: Map<String, List<String>> = emptyMap(),
     /** playlistId -> group names the user doesn't want to see */
     val hiddenGroups: Map<String, List<String>> = emptyMap(),
-    /** Index into the theme list (Screening room, Midnight, Pure black, Emerald, Daylight). */
+    /** Old theme index (before 4.1); no longer used. */
     val theme: Int = 0,
+    /** "auto" (light by day, dark in the evening), "light" or "dark". */
+    val themeMode: String = "auto",
+    /** Automatic theme: dark from this hour (24 h clock)… */
+    val darkFrom: Int = 18,
+    /** …until this hour. */
+    val lightFrom: Int = 6,
     /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */
     val layout: String = "auto",
     /** Turn quiet channels up and loud ones down so every channel plays at a similar volume. */
