@@ -25,6 +25,9 @@ import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SourceType
+import app.falak.player.data.Watch
+import app.falak.player.data.progressKey
+import app.falak.player.data.stableId
 import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
@@ -114,8 +117,8 @@ abstract class ScreenshotBase {
                 ),
                 // Two films part-watched, for "Continue watching".
                 progress = if (!watching) emptyMap() else films.take(2).withIndex().associate { (i, title) ->
-                    val id = app.falak.player.data.stableId("$title|http://127.0.0.1:1/movie/u/p/$i.mp4")
-                    app.falak.player.data.progressKey(p.id, id) to app.falak.player.data.Watch(pos = (20 + i * 25) * 60_000L, dur = 110 * 60_000L)
+                    val id = stableId("$title|http://127.0.0.1:1/movie/u/p/$i.mp4")
+                    progressKey(p.id, id) to Watch(pos = (20 + i * 25) * 60_000L, dur = 110 * 60_000L)
                 },
                 favorites = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"))),
                 recents = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"), liveId("Pulse Sports 1"))),
@@ -230,7 +233,7 @@ abstract class ScreenshotBase {
     }
 
     /** The id the M3U parser gives a sample live channel. */
-    private fun liveId(name: String) = app.falak.player.data.stableId("$name|http://127.0.0.1:1/live/${slug(name)}.m3u8")
+    private fun liveId(name: String) = stableId("$name|http://127.0.0.1:1/live/${slug(name)}.m3u8")
 
     private fun slug(s: String) = s.lowercase().replace(Regex("[^a-z0-9]+"), ".").trim('.')
     private fun initials(s: String) = s.split(' ').filter { it.isNotEmpty() && it[0].isLetter() }.take(2).joinToString("") { it.take(1) }
