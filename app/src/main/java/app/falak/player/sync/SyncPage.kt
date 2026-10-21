@@ -38,7 +38,8 @@ internal object SyncPage {
   button.primary { background:var(--paper); color:var(--ink); border-color:var(--paper); }
   button.small { padding:8px 12px; font-size:13px; }
   .tabs { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px; }
-  .tabs button { padding:10px 6px; font-size:14px; }
+  .tabs button { padding:10px 4px; font-size:14px; white-space:nowrap; }
+  button, .btn { white-space:nowrap; }
   .tabs button[aria-pressed="true"] { background:var(--paper); color:var(--ink); }
   .msg { margin-top:10px; color:var(--muted); }
   .msg:empty { display:none; }
@@ -73,7 +74,7 @@ internal object SyncPage {
     <div class="card">
       <div class="tabs">
         <button data-t="m3u" aria-pressed="true" onclick="tab('m3u')">M3U link</button>
-        <button data-t="xtream" aria-pressed="false" onclick="tab('xtream')">Xtream login</button>
+        <button data-t="xtream" aria-pressed="false" onclick="tab('xtream')">Xtream</button>
         <button data-t="file" aria-pressed="false" onclick="tab('file')">M3U file</button>
       </div>
       <input id="name" placeholder="Name (optional)">
@@ -93,8 +94,8 @@ internal object SyncPage {
     <div class="card">
       <div class="meta">Playlists, favourites, your lists and hidden groups, in one file. Load it on any device running The Player.</div>
       <div class="actions two" style="margin-top:12px">
-        <a class="btn" id="download" href="#">Download backup</a>
-        <button onclick="document.getElementById('restore').click()">Load a backup</button>
+        <a class="btn" id="download" href="#">Download</a>
+        <button onclick="document.getElementById('restore').click()">Load backup</button>
         <input id="restore" type="file" accept=".json,application/json" class="hidden" onchange="restore(this)">
       </div>
       <div id="backupMsg" class="msg"></div>
