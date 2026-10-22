@@ -281,12 +281,12 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
                 Spacer(Modifier.height(18.dp))
                 Kicker("Who's watching", color = Muted)
                 Spacer(Modifier.height(8.dp))
-                ProfileRow(s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], "Main profile · syncs with your linked devices", onRename = { naming = "" })
+                ProfileRow(s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], "Main profile", onRename = { naming = "" })
                 state.profiles.forEach { pr ->
                     ProfileRow(
                         pr.name,
                         ProfileTints[(pr.color + 1) % ProfileTints.size],
-                        "On this device",
+                        "This device only",
                         onRename = { naming = pr.id },
                         onDelete = { deleting = pr },
                     )

@@ -359,3 +359,14 @@ fun PageHeader(
 @Composable
 @androidx.compose.runtime.ReadOnlyComposable
 fun pageMargin(): androidx.compose.ui.unit.Dp = if (isTv()) 40.dp else 16.dp
+
+/** Choice chips that wrap onto more lines when they don't fit (every option stays in view). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun ChipFlow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) { content() }
+}

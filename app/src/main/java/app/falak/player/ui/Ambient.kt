@@ -1,6 +1,7 @@
 package app.falak.player.ui
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -78,6 +80,10 @@ fun AmbientScreen(slides: List<AmbientSlide>, paused: String?, onExit: () -> Uni
     }
     val h24 = is24h()
     val time = remember(now / 60_000, h24) { android.text.format.DateFormat.format(if (h24) "HH:mm" else "h:mm", Date(now)).toString() }
+    // The clock drifts a little each minute so it never sits still on the same pixels.
+    val step = ((now / 60_000) % DRIFT.size).toInt()
+    val dx by animateDpAsState(DRIFT[step].first.dp, tween(4_000), label = "dx")
+    val dy by animateDpAsState(DRIFT[step].second.dp, tween(4_000), label = "dy")
     val date = remember(now / 3_600_000) { java.text.SimpleDateFormat("EEEE d MMMM", java.util.Locale.getDefault()).format(Date(now)) }
     Box(
         Modifier
@@ -117,6 +123,7 @@ fun AmbientScreen(slides: List<AmbientSlide>, paused: String?, onExit: () -> Uni
         Column(
             Modifier
                 .align(Alignment.BottomStart)
+                .offset(x = dx, y = dy)
                 .padding(start = if (tv) 64.dp else 24.dp, bottom = if (tv) 56.dp else 32.dp, end = 24.dp)
                 .fillMaxWidth(if (tv) 0.5f else 0.9f),
         ) {
@@ -141,6 +148,7 @@ fun AmbientScreen(slides: List<AmbientSlide>, paused: String?, onExit: () -> Uni
 private fun is24h(): Boolean = android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)
 
 private const val SLIDE_S = 12L
+private val DRIFT = listOf(0 to 0, 16 to -8, 30 to -20, 16 to -32, 0 to -20, 8 to -8)
 
 /** Paused this long (player) or idle this long (lists) before the ambient screen comes up. */
 const val AMBIENT_PAUSED_S = 90

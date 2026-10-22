@@ -259,31 +259,35 @@ fun SideRail(
 ) {
     val tv = isTv()
     Row(modifier.width(railWidth()).background(Ink2)) {
-        Column(
-            Modifier.weight(1f).fillMaxHeight(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
-            BrandMark(if (tv) 32.dp else 28.dp)
-            Spacer(Modifier.height(if (tv) 14.dp else 10.dp))
-            Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
-            ) {
-                sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected) { onSelect(s) } }
-                if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, onClick = onGuide)
+        // Short screens (a phone on its side): the icons shrink so every one stays in view.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+            val slots = sections.size + (if (hasGuide) 1 else 0) + 2
+            val fixed = (if (tv) 20 + 32 + 14 + 16 else 14 + 28 + 10 + 10) + 9
+            val fit = (maxHeight - fixed.dp - 6.dp * (slots + 1)) / slots
+            val box = fit.coerceIn(32.dp, if (tv) 46.dp else 44.dp)
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
+                BrandMark(if (tv) 32.dp else 28.dp)
+                Spacer(Modifier.height(if (tv) 14.dp else 10.dp))
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
+                ) {
+                    sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box) { onSelect(s) } }
+                    if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, onClick = onGuide)
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // A short rule sets the playlist and Settings apart from the sections.
+                    Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
+                    RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, box, onClick = onPlaylists)
+                    RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", false, box, onClick = onSettings)
+                }
+                Spacer(Modifier.height(if (tv) 16.dp else 10.dp))
             }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // A short rule sets the playlist and Settings apart from the sections.
-                Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
-                RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, onClick = onPlaylists)
-                RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", false, onClick = onSettings)
-            }
-            Spacer(Modifier.height(if (tv) 16.dp else 10.dp))
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
     }
@@ -291,10 +295,9 @@ fun SideRail(
 
 /** One square icon button of the rail (its name is read out by TalkBack, not shown). */
 @Composable
-private fun RailIcon(icon: Painter, label: String, selected: Boolean, onClick: () -> Unit) {
-    val tv = isTv()
+private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(box * 0.3f)
     val bg by animateColorAsState(
         when {
             focused -> Paper
@@ -309,7 +312,6 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, onClick: (
         selected -> Signal
         else -> Muted
     }
-    val box = if (tv) 46.dp else 44.dp
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         // The section you're in: a short orange mark on the rail's edge.
         if (selected) {
@@ -331,7 +333,7 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, onClick: (
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(if (tv) 24.dp else 22.dp))
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size((box * 0.52f).coerceIn(18.dp, 24.dp)))
         }
     }
 }

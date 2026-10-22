@@ -34,7 +34,12 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,6 +115,8 @@ fun BoxScope.PrayerBanner(alert: PrayerAlerts.Alert?, paused: Boolean, onDismiss
     }
 }
 
+private fun minuteOfDay(): Int = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
+
 private fun Modifier.graphicsLayerOffscreen(): Modifier =
     this.then(Modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen })
 
@@ -126,8 +133,16 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
     val fmt = rememberTimeFormat()
     // Recomputed when the method or Asr choice changes.
     val today = remember(s.prayerMethod, s.prayerAsr) { PrayerAlerts.today(context, context.repo) }
-    val nowMin = remember { Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) } }
-    val next = today.firstOrNull { it.minute > nowMin }
+    var nowMin by remember { mutableIntStateOf(minuteOfDay()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000)
+            nowMin = minuteOfDay()
+        }
+    }
+    // After Isha the next one is tomorrow's Fajr.
+    val laterToday = today.firstOrNull { it.minute > nowMin }
+    val next = laterToday ?: today.firstOrNull()
     val auto = PrayerTimes.defaultMethod(zone.id)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -146,7 +161,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
                 color = Muted,
             )
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipFlow {
                 listOf("off" to "Off", "remind" to "Reminder", "pause" to "Reminder and pause").forEach { (key, label) ->
                     TagChip(label, s.prayerMode == key) { vm.updateSettings { it.copy(prayerMode = key) } }
                 }
@@ -167,7 +182,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
                             modifier = Modifier.weight(1f),
                         )
                         if (isNext) {
-                            Text("Next", fontFamily = Sans, fontSize = 12.sp, color = Signal, modifier = Modifier.padding(end = 12.dp))
+                            Text(if (laterToday == null) "Tomorrow" else "Next", fontFamily = Sans, fontSize = 12.sp, color = Signal, modifier = Modifier.padding(end = 12.dp))
                         }
                         Text(PrayerTimes.label(p.minute, fmt), style = Tabular.copy(fontSize = 16.sp), color = if (isNext) Signal else Paper)
                     }
@@ -177,7 +192,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
             Spacer(Modifier.height(20.dp))
             Kicker("Calculation", color = Muted)
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipFlow {
                 TagChip("Automatic (${auto.label})", s.prayerMethod.isEmpty()) { vm.updateSettings { it.copy(prayerMethod = "") } }
                 PrayerTimes.Method.entries.filter { it != auto }.forEach { m ->
                     TagChip(m.label, s.prayerMethod == m.key) { vm.updateSettings { it.copy(prayerMethod = m.key) } }
@@ -186,7 +201,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
             Spacer(Modifier.height(14.dp))
             Kicker("Asr", color = Muted)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipFlow {
                 listOf("" to "Automatic", "std" to "Standard", "hanafi" to "Hanafi").forEach { (key, label) ->
                     TagChip(label, s.prayerAsr == key) { vm.updateSettings { it.copy(prayerAsr = key) } }
                 }

@@ -182,7 +182,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = Muted,
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipFlow {
                     TagChip("Automatic (${if (detected) "TV" else "phone"})", s.layout == "auto") { vm.updateSettings { it.copy(layout = "auto") } }
                     TagChip("TV", s.layout == "tv") { vm.updateSettings { it.copy(layout = "tv") } }
                     TagChip("Phone & tablet", s.layout == "phone") { vm.updateSettings { it.copy(layout = "phone") } }
@@ -206,7 +206,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Picture size", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipFlow {
                     listOf("Fit", "Fill", "Zoom").forEachIndexed { i, label ->
                         TagChip(label, s.aspect == i) { vm.updateSettings { it.copy(aspect = i) } }
                     }
@@ -258,7 +258,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipFlow {
                     listOf("auto" to "Automatic", "on" to "Always", "off" to "Off").forEach { (key, label) ->
                         TagChip(label, s.nightSound == key) { vm.updateSettings { it.copy(nightSound = key) } }
                     }
@@ -408,7 +408,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipFlow {
                     listOf(1 to "1 h", 3 to "3 h", 6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
                         TagChip(label, s.autoRefreshHours == h) { vm.updateSettings { it.copy(autoRefreshHours = h) } }
                     }
@@ -806,10 +806,7 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String) {
             color = Muted,
         )
         Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        ChipFlow {
             TagChip("Automatic", selected == null) { vm.updateSettings { it.copy(player = "auto") } }
             listOf(
                 app.falak.player.player.Engine.EXO,
@@ -984,8 +981,8 @@ private fun LanguageRow(title: String, subtitle: String?, selected: String, onSe
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(6.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(LANGUAGES, key = { it.first }) { (code, name) ->
+        ChipFlow {
+            LANGUAGES.forEach { (code, name) ->
                 TagChip(name, selected == code) { onSelect(code) }
             }
         }

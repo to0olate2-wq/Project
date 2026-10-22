@@ -313,6 +313,8 @@ class PlayerActivity : ComponentActivity() {
                 )
             }
         }
+        // A button shown or hidden (subtitles found, a film's speed): do the labels still fit?
+        buttons.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) v.post { fitPills() } }
         // Centred when it fits, scrollable sideways on narrow phones.
         val scroller = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -323,6 +325,8 @@ class PlayerActivity : ComponentActivity() {
                 scroller,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL),
             )
+            // Turned or resized: labels back if they fit now.
+            addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) post { fitPills() } }
         }
         playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)?.let { styleControls(it) }
         attachToolbar()
@@ -552,7 +556,7 @@ class PlayerActivity : ComponentActivity() {
         releaseEngine()
         engine = e
         if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT)
-        engineButton.text = e.short
+        setPillLabel(engineButton, e.short)
     }
 
     private fun createExo(software: Boolean) {
@@ -750,11 +754,11 @@ class PlayerActivity : ComponentActivity() {
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
         // And the live channel, to start with it when the app is opened fresh next time.
         if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) repo.currentPlaylist?.let { repo.setLastLive(it.id, ch.id) }
-        browseButton.text = when (ch.kind) {
+        setPillLabel(browseButton, when (ch.kind) {
             Kind.LIVE -> "Channels"
             Kind.MOVIE -> "Films"
             Kind.SERIES -> "Episodes"
-        }
+        })
         val settings = repo.state.value.settings
         val url = overrideUrl
             ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
@@ -1447,7 +1451,7 @@ class PlayerActivity : ComponentActivity() {
             else -> "auto"
         }
         repo.updateSettings { it.copy(playerRotation = next) }
-        rotateButton.text = rotationLabel()
+        setPillLabel(rotateButton, rotationLabel())
         applyRotation()
     }
 
@@ -1455,7 +1459,7 @@ class PlayerActivity : ComponentActivity() {
         aspect = (aspect + 1) % resizeModes.size
         playerView.resizeMode = resizeModes[aspect]
         vlc?.setScale(aspect)
-        aspectButton.text = aspectNames[aspect]
+        setPillLabel(aspectButton, aspectNames[aspect])
         Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
         repo.updateSettings { it.copy(aspect = aspect) }
     }
@@ -1644,7 +1648,7 @@ class PlayerActivity : ComponentActivity() {
         val text = countTracks(C.TRACK_TYPE_TEXT)
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
-        audioButton.text = "Audio ($audio)"
+        setPillLabel(audioButton, "Audio ($audio)")
         ccButton.visibility = if (text > 0 || vod) View.VISIBLE else View.GONE
     }
 
@@ -1785,6 +1789,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** A button of the bottom row: icon and label; turns white and grows a little under the remote's focus. */
     private fun pill(label: String, icon: Int, onClick: () -> Unit): TextView = TextView(this).apply {
+        tag = label
+        contentDescription = label
         text = label
         setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 14f)
         typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
@@ -1813,6 +1819,41 @@ class PlayerActivity : ComponentActivity() {
         setOnFocusChangeListener { v, focused ->
             val s = if (focused) 1.08f else 1f
             v.animate().scaleX(s).scaleY(s).setDuration(120).start()
+        }
+    }
+
+    // Phones: when the buttons don't all fit across, they show their icons only (names are read out).
+    private var compactPills = false
+
+    private fun pills(): List<TextView> =
+        listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
+
+    private fun setPillLabel(b: TextView, label: String) {
+        b.tag = label
+        b.contentDescription = label
+        b.text = if (compactPills) "" else label
+        b.post { fitPills() }
+    }
+
+    /** Labels when the row fits the screen's width, icons only when it doesn't (never on TV). */
+    private fun fitPills() {
+        if (tvLayout || !::toolbar.isInitialized) return
+        val avail = toolbar.width
+        if (avail <= 0) return
+        var need = dp(32)
+        for (b in pills()) {
+            if (b.visibility != View.VISIBLE) continue
+            val label = b.tag as? String ?: ""
+            need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
+        }
+        val compact = need > avail
+        if (compact == compactPills) return
+        compactPills = compact
+        for (b in pills()) {
+            val label = b.tag as? String ?: ""
+            b.text = if (compact) "" else label
+            b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
+            if (compact) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(14), 0, dp(16), 0)
         }
     }
 
@@ -2350,7 +2391,7 @@ class PlayerActivity : ComponentActivity() {
         }
         val fav = isFavorite(ch)
         favButton.visibility = View.VISIBLE
-        favButton.text = if (fav) "Favorited" else "Favorite"
+        setPillLabel(favButton, if (fav) "Favorited" else "Favorite")
         val size = dp(if (tvLayout) 20 else 18)
         ResourcesCompat.getDrawable(resources, if (fav) R.drawable.ic_pl_star else R.drawable.ic_pl_star_outline, theme)?.mutate()?.let {
             it.setBounds(0, 0, size, size)
@@ -2421,7 +2462,7 @@ class PlayerActivity : ComponentActivity() {
             .setSingleChoiceItems(labels, speeds.indexOfFirst { it == speed }) { d, which ->
                 d.dismiss()
                 speed = speeds[which]
-                speedButton.text = speedLabel(speed)
+                setPillLabel(speedButton, speedLabel(speed))
                 applySpeed()
             }
             .setNegativeButton("Close", null)
