@@ -617,7 +617,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
             Text(
                 "Add your provider's M3U link, an M3U file, or your Xtream login to begin. The Player doesn't come with any channels.",
                 fontFamily = Sans,
-                fontSize = 14.sp,
+                fontSize = 14.sp, lineHeight = 20.sp,
                 color = Muted,
                 modifier = Modifier.padding(vertical = 18.dp),
             )

@@ -258,7 +258,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
             }
             vm.error?.takeIf { index.all.isNotEmpty() }?.let {
-                Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 4.dp))
             }
 
             when {
@@ -266,7 +266,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
                     Spacer(Modifier.height(14.dp))
                     Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
-                    Text("Big playlists take a moment the first time.", fontSize = 13.sp, color = Muted)
+                    Text("Big playlists take a moment the first time.", fontSize = 13.sp, lineHeight = 19.sp, color = Muted)
                 }
                 vm.error != null && index.all.isEmpty() -> Centered {
                     Text("Something went wrong", fontFamily = Serif, fontSize = 20.sp, color = Paper)

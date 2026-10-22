@@ -193,7 +193,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         item {
             SwitchRow(
                 "Ambient screen",
-                "Left idle for 5 minutes (or a video paused for 90 seconds): a slideshow of your films and series with the time",
+                "A slideshow with the clock after 5 minutes idle, or 90 seconds with a video paused",
                 s.ambient,
             ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
         }
@@ -475,7 +475,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("Kids profile") }
         if (p == null) {
-            item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
+            item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
         } else {
             val kidsHere = s.kidsGroups[p.id].orEmpty()
             item {
@@ -522,12 +522,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
                 Text("The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 13.sp, color = Muted)
-                Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, color = Faint)
+                Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, lineHeight = 17.sp, color = Faint)
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "The Player doesn't include any channels or content: it plays the playlists you add. " +
                         "Your playlists and settings stay on this device; nothing is sent to the developer.",
-                    fontSize = 13.sp,
+                    fontSize = 13.sp, lineHeight = 19.sp,
                     color = Muted,
                 )
                 val uri = androidx.compose.ui.platform.LocalUriHandler.current
@@ -819,13 +819,14 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String) {
         }
         advice?.let {
             Spacer(Modifier.height(6.dp))
-            Text(it.device, fontSize = 11.sp, color = Faint)
+            Text(it.device, fontSize = 11.sp, lineHeight = 15.sp, color = Faint)
         }
         Text(
             "In the player, the ExoPlayer / VLC button switches player for the channel you're watching.",
             fontSize = 11.sp,
+            lineHeight = 15.sp,
             color = Faint,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 6.dp),
         )
     }
 }
@@ -892,13 +893,13 @@ private fun GuideSourcesDialog(vm: LibraryViewModel, p: app.falak.player.data.Pl
                                 st.suggestShift != 0 -> Text(
                                     "Its times are ${shiftWords(st.suggestShift, earlier = true)} than $against on " +
                                         "${st.shiftVotes} of ${st.compared} shared channels.",
-                                    fontSize = 12.sp,
+                                    fontSize = 12.sp, lineHeight = 17.sp,
                                     color = Signal,
                                 )
                                 st.compared > 0 -> Text(
                                     "Matches $against on ${st.agree} of ${st.compared} shared channels" +
                                         if (st.applied != 0) " (times moved ${shiftWords(st.applied, earlier = false)})" else "",
-                                    fontSize = 12.sp,
+                                    fontSize = 12.sp, lineHeight = 17.sp,
                                     color = Faint,
                                 )
                                 st.applied != 0 -> Text("Times moved ${shiftWords(st.applied, earlier = false)}", fontSize = 12.sp, color = Faint)
@@ -952,7 +953,7 @@ private fun GuideSourcesDialog(vm: LibraryViewModel, p: app.falak.player.data.Pl
                 }
                 Text(
                     "Wrong guide on one channel? Long-press it in the list and choose Fix TV guide.",
-                    fontSize = 12.sp,
+                    fontSize = 12.sp, lineHeight = 17.sp,
                     color = Faint,
                     modifier = Modifier.padding(top = 6.dp),
                 )

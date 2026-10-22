@@ -60,7 +60,7 @@ fun KidsLock(vm: LibraryViewModel, state: AppState) {
             Icon(Icons.Outlined.Lock, contentDescription = null, tint = Muted, modifier = Modifier.size(40.dp))
             Spacer(Modifier.height(12.dp))
             Text("Kids mode is on", fontFamily = Serif, fontSize = 22.sp, color = Paper)
-            Text("A grown-up's PIN opens this page.", fontFamily = Sans, fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center)
+            Text("A grown-up's PIN opens this page.", fontFamily = Sans, fontSize = 14.sp, lineHeight = 20.sp, color = Muted, textAlign = TextAlign.Center)
         }
     }
     PinDialog(
@@ -119,7 +119,7 @@ fun LocksScreen(vm: LibraryViewModel, state: AppState) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("Lock adult groups automatically", fontFamily = Sans, fontSize = 15.sp, color = Paper)
-                    Text("Groups named XXX, Adult or 18+, in every playlist", fontFamily = Sans, fontSize = 12.sp, color = Muted)
+                    Text("Groups named XXX, Adult or 18+, in every playlist", fontFamily = Sans, fontSize = 12.sp, lineHeight = 17.sp, color = Muted)
                 }
                 Spacer(Modifier.width(12.dp))
                 androidx.compose.material3.Switch(

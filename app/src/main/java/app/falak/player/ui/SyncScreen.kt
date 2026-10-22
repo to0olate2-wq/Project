@@ -334,7 +334,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                                 )
                                 Text(
                                     "Or scan the code with the phone's camera.",
-                                    fontSize = 12.sp,
+                                    fontSize = 12.sp, lineHeight = 17.sp,
                                     color = Faint,
                                     modifier = Modifier.padding(top = 6.dp),
                                 )

@@ -157,7 +157,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
                 "A reminder at each prayer while The Player is open, worked out on this device for ${place.city} " +
                     "(from its time zone; nothing goes online). The player can pause for it: OK continues.",
                 fontFamily = Sans,
-                fontSize = 13.sp,
+                fontSize = 13.sp, lineHeight = 19.sp,
                 color = Muted,
             )
             Spacer(Modifier.height(14.dp))

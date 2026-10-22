@@ -272,7 +272,7 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
                 "Each person gets their own favorites, lists, recently watched and Continue watching. " +
                     "The app asks who's watching when it opens. Playlists, hidden groups and locks are shared.",
                 fontFamily = Sans,
-                fontSize = 13.sp,
+                fontSize = 13.sp, lineHeight = 19.sp,
                 color = Muted,
             )
             Spacer(Modifier.height(12.dp))
@@ -436,7 +436,7 @@ fun ExitDialog(onStay: () -> Unit, onExit: () -> Unit) {
             Text(
                 "Your playlists, favorites and place in films stay as they are for next time.",
                 fontFamily = Sans,
-                fontSize = 14.sp,
+                fontSize = 14.sp, lineHeight = 20.sp,
                 color = Muted,
                 textAlign = TextAlign.Start,
             )

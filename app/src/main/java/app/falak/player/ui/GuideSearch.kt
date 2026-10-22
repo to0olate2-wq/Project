@@ -108,7 +108,7 @@ fun GuideSearch(
         query.trim().length < 2 -> Text(
             "Type a programme name: a film, a match, a show.",
             fontFamily = Sans,
-            fontSize = 13.sp,
+            fontSize = 13.sp, lineHeight = 19.sp,
             color = Muted,
             modifier = Modifier.padding(top = 10.dp, start = 4.dp),
         )
@@ -116,7 +116,7 @@ fun GuideSearch(
         hits.isEmpty() -> Text(
             "Nothing called \"${query.trim()}\" in the guide.",
             fontFamily = Sans,
-            fontSize = 13.sp,
+            fontSize = 13.sp, lineHeight = 19.sp,
             color = Muted,
             modifier = Modifier.padding(top = 10.dp, start = 4.dp),
         )

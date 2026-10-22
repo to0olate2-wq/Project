@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -175,22 +176,31 @@ private fun noticeAge(at: Long): String {
 /** The bell in the top bar, with how many What's new entries haven't been seen. */
 @Composable
 fun NoticeBell(unread: Int, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Box {
+    // The count sits outside the button: the button clips to a circle, which cut the badge's corner.
+    Box {
+        IconButton(onClick = onClick) {
             Icon(Icons.Outlined.Notifications, contentDescription = if (unread > 0) "What's new, $unread unseen" else "What's new", tint = Paper)
-            if (unread > 0) {
+        }
+        if (unread > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-5).dp, y = 5.dp)
+                    .defaultMinSize(minWidth = 16.dp)
+                    .height(16.dp)
+                    .background(Signal, CircleShape)
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
                     if (unread > 9) "9+" else "$unread",
                     fontFamily = Sans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 9.sp,
+                    lineHeight = 10.sp,
                     color = Color.White,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 6.dp, y = (-5).dp)
-                        .background(Signal, CircleShape)
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    maxLines = 1,
                 )
             }
         }

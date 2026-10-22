@@ -73,7 +73,7 @@ fun RemoteScreen(vm: LibraryViewModel, state: AppState) {
                     "on the phone, and your channels, films and series to start with a tap. Pair it once; after that it " +
                     "works whenever The Player is open here and the phone is on the same Wi-Fi.",
                 fontFamily = Sans,
-                fontSize = 13.sp,
+                fontSize = 13.sp, lineHeight = 19.sp,
                 color = Muted,
             )
             Spacer(Modifier.height(16.dp))

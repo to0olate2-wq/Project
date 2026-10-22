@@ -230,7 +230,7 @@ fun ListEditDialog(vm: LibraryViewModel, list: FavList, onDismiss: () -> Unit) {
                     Text(
                         "To reorder what's inside, long-press an item in the list.",
                         color = Faint,
-                        fontSize = 12.sp,
+                        fontSize = 12.sp, lineHeight = 17.sp,
                     )
                 }
             }
@@ -258,7 +258,7 @@ fun NewListDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
             Column {
                 InlineField(name, "e.g. Sports, Kids, News") { name = it }
                 Spacer(Modifier.height(8.dp))
-                Text("Add to it from any channel, film or series: long-press it, or tap its star.", color = Faint, fontSize = 12.sp)
+                Text("Add to it from any channel, film or series: long-press it, or tap its star.", color = Faint, fontSize = 12.sp, lineHeight = 17.sp)
             }
         },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name) }) { Text("Create") } },
