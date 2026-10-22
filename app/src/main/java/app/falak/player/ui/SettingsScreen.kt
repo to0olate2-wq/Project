@@ -379,24 +379,21 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 subtitle = if (pinSet) "PIN is on" else "Lock adult or chosen groups behind a PIN",
             ) { guarded { editPin = true } }
         }
-        if (pinSet) {
+        if (pinSet && p != null) {
+            // One row: the adult lock and the groups are on their own page.
             item {
-                SwitchRow("Lock adult groups automatically", "Groups named XXX, Adult or 18+", s.lockAdult) {
-                    guarded { vm.updateSettings { it.copy(lockAdult = !it.lockAdult) } }
-                }
-            }
-            if (p != null) {
-                // The groups themselves are chosen on their own page, not listed here.
-                item {
-                    ClickRow(
-                        "Locked groups",
-                        when (lockedHere.size) {
-                            0 -> "None in ${p.name}. Choose groups that need the PIN"
-                            1 -> "1 group in ${p.name} needs the PIN"
-                            else -> "${lockedHere.size} groups in ${p.name} need the PIN"
-                        },
-                    ) { guarded { vm.screen = Screen.LOCKS } }
-                }
+                val parts = listOfNotNull(
+                    if (s.lockAdult) "Adult groups" else null,
+                    when (lockedHere.size) {
+                        0 -> null
+                        1 -> "1 group"
+                        else -> "${lockedHere.size} groups"
+                    },
+                )
+                ClickRow(
+                    "Locked groups",
+                    if (parts.isEmpty()) "Nothing locked yet" else parts.joinToString(" and ") + " need the PIN",
+                ) { guarded { vm.screen = Screen.LOCKS } }
             }
         }
 

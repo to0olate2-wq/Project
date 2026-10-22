@@ -1143,7 +1143,7 @@ class PlayerActivity : ComponentActivity() {
         releaseEngine()
         hideMessage()
         bannerView.visibility = View.GONE
-        playerView.player = stand
+        playerView.player = ZapPlayer(stand)
         updateTrackButtons()
         updateTimeViews()
         if (browser) openBrowser() else playerView.showController()
@@ -1976,6 +1976,10 @@ class PlayerActivity : ComponentActivity() {
             playerView.findViewById<View>(id)?.visibility = state
         }
         if (::speedButton.isInitialized) speedButton.visibility = if (seekable) View.VISIBLE else View.GONE
+        // Live channels: no ±10 s buttons (nothing moves a channel back or forward).
+        val live = queue.getOrNull(index)?.kind == Kind.LIVE
+        playerView.setShowRewindButton(!live)
+        playerView.setShowFastForwardButton(!live)
     }
 
     /**

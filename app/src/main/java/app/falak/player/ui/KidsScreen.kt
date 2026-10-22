@@ -102,6 +102,40 @@ fun LocksScreen(vm: LibraryViewModel, state: AppState) {
         countLabel = "locked",
         suggest = { app.falak.player.data.ADULT_GROUP.containsMatchIn(it) },
         onSet = { groups, on -> vm.setLockedGroups(groups, locked = on) },
+        top = {
+            // The adult lock lives here with the groups, not on the Settings page.
+            val on = state.settings.lockAdult
+            val shape = RoundedCornerShape(10.dp)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .panel(shape)
+                    .focusRing(shape)
+                    .clip(shape)
+                    .clickable { vm.updateSettings { it.copy(lockAdult = !it.lockAdult) } }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Lock adult groups automatically", fontFamily = Sans, fontSize = 15.sp, color = Paper)
+                    Text("Groups named XXX, Adult or 18+, in every playlist", fontFamily = Sans, fontSize = 12.sp, color = Muted)
+                }
+                Spacer(Modifier.width(12.dp))
+                androidx.compose.material3.Switch(
+                    checked = on,
+                    onCheckedChange = null,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Signal,
+                        checkedBorderColor = Signal,
+                        uncheckedThumbColor = Muted,
+                        uncheckedTrackColor = Ink3,
+                        uncheckedBorderColor = Faint,
+                    ),
+                )
+            }
+        },
     )
 }
 
@@ -115,6 +149,7 @@ private fun GroupPickerPage(
     countLabel: String,
     suggest: (String) -> Boolean,
     onSet: (Collection<String>, Boolean) -> Unit,
+    top: (@Composable () -> Unit)? = null,
 ) {
     val p = vm.playlist
     val back: () -> Unit = { vm.screen = Screen.SETTINGS }
@@ -141,6 +176,7 @@ private fun GroupPickerPage(
         PageHeader(title, onBack = back, subtitle = p.name)
         Spacer(Modifier.height(10.dp))
         Text(note, fontFamily = Sans, fontSize = 13.sp, color = Muted)
+        top?.invoke()
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             kinds.forEach { k ->

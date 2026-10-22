@@ -553,6 +553,9 @@ class TvKidsGroupsScreens : ScreenshotBase() {
     fun tvKidsGroups() = mainScreens("tv", kids = listOf("Kids")) { vm, shoot ->
         vm.screen = Screen.KIDS
         shoot("tv-14-kids-groups")
+        // Locked groups: the adult lock sits on this page, not on Settings.
+        vm.screen = Screen.LOCKS
+        shoot("tv-22-locked-groups")
     }
 }
 
