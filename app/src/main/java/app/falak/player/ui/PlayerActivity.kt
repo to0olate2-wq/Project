@@ -1243,13 +1243,15 @@ class PlayerActivity : ComponentActivity() {
         } else {
             ch
         }
-        repo.saveProgress(
-            progressKey(pl.id, ch.id),
-            if (finished || pos < 30_000) 0 else pos,
-            dur,
-            meta,
-            show?.seriesId.orEmpty(),
-        )
+        val key = progressKey(pl.id, ch.id)
+        val kept = if (finished || pos < 30_000) 0 else pos
+        repo.saveProgress(key, kept, dur, meta, show?.seriesId.orEmpty())
+        // Android TV home screen row: never for hidden, locked or adult groups, nor in kids mode.
+        val s = repo.state.value.settings
+        val group = if (show != null && ch.kind == Kind.SERIES) show.group else ch.group
+        val onHome = !s.kidsMode && group !in repo.excludedGroups &&
+            group !in s.lockedGroups[pl.id].orEmpty() && !app.falak.player.data.ADULT_GROUP.containsMatchIn(group)
+        app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome)
     }
 
     // ---- rotation (phone layout) ----

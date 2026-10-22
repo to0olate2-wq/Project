@@ -399,7 +399,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     s.kidsMode,
                 ) {
                     if (s.kidsMode) {
-                        vm.updateSettings { it.copy(kidsMode = false) }
+                        vm.setKidsMode(false)
                     } else {
                         // First time: start from the groups that look made for children.
                         if (kidsHere.isEmpty()) vm.setKidsGroups(vm.kidsSuggestions(), allowed = true)
@@ -408,7 +408,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                             kidsHere.isEmpty() && vm.kidsSuggestions().isEmpty() -> vm.screen = Screen.KIDS
                             else -> {
                                 vm.kidsUnlocked = true
-                                vm.updateSettings { it.copy(kidsMode = true) }
+                                vm.setKidsMode(true)
                             }
                         }
                     }
@@ -552,10 +552,10 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 editPin = false
                 if (newPin.isEmpty()) {
                     // No PIN, no lock: kids mode can't stay on without one.
-                    vm.updateSettings { it.copy(kidsMode = false) }
+                    vm.setKidsMode(false)
                 } else if (kidsAfterPin && vm.kidsReady()) {
                     vm.kidsUnlocked = true
-                    vm.updateSettings { it.copy(kidsMode = true) }
+                    vm.setKidsMode(true)
                 } else if (kidsAfterPin) {
                     vm.screen = Screen.KIDS
                 }

@@ -18,7 +18,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "4.8"
+        versionName = "4.9"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // TVs and phones are ARM; leaving out x86 keeps the download much smaller now that VLC is built in.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -137,6 +137,9 @@ dependencies {
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     // VLC engine: plays streams ExoPlayer can't, and shows teletext subtitles.
     implementation("org.videolan.android:libvlc-all:3.6.5")
+
+    // Android TV home screen: "Continue watching" / "Play next" row.
+    implementation("androidx.tvprovider:tvprovider:1.1.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

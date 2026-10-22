@@ -61,6 +61,9 @@ class Repository(private val context: Context) {
     /** The player is on screen: heavy background work (playlist refresh) waits until it closes. */
     @Volatile var playerOpen = false
 
+    /** The guide is playing a small preview (counts as playing for background work). */
+    @Volatile var previewOpen = false
+
     /** A page the player asked to open when it closed ("MOVIES", "SETTINGS"…), for the main screen. */
     @Volatile var pendingNav: String? = null
 

@@ -533,6 +533,40 @@ class TvKidsGroupsScreens : ScreenshotBase() {
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvGuidePreviewScreens : ScreenshotBase() {
+    // A channel picked once in the guide plays small above it.
+    @Test @Config(qualifiers = TV)
+    fun tvGuidePreview() = mainScreens("tv") { vm, shoot ->
+        vm.guidePreview = vm.index.live.first { it.name == "Atlas News" }
+        vm.screen = Screen.GUIDE
+        shoot("tv-19-guide-preview")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvGuideSearchScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvGuideSearch() = mainScreens("tv") { vm, shoot ->
+        vm.guideSearch = "Match"
+        vm.screen = Screen.GUIDE
+        shoot("tv-20-guide-search")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneGuidePreviewScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneGuidePreview() = mainScreens("phone") { vm, shoot ->
+        vm.guidePreview = vm.index.live.first { it.name == "Pulse Sports 1" }
+        vm.screen = Screen.GUIDE
+        shoot("phone-17-guide-preview")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhoneSettingsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_TALL)
     fun phoneSettings() = mainScreens("phone") { vm, shoot ->

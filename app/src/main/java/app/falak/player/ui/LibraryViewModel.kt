@@ -33,6 +33,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
 enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS }
@@ -366,8 +367,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (loadToken !== token || playlist?.id != p.id) return
         // Never while a film or channel plays (it would compete with the stream for memory and
         // bandwidth): wait until the player closes, then give the app a minute.
-        if (repo.playerOpen) {
-            while (repo.playerOpen) delay(10_000)
+        if (repo.playerOpen || repo.previewOpen) {
+            while (repo.playerOpen || repo.previewOpen) delay(10_000)
             delay(60_000)
             if (loadToken !== token || playlist?.id != p.id) return
         }
@@ -540,6 +541,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun remove(p: Playlist) {
         repo.removePlaylist(p.id)
+        app.falak.player.data.WatchNext.clear(getApplication(), p.id)
         if (playlist?.id == p.id) {
             loadJob?.cancel()
             playlist = null
@@ -683,6 +685,43 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Kids mode is on and the PIN was given for this visit to Settings (or another locked page). */
     var kidsUnlocked by mutableStateOf(false)
+
+    /** The guide's preview channel, and its programme search (null = closed). */
+    var guidePreview by mutableStateOf<Channel?>(null)
+    var guideSearch by mutableStateOf<String?>(null)
+
+    /** Kids mode on also empties the TV home screen's "Play next" row of grown-up things. */
+    fun setKidsMode(on: Boolean) {
+        updateSettings { it.copy(kidsMode = on) }
+        if (on) app.falak.player.data.WatchNext.clear(getApplication())
+    }
+
+    /**
+     * A film or episode picked in the TV home screen's "Play next" row ([key] = "playlistId|itemId"):
+     * open its playlist if needed and play it from where it was left.
+     */
+    fun resumeFromHome(key: String) {
+        repo.autoPlayChecked = true
+        val s = state.value
+        val pid = key.substringBefore('|')
+        val id = key.substringAfter('|', "")
+        val p = s.playlists.firstOrNull { it.id == pid } ?: return
+        val saved = s.progress[key]
+        viewModelScope.launch {
+            if (playlist?.id != pid) open(p)
+            withTimeoutOrNull(30_000) {
+                while (index.byId[id] == null && (loading || index.all.isEmpty())) delay(200)
+            }
+            val ch = index.byId[id]
+                ?: saved?.takeIf { it.url.isNotBlank() }?.let { w ->
+                    Channel(id = id, name = w.title, group = "", url = w.url, logo = w.image, kind = w.kind)
+                }
+                ?: return@launch
+            if (ch.group.isNotEmpty() && ch.group in currentExclusions()) return@launch
+            screen = Screen.LIBRARY
+            autoPlay = listOf(ch) to ch
+        }
+    }
 
     /** Allow or block groups of the open playlist for kids. */
     fun setKidsGroups(groups: Collection<String>, allowed: Boolean) {

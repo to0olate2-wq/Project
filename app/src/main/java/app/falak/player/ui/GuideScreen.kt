@@ -5,7 +5,7 @@ package app.falak.player.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +31,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -136,12 +139,48 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val replayDays = remember(channels) { channels.maxOfOrNull { it.catchupDays }?.coerceAtMost(3) ?: 0 }
     val timeFormat = rememberTimeFormat()
     var details by remember { mutableStateOf<Pair<Channel, Program>?>(null) }
+    // The channel playing small above the guide (picking it again opens it full screen) and the
+    // programme search (null = closed). Kept in the view model so tests can set them up.
+    val preview = vm.guidePreview
+    val searching = vm.guideSearch != null
+    val query = vm.guideSearch.orEmpty()
+    DisposableEffect(Unit) { onDispose { vm.guidePreview = null } }
+    val full: (List<Channel>, Channel) -> Unit = { list, ch ->
+        vm.guidePreview = null
+        onPlay(list, ch)
+    }
+    val pick: (List<Channel>, Channel) -> Unit = { list, ch ->
+        if (vm.guidePreview?.id == ch.id) full(list, ch) else vm.guidePreview = ch
+    }
+    val hits by produceState<List<Pair<Channel, Program>>?>(null, query, guided, epg) {
+        val q = query.trim()
+        if (q.length < 2) {
+            value = null
+            return@produceState
+        }
+        delay(250) // typing
+        value = withContext(Dispatchers.Default) { searchGuide(guided, epg, q, System.currentTimeMillis()) }
+    }
 
-    val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = Screen.LIBRARY }
-    BackHandler { back() }
+    val back: () -> Unit = {
+        vm.guidePreview = null
+        vm.guideSearch = null
+        if (!vm.leaveDetour()) vm.screen = Screen.LIBRARY
+    }
+    // Back stops the preview first, then closes the search, then leaves the guide.
+    BackHandler {
+        when {
+            vm.guidePreview != null -> vm.guidePreview = null
+            vm.guideSearch != null -> vm.guideSearch = null
+            else -> back()
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
         PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = back) {
+            IconButton(onClick = { vm.guideSearch = if (searching) null else "" }) {
+                Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search programmes", tint = Paper)
+            }
             IconButton(onClick = { vm.loadGuide(force = true) }, enabled = !vm.guideLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Reload guide", tint = Paper)
             }
@@ -150,100 +189,128 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
         if (vm.guideStatus.isNotEmpty()) {
             Text(vm.guideStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ((-replayDays)..1).forEach { d ->
-                TagChip(
-                    when (d) {
-                        0 -> "Today"
-                        -1 -> "Yesterday"
-                        1 -> "Tomorrow"
-                        else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
-                            .format(Date(System.currentTimeMillis() + d * 86_400_000L))
-                    },
-                    d == day,
-                ) { day = d }
-            }
+        preview?.let { ch ->
+            GuidePreviewPane(
+                ch = ch,
+                userAgent = ch.userAgent.ifBlank { vm.playlist?.userAgent.orEmpty() },
+                programs = epg[ch.epgKey],
+                now = now,
+                onOpen = { full(if (ch in channels) channels else guided, ch) },
+            )
         }
-
-        if (guideGroups.size > 1) {
-            LazyRow(
-                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        if (searching) {
+            GuideSearch(
+                query = query,
+                onQuery = { vm.guideSearch = it },
+                hits = hits,
+                now = now,
+                timeFormat = timeFormat,
+                onHit = { ch, prog ->
+                    val live = now >= prog.start && now < prog.stop
+                    if (live) pick(guided, ch) else details = ch to prog
+                },
+                onHitLong = { ch, prog -> details = ch to prog },
+            )
+        } else {
+            // While previewing, the picture takes the place of the day and group rows.
+            if (preview == null) Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                item(key = "__all") { TagChip("All · ${guided.size}", group == null) { vm.group = null } }
-                items(guideGroups, key = { "g:$it" }) { g -> TagChip(g, group == g) { vm.group = g } }
-            }
-        }
-
-        // Time ruler
-        Row(Modifier.fillMaxWidth().height(26.dp)) {
-            Spacer(Modifier.width(ChannelColumn + 4.dp))
-            Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hScroll)) {
-                Box(Modifier.width(totalWidth).fillMaxHeight()) {
-                    var t = windowStart
-                    while (t < windowEnd) {
-                        val labelX = xOf(t, windowStart)
-                        Text(
-                            timeFormat.format(Date(t)),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            // A label already scrolling out of view is hidden rather than cut in half.
-                            modifier = Modifier
-                                .offset(x = labelX)
-                                .padding(start = 4.dp)
-                                .layout { measurable, constraints ->
-                                    val placeable = measurable.measure(constraints)
-                                    val cut = hScroll.value > labelX.roundToPx()
-                                    layout(placeable.width, placeable.height) { if (!cut) placeable.place(0, 0) }
-                                },
-                        )
-                        t += HALF_HOUR
-                    }
-                }
-            }
-        }
-
-        if (channels.isEmpty()) {
-            Centered {
-                when {
-                    guidedOrNull == null || vm.guideLoading || (epg.isEmpty() && vm.guideStatus.isEmpty()) -> {
-                        CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
-                        Spacer(Modifier.height(12.dp))
-                        Text("Loading the TV guide…", color = Muted)
-                    }
-                    guided.isNotEmpty() -> {
-                        Text("No guide information for ${group.orEmpty()}.", color = Muted)
-                        Spacer(Modifier.height(12.dp))
-                        PaperButton("Show all channels with a guide") { vm.group = null }
-                    }
-                    else -> Text(
-                        "No guide information yet. Add guide sources in Settings → TV guide.",
-                        color = Muted,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                }
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(channels, key = { it.id }) { ch ->
-                    GuideRow(
-                        ch = ch,
-                        programs = epg[ch.epgKey],
-                        windowStart = windowStart,
-                        windowEnd = windowEnd,
-                        totalWidth = totalWidth,
-                        now = now,
-                        hScroll = hScroll,
-                        onChannel = { onPlay(channels, ch) },
-                        onChannelLong = { vm.listSheetFor = ch },
-                        onProgram = { prog ->
-                            val live = now >= prog.start && now < prog.stop
-                            if (live && !ch.hasCatchup) onPlay(channels, ch) else details = ch to prog
+                ((-replayDays)..1).forEach { d ->
+                    TagChip(
+                        when (d) {
+                            0 -> "Today"
+                            -1 -> "Yesterday"
+                            1 -> "Tomorrow"
+                            else -> java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
+                                .format(Date(System.currentTimeMillis() + d * 86_400_000L))
                         },
-                    )
+                        d == day,
+                    ) { day = d }
+                }
+            }
+
+            if (guideGroups.size > 1 && preview == null) {
+                LazyRow(
+                    Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "__all") { TagChip("All · ${guided.size}", group == null) { vm.group = null } }
+                    items(guideGroups, key = { "g:$it" }) { g -> TagChip(g, group == g) { vm.group = g } }
+                }
+            }
+
+            // Time ruler
+            Row(Modifier.fillMaxWidth().height(26.dp)) {
+                Spacer(Modifier.width(ChannelColumn + 4.dp))
+                Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hScroll)) {
+                    Box(Modifier.width(totalWidth).fillMaxHeight()) {
+                        var t = windowStart
+                        while (t < windowEnd) {
+                            val labelX = xOf(t, windowStart)
+                            Text(
+                                timeFormat.format(Date(t)),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                // A label already scrolling out of view is hidden rather than cut in half.
+                                modifier = Modifier
+                                    .offset(x = labelX)
+                                    .padding(start = 4.dp)
+                                    .layout { measurable, constraints ->
+                                        val placeable = measurable.measure(constraints)
+                                        val cut = hScroll.value > labelX.roundToPx()
+                                        layout(placeable.width, placeable.height) { if (!cut) placeable.place(0, 0) }
+                                    },
+                            )
+                            t += HALF_HOUR
+                        }
+                    }
+                }
+            }
+
+            if (channels.isEmpty()) {
+                Centered {
+                    when {
+                        guidedOrNull == null || vm.guideLoading || (epg.isEmpty() && vm.guideStatus.isEmpty()) -> {
+                            CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
+                            Spacer(Modifier.height(12.dp))
+                            Text("Loading the TV guide…", color = Muted)
+                        }
+                        guided.isNotEmpty() -> {
+                            Text("No guide information for ${group.orEmpty()}.", color = Muted)
+                            Spacer(Modifier.height(12.dp))
+                            PaperButton("Show all channels with a guide") { vm.group = null }
+                        }
+                        else -> Text(
+                            "No guide information yet. Add guide sources in Settings → TV guide.",
+                            color = Muted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                    items(channels, key = { it.id }) { ch ->
+                        GuideRow(
+                            ch = ch,
+                            programs = epg[ch.epgKey],
+                            windowStart = windowStart,
+                            windowEnd = windowEnd,
+                            totalWidth = totalWidth,
+                            now = now,
+                            hScroll = hScroll,
+                            previewing = preview?.id == ch.id,
+                            onChannel = { pick(channels, ch) },
+                            onChannelLong = { vm.listSheetFor = ch },
+                            onProgram = { prog ->
+                                // On now: preview first, full screen on the second press.
+                                val live = now >= prog.start && now < prog.stop
+                                if (live) pick(channels, ch) else details = ch to prog
+                            },
+                            onProgramLong = { prog -> details = ch to prog },
+                        )
+                    }
                 }
             }
         }
@@ -275,7 +342,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                             if (item != null) onPlay(listOf(item), item)
                         }) { Text(if (live) "Watch from start" else "Watch replay") }
                     }
-                    TextButton(onClick = { details = null; onPlay(channels, ch) }) { Text("Watch live") }
+                    TextButton(onClick = { details = null; full(if (ch in channels) channels else guided, ch) }) { Text("Watch live") }
                 }
             },
             dismissButton = { TextButton(onClick = { details = null }) { Text("Close") } },
@@ -295,9 +362,11 @@ private fun GuideRow(
     totalWidth: Dp,
     now: Long,
     hScroll: ScrollState,
+    previewing: Boolean,
     onChannel: () -> Unit,
     onChannelLong: () -> Unit,
     onProgram: (Program) -> Unit,
+    onProgramLong: (Program) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val cellShape = RoundedCornerShape(10.dp)
@@ -308,6 +377,7 @@ private fun GuideRow(
                 .fillMaxHeight()
                 .focusRing(cellShape)
                 .panel(cellShape, raised = true)
+                .then(if (previewing) Modifier.border(1.5.dp, Signal, cellShape) else Modifier)
                 .combinedClickable(onClick = onChannel, onLongClick = onChannelLong)
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -357,7 +427,7 @@ private fun GuideRow(
                                 .background(
                                     if (live) Signal.copy(alpha = 0.16f) else Ink2,
                                 )
-                                .clickable { onProgram(prog) }
+                                .combinedClickable(onClick = { onProgram(prog) }, onLongClick = { onProgramLong(prog) })
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         ) {
                             Text(

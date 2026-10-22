@@ -222,8 +222,13 @@ class MainActivity : ComponentActivity() {
     /** Set when we open the player, so coming back from it isn't taken for a return to the app. */
     private var fromPlayer = false
 
-    /** Opens What's new when started from a "New in …" notification. */
+    /** Opens What's new when started from a "New in …" notification, or resumes a film picked on the TV home screen. */
     private fun handleOpen(intent: Intent?) {
+        intent?.getStringExtra(app.falak.player.data.WatchNext.EXTRA_RESUME)?.let { key ->
+            intent.removeExtra(app.falak.player.data.WatchNext.EXTRA_RESUME)
+            vm.resumeFromHome(key)
+            return
+        }
         intent?.getStringExtra(app.falak.player.data.Notifier.EXTRA_OPEN)?.let { where ->
             repo.autoPlayChecked = true // opened for What's new: don't start a channel over it
             intent.removeExtra(app.falak.player.data.Notifier.EXTRA_OPEN)
