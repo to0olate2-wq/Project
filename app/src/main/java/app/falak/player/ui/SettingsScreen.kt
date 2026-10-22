@@ -347,26 +347,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
-            ClickRow(
-                "Prayer times",
-                when (s.prayerMode) {
-                    "remind" -> "On: a reminder at each prayer"
-                    "pause" -> "On: a reminder, and the player pauses"
-                    else -> "Off. A reminder at each prayer time where you are"
-                },
-            ) { vm.screen = Screen.PRAYER }
-        }
-        item {
-            ClickRow(
-                "Phone remote",
-                when (state.remotes.size) {
-                    0 -> "Use your phone as a remote and keyboard for this device"
-                    1 -> "1 phone paired"
-                    else -> "${state.remotes.size} phones paired"
-                },
-            ) { vm.screen = Screen.REMOTE }
-        }
-        item {
             val linked = state.sync.key.isNotEmpty()
             val names = state.sync.peers.values.joinToString(", ") { it.name }
             SwitchRow(
@@ -381,6 +361,23 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) {
                 if (!linked) vm.screen = Screen.SYNC else vm.updateSettings { it.copy(syncOn = !it.syncOn) }
             }
+        }
+        item {
+            ClickRow(
+                "Phone remote",
+                when (state.remotes.size) {
+                    0 -> "Use your phone as a remote and keyboard for this device"
+                    1 -> "1 phone paired"
+                    else -> "${state.remotes.size} phones paired"
+                },
+            ) { vm.screen = Screen.REMOTE }
+        }
+        item {
+            ClickRow(
+                "Profiles",
+                if (!s.profilesOn) "Off. Give each person their own favorites and Continue watching"
+                else "On · " + (listOf(s.mainProfileName.ifBlank { "Me" }) + state.profiles.map { it.name }).joinToString(", "),
+            ) { guarded { vm.screen = Screen.PROFILES } }
         }
         if (p != null) {
             item {
@@ -440,6 +437,17 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        item {
+            ClickRow(
+                "Prayer times",
+                when (s.prayerMode) {
+                    "remind" -> "On: a reminder at each prayer"
+                    "pause" -> "On: a reminder, and the player pauses"
+                    else -> "Off. A reminder at each prayer time where you are"
+                },
+            ) { vm.screen = Screen.PRAYER }
+        }
+
         item { SectionTitle("Parental control") }
         item {
             ClickRow(
@@ -463,14 +471,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     if (parts.isEmpty()) "Nothing locked yet" else parts.joinToString(" and ") + " need the PIN",
                 ) { guarded { vm.screen = Screen.LOCKS } }
             }
-        }
-
-        item {
-            ClickRow(
-                "Profiles",
-                if (!s.profilesOn) "Off. Give each person their own favorites and Continue watching"
-                else "On · " + (listOf(s.mainProfileName.ifBlank { "Me" }) + state.profiles.map { it.name }).joinToString(", "),
-            ) { guarded { vm.screen = Screen.PROFILES } }
         }
 
         item { SectionTitle("Kids profile") }

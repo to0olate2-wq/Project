@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
+import app.falak.player.PrayerAlerts
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.res.ResourcesCompat
@@ -426,7 +427,7 @@ class PlayerActivity : ComponentActivity() {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                         SkipIntroButton(skipIntroShown && upNext == null) { skipIntro() }
                         UpNextCard(upNext, upNextLabel, upNextSecs, onPlay = { playUpNext() }, onHide = { dismissUpNext() })
-                        val prayer by app.falak.player.PrayerAlerts.current.collectAsState()
+                        val prayer by PrayerAlerts.current.collectAsState()
                         PrayerBanner(prayer, paused = prayerPaused) { endPrayerPause(resume = false) }
                         // Paused for a while: the ambient screen, over everything.
                         if (ambientOn) AmbientScreen(ambientSlides, paused = queue.getOrNull(index)?.name) { hideAmbient() }

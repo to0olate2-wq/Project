@@ -76,7 +76,8 @@ fun AmbientScreen(slides: List<AmbientSlide>, paused: String?, onExit: () -> Uni
             if ((now / 1_000) % SLIDE_S == 0L && slides.size > 1) i = (i + 1) % slides.size
         }
     }
-    val time = remember(now / 60_000) { android.text.format.DateFormat.format(if (is24h()) "HH:mm" else "h:mm", Date(now)).toString() }
+    val h24 = is24h()
+    val time = remember(now / 60_000, h24) { android.text.format.DateFormat.format(if (h24) "HH:mm" else "h:mm", Date(now)).toString() }
     val date = remember(now / 3_600_000) { java.text.SimpleDateFormat("EEEE d MMMM", java.util.Locale.getDefault()).format(Date(now)) }
     Box(
         Modifier

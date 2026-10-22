@@ -50,7 +50,7 @@ internal object RemotePage {
   .btn { border:0; border-radius:12px; background:var(--paper); color:var(--ink); font:600 15px system-ui,sans-serif; padding:0 16px; }
   .hint { color:var(--faint); font-size:12px; margin-top:8px; }
   /* lists */
-  .search { margin-top:12px; }
+  .search { margin-top:12px; display:flex; }
   .chips { display:flex; gap:8px; overflow-x:auto; padding:12px 0 8px; scrollbar-width:none; }
   .chips::-webkit-scrollbar { display:none; }
   .chip { flex:none; border:1px solid var(--line); background:var(--ink2); color:var(--paper); border-radius:999px; padding:8px 13px; font:600 13px system-ui,sans-serif; max-width:70vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
