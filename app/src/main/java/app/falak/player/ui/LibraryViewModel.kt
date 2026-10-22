@@ -35,7 +35,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS }
+
+/** Pages that need the PIN while kids mode is on. */
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -277,6 +280,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     serverTz = kept.serverTz
                     loadedAt = kept.savedAt
                     if (loadToken === token) loading = false
+                    maybeStartLastChannel(p)
                     loadGuide(force = false)
                     if (isStale(kept.savedAt)) {
                         refreshJob?.cancel()
@@ -289,6 +293,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId)
                 show(data, announce = refresh)
                 if (loadToken === token) loading = false
+                maybeStartLastChannel(p)
                 loadGuide(force = refresh)
                 if (cached != null && isStale(cached.savedAt)) {
                     refreshJob?.cancel()
@@ -581,6 +586,24 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- What's new, and pages asked for from elsewhere (the player, a notification) ----
 
+    /** A channel to start playing as the app opens (MainActivity starts the player). */
+    var autoPlay by mutableStateOf<Pair<List<Channel>, Channel>?>(null)
+
+    /**
+     * Fresh start (the app was fully closed): play again the live channel watched last, with its
+     * group to zap through. Only once per start, never after a crash, and never a hidden or
+     * locked channel.
+     */
+    private fun maybeStartLastChannel(p: Playlist) {
+        if (repo.autoPlayChecked) return
+        repo.autoPlayChecked = true
+        val s = state.value
+        if (!s.settings.startLastChannel || crashReport != null) return
+        val ch = s.lastLive[p.id]?.let { index.byId[it] } ?: return
+        if (ch.kind != Kind.LIVE || ch.group in currentExclusions()) return
+        autoPlay = (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
+    }
+
     /** Set when Settings, the guide or What's new was opened from the player's Menu: Back returns to it. */
     var backToPlayer: Int? = null
 
@@ -646,7 +669,40 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Hidden groups of the open playlist. */
     private fun hiddenNow(): Set<String> =
-        playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet()
+        playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet().apply { addAll(kidsHidden()) }
+
+    /** Kids mode: every group of the open playlist that wasn't chosen for kids. */
+    fun kidsHidden(s: Settings = state.value.settings, idx: LibraryIndex = index): Set<String> {
+        val p = playlist ?: return emptySet()
+        if (!s.kidsMode) return emptySet()
+        val allowed = s.kidsGroups[p.id].orEmpty().toHashSet()
+        val out = HashSet<String>()
+        for (kind in Kind.entries) idx.groupsOf(kind).keys.filterTo(out) { it !in allowed }
+        return out
+    }
+
+    /** Kids mode is on and the PIN was given for this visit to Settings (or another locked page). */
+    var kidsUnlocked by mutableStateOf(false)
+
+    /** Allow or block groups of the open playlist for kids. */
+    fun setKidsGroups(groups: Collection<String>, allowed: Boolean) {
+        val p = playlist ?: return
+        updateSettings { s ->
+            val cur = LinkedHashSet(s.kidsGroups[p.id].orEmpty())
+            if (allowed) cur += groups else cur -= groups.toSet()
+            s.copy(kidsGroups = s.kidsGroups + (p.id to cur.toList()))
+        }
+    }
+
+    /** Groups whose names look made for children: a starting point the first time kids mode is set up. */
+    fun kidsSuggestions(): List<String> =
+        Kind.entries.flatMap { k -> index.groupsOf(k).keys.filter { looksForKids(it) } }
+
+    /** Kids mode can only be switched on with a PIN and at least one group to show. */
+    fun kidsReady(s: Settings = state.value.settings): Boolean {
+        val p = playlist ?: return false
+        return s.pin.isNotEmpty() && s.kidsGroups[p.id].orEmpty().isNotEmpty()
+    }
 
     /** Live channels outside hidden groups: the only ones the guide is matched and kept for. */
     private fun guideTargets(): List<Channel> {
@@ -659,6 +715,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val p = playlist ?: return emptySet()
         val s = state.value.settings
         val out = s.hiddenGroups[p.id].orEmpty().toHashSet()
+        out.addAll(kidsHidden(s))
         if (s.pin.isNotEmpty() && !unlocked) {
             val explicit = s.lockedGroups[p.id].orEmpty()
             for (kind in Kind.entries) {
@@ -833,6 +890,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             androidx.compose.runtime.snapshotFlow { screen }.collect { s ->
                 if (s == Screen.LIBRARY || s == Screen.PLAYLISTS || s == Screen.SERIES || s == Screen.DETAILS) backToPlayer = null
+                // Kids mode: the PIN opens the locked pages for one visit only.
+                if (s == Screen.LIBRARY || s == Screen.SERIES || s == Screen.DETAILS || s == Screen.GUIDE) kidsUnlocked = false
             }
         }
     }
@@ -883,5 +942,21 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (crashReport == null && s.settings.openLast) {
             s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
         }
+    }
+}
+
+private val KIDS_WORDS = listOf(
+    "kid", "child", "cartoon", "toon", "anime", "animation", "animated", "family", "disney", "pixar",
+    "nick", "junior", "jr", "baby", "babies", "enfant", "infantil", "niños", "kinder", "cocuk", "çocuk",
+    "spacetoon", "boomerang", "cbeebies", "pbs kids", "majid", "baraem", "jeem",
+    "أطفال", "اطفال", "كرتون", "كارتون", "رسوم", "عائل",
+)
+
+/** True for a group name that reads like it's for children ("Kids", "Cartoons", "أطفال"…). */
+internal fun looksForKids(name: String): Boolean {
+    val n = name.lowercase()
+    if ("adult" in n || "xxx" in n || "+18" in n || "18+" in n) return false
+    return KIDS_WORDS.any { w ->
+        if (w.length <= 2) Regex("(^|[^\\p{L}])${Regex.escape(w)}([^\\p{L}]|$)").containsMatchIn(n) else w in n
     }
 }

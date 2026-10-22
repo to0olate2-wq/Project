@@ -125,6 +125,18 @@ class PlayerActivity : ComponentActivity() {
     /** The Menu (Home, Films, Series, Settings…) is over the picture. */
     private var menuOpen by mutableStateOf(false)
 
+    /** Digits typed on the remote ("12" → channel 12), shown top-right until they are used. */
+    private val typed = StringBuilder()
+    private lateinit var numberView: TextView
+    private val commitTyped = Runnable { useTypedNumber() }
+
+    /** The channel watched before this one (list and position), for the remote's "last channel". */
+    private var previous: Pair<List<Channel>, Int>? = null
+
+    /** A channel that wouldn't play, and the copies of it already tried (see [tryBackup]). */
+    private var backupOf: String? = null
+    private val backupTried = HashSet<String>()
+
     // In-player channel & group browser
     private var browserOpen by mutableStateOf(false)
     /** The list of groups is showing beside the channels. */
@@ -236,6 +248,27 @@ class PlayerActivity : ComponentActivity() {
         root.addView(
             messageView,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
+        )
+
+        // Channel number being typed on the remote, top right like a TV.
+        numberView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setLineSpacing(0f, 1.1f)
+            gravity = Gravity.END
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(0xE6111010.toInt())
+                setStroke(dp(1), 0x26FFFFFF)
+            }
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            visibility = View.GONE
+        }
+        root.addView(
+            numberView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END)
+                .apply { setMargins(dp(24), dp(24), dp(24), dp(24)) },
         )
 
         // Channels / Audio / Subtitles / Picture size / Player: one tidy row on the bottom line of the
@@ -647,6 +680,8 @@ class PlayerActivity : ComponentActivity() {
         updateFavButton()
         // Remembered so the list can put the selection back on this item after the player closes.
         if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
+        // And the live channel, to start with it when the app is opened fresh next time.
+        if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) repo.currentPlaylist?.let { repo.setLastLive(it.id, ch.id) }
         browseButton.text = when (ch.kind) {
             Kind.LIVE -> "Channels"
             Kind.MOVIE -> "Films"
@@ -727,6 +762,7 @@ class PlayerActivity : ComponentActivity() {
     private fun zap(delta: Int) {
         if (queue.size < 2) return
         saveProgress()
+        rememberPrevious()
         index = (index + delta).mod(queue.size)
         retried = false
         resumePositionMs = C.TIME_UNSET
@@ -767,6 +803,8 @@ class PlayerActivity : ComponentActivity() {
                 handler.post { playCurrent(showInfo = false) } // not from inside ExoPlayer's own callback
                 return
             }
+            // Same channel listed elsewhere in the playlist (another group or quality)?
+            if (tryBackup(ch)) return
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
             val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
@@ -929,6 +967,7 @@ class PlayerActivity : ComponentActivity() {
         if (at < 0) return
         if (ch.kind != Kind.LIVE) closeBrowser()
         saveProgress()
+        rememberPrevious()
         // Zapping now follows the group the channel was picked from.
         queue = list
         repo.playQueue = list
@@ -1001,11 +1040,24 @@ class PlayerActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
-                    if (live && !controlsShown && event.repeatCount == 0) {
+                    if (typed.isNotEmpty()) {
+                        // OK after typing a number: go now instead of waiting.
+                        handler.removeCallbacks(commitTyped)
+                        useTypedNumber()
+                        swallowUpKey = event.keyCode
+                        return true
+                    } else if (live && !controlsShown && event.repeatCount == 0) {
                         openBrowser()
                         swallowUpKey = event.keyCode
                         return true
                     }
+                in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9, in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+                    if (live && event.repeatCount == 0) {
+                        val d = if (event.keyCode >= KeyEvent.KEYCODE_NUMPAD_0) event.keyCode - KeyEvent.KEYCODE_NUMPAD_0 else event.keyCode - KeyEvent.KEYCODE_0
+                        typeDigit(d)
+                        return true
+                    }
+                KeyEvent.KEYCODE_LAST_CHANNEL -> { recallPrevious(); return true }
                 KeyEvent.KEYCODE_CHANNEL_UP -> { zap(1); return true }
                 KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_UP -> if (live && !controlsShown) { zap(1); return true }
@@ -1654,6 +1706,104 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // ---- channel numbers and last channel (remote control) ----
+
+    private fun typeDigit(d: Int) {
+        if (typed.length >= 4) typed.setLength(0)
+        typed.append(d)
+        handler.removeCallbacks(commitTyped)
+        val n = typed.toString().toInt()
+        val target = queue.getOrNull(n - 1)?.takeIf { n > 0 }
+        val text = SpannableStringBuilder()
+        text.append(typed.toString(), StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(android.text.style.RelativeSizeSpan(1.8f), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        when {
+            typed.toString() == "0" -> text.append("\nLast channel")
+            target != null -> text.append("\n${target.name}")
+            else -> text.append("\nNo channel $n here")
+        }
+        numberView.text = text
+        numberView.visibility = View.VISIBLE
+        // Like a TV: the number is used once you stop typing (or press OK).
+        handler.postDelayed(commitTyped, if (typed.length >= 4) 300 else 1_600)
+    }
+
+    private fun useTypedNumber() {
+        val s = typed.toString()
+        typed.setLength(0)
+        numberView.visibility = View.GONE
+        if (s.isEmpty()) return
+        // A lone 0 flips back to the channel watched before, as on most remotes.
+        if (s == "0") {
+            recallPrevious()
+            return
+        }
+        val i = s.toInt() - 1
+        if (i !in queue.indices || i == index) return
+        saveProgress()
+        rememberPrevious()
+        index = i
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        playCurrent(showInfo = true)
+    }
+
+    private fun rememberPrevious() {
+        if (queue.getOrNull(index)?.kind == Kind.LIVE) previous = queue to index
+    }
+
+    /** Back to the channel watched before this one (the remote's "last channel"). */
+    private fun recallPrevious() {
+        val (list, at) = previous ?: return
+        if (at !in list.indices) return
+        saveProgress()
+        val here = queue to index
+        queue = list
+        repo.playQueue = list
+        index = at
+        previous = here
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        playCurrent(showInfo = true)
+    }
+
+    // ---- backup streams ----
+
+    /**
+     * A live channel that won't play: try the same channel listed elsewhere in the playlist (another
+     * group or quality): same quality first, then lower, then higher. Returns false when there is
+     * nothing left to try.
+     */
+    private fun tryBackup(ch: Channel): Boolean {
+        if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) return false
+        if (backupOf != ch.id) {
+            backupOf = ch.id
+            backupTried.clear()
+        }
+        if (backupTried.size >= 4) return false
+        val excluded = repo.excludedGroups
+        val key = app.falak.player.data.sameChannelKey(ch)
+        val rank = app.falak.player.data.qualityRank(ch)
+        val alt = repo.currentIndex.live.asSequence()
+            .filter { it.id != ch.id && it.url != ch.url && it.url !in backupTried && it.group !in excluded }
+            .filter { app.falak.player.data.sameChannelKey(it) == key }
+            .sortedBy { c ->
+                val r = app.falak.player.data.qualityRank(c)
+                when {
+                    r == rank -> 0
+                    r < rank -> 10 + (rank - r)
+                    else -> 20 + (r - rank)
+                }
+            }
+            .firstOrNull() ?: return false
+        backupTried += alt.url
+        FreezeWatch.note("backup stream for a channel that failed")
+        showMessage("${ch.name} isn't playing\nTrying it from ${alt.group}…")
+        retried = false
+        handler.post { playCurrent(showInfo = false, overrideUrl = alt.url) }
+        return true
+    }
+
     // ---- picture quality ----
 
     /** "4K", "1080p", "720p"… from the size of the video being played; null until it is known. */
@@ -1687,8 +1837,11 @@ class PlayerActivity : ComponentActivity() {
             if (idx.series.isNotEmpty()) add(MenuPlace("SERIES", "Series", Section.SERIES))
             add(MenuPlace("FAVORITES", "Favorites", Section.FAVORITES))
             if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
-            add(MenuPlace("NOTICES", "What's new"))
-            add(MenuPlace("SETTINGS", "Settings"))
+            // Kids mode: no way out to grown-up pages from the player.
+            if (!repo.state.value.settings.kidsMode) {
+                add(MenuPlace("NOTICES", "What's new"))
+                add(MenuPlace("SETTINGS", "Settings"))
+            }
         }
     }
 

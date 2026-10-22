@@ -67,6 +67,14 @@ class Repository(private val context: Context) {
     /** With [pendingNav]: the item that was playing, to go back to when leaving that page. */
     @Volatile var pendingReturnIndex: Int? = null
 
+    /** The "start with the last channel" check has run in this process (it only runs on a fresh start). */
+    @Volatile var autoPlayChecked = false
+
+    /** Remembers the live channel being watched, to start with it next time. */
+    fun setLastLive(playlistId: String, channelId: String) {
+        if (_state.value.lastLive[playlistId] != channelId) update { it.copy(lastLive = it.lastLive + (playlistId to channelId)) }
+    }
+
     /**
      * The open playlist, ready to show, kept for as long as the app is in memory: closing and
      * reopening the app (or its main screen being rebuilt) shows it at once, with no reload.
@@ -166,6 +174,7 @@ class Repository(private val context: Context) {
                 recents = s.recents - id,
                 lastPlaylistId = s.lastPlaylistId.takeIf { it != id },
                 notices = s.notices.filterNot { it.playlistId == id },
+                lastLive = s.lastLive - id,
             )
         }
         if (openLibrary?.playlistId == id) openLibrary = null

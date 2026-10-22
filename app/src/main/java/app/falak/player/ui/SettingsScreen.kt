@@ -71,6 +71,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val p = vm.playlist
     val pinSet = s.pin.isNotEmpty()
     var editPin by remember { mutableStateOf(false) }
+    // Kids mode asked for before a PIN existed: switch it on once the PIN is saved.
+    var kidsAfterPin by remember { mutableStateOf(false) }
     var guideSources by remember { mutableStateOf(false) }
     var guideShift by remember { mutableStateOf(false) }
     var editSubs by remember { mutableStateOf(false) }
@@ -311,6 +313,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
+            SwitchRow(
+                "Start with the last channel",
+                "When the app was fully closed, it opens playing the channel you watched last",
+                s.startLastChannel,
+            ) {
+                vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
+            }
+        }
+        item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
@@ -373,6 +384,45 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 items(groups, key = { "lock:$it" }) { g ->
                     CheckRow(g, g in lockedHere) { guarded { vm.toggleLockedGroup(g) } }
                 }
+            }
+        }
+
+        item { SectionTitle("Kids mode") }
+        if (p == null) {
+            item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
+        } else {
+            val kidsHere = s.kidsGroups[p.id].orEmpty()
+            item {
+                SwitchRow(
+                    "Kids mode",
+                    if (s.kidsMode) "On: only the chosen groups show; Settings needs the PIN" else "Show only the groups you choose; Settings stays behind the PIN",
+                    s.kidsMode,
+                ) {
+                    if (s.kidsMode) {
+                        vm.updateSettings { it.copy(kidsMode = false) }
+                    } else {
+                        // First time: start from the groups that look made for children.
+                        if (kidsHere.isEmpty()) vm.setKidsGroups(vm.kidsSuggestions(), allowed = true)
+                        when {
+                            !pinSet -> { kidsAfterPin = true; editPin = true }
+                            kidsHere.isEmpty() && vm.kidsSuggestions().isEmpty() -> vm.screen = Screen.KIDS
+                            else -> {
+                                vm.kidsUnlocked = true
+                                vm.updateSettings { it.copy(kidsMode = true) }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                ClickRow(
+                    "Groups for kids",
+                    when (kidsHere.size) {
+                        0 -> "None chosen yet in ${p.name}"
+                        1 -> "1 group in ${p.name}"
+                        else -> "${kidsHere.size} groups in ${p.name}"
+                    },
+                ) { vm.screen = Screen.KIDS }
             }
         }
 
@@ -495,11 +545,21 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     if (editPin) {
         EditPinDialog(
             hasPin = pinSet,
-            onDismiss = { editPin = false },
+            onDismiss = { editPin = false; kidsAfterPin = false },
             onSave = { newPin ->
                 vm.updateSettings { it.copy(pin = newPin) }
                 vm.unlocked = newPin.isNotEmpty()
                 editPin = false
+                if (newPin.isEmpty()) {
+                    // No PIN, no lock: kids mode can't stay on without one.
+                    vm.updateSettings { it.copy(kidsMode = false) }
+                } else if (kidsAfterPin && vm.kidsReady()) {
+                    vm.kidsUnlocked = true
+                    vm.updateSettings { it.copy(kidsMode = true) }
+                } else if (kidsAfterPin) {
+                    vm.screen = Screen.KIDS
+                }
+                kidsAfterPin = false
             },
         )
     }

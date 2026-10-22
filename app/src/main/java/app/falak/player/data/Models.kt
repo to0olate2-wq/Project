@@ -168,6 +168,23 @@ fun nameWords(s: String): List<String> {
  */
 fun normName(s: String): String = nameWords(s).joinToString("")
 
+/**
+ * The same channel whatever group or quality it is listed in ("AR | beIN Sports 1 FHD" and
+ * "beIN SPORTS 1 HD" in an Arabic group): its country and its name without quality tags.
+ */
+fun sameChannelKey(ch: Channel): String = (countryOf(ch.name, ch.group) ?: "") + ":" + normName(ch.name)
+
+/** 4 = 4K, 3 = FHD, 2 = HD (or not stated), 1 = SD: to try backup streams in a sensible order. */
+fun qualityRank(ch: Channel): Int {
+    val s = ch.name.lowercase()
+    return when {
+        Regex("\\b(4k|uhd|2160p?|3840p?)\\b").containsMatchIn(s) -> 4
+        Regex("\\b(fhd|1080p?)\\b").containsMatchIn(s) -> 3
+        Regex("\\b(sd|480p?|576p?|low)\\b").containsMatchIn(s) -> 1
+        else -> 2
+    }
+}
+
 /** Like [normName] but also ignores generic words such as "TV" and "Channel". */
 fun looseName(s: String): String = nameWords(s).filter { it !in GENERIC }.joinToString("")
 
@@ -313,6 +330,12 @@ data class Settings(
     val autoRefreshHours: Int = 6,
     /** Tell the user (notification + What's new) when a refresh finds new channels, films or series. */
     val notifyNew: Boolean = true,
+    /** When the app starts fresh (it was fully closed), play the live channel watched last. */
+    val startLastChannel: Boolean = true,
+    /** Kids mode: only [kidsGroups] are shown; Settings and group pages need the PIN. */
+    val kidsMode: Boolean = false,
+    /** playlistId -> the groups kids mode shows. */
+    val kidsGroups: Map<String, List<String>> = emptyMap(),
     /** Asked Android for permission to show notifications (Android 13+), so it isn't asked again. */
     val askedNotify: Boolean = false,
     /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */
@@ -346,6 +369,8 @@ data class AppState(
     val progress: Map<String, Watch> = emptyMap(),
     /** What's new: what playlist refreshes added, newest first (last 40). */
     val notices: List<Notice> = emptyList(),
+    /** playlistId -> the live channel watched last (played again when the app starts fresh). */
+    val lastLive: Map<String, String> = emptyMap(),
 )
 
 /** One refresh's worth of new channels, films and series (What's new). */

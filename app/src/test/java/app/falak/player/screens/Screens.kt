@@ -72,9 +72,11 @@ abstract class ScreenshotBase {
         hidden: List<String> = emptyList(),
         look: String = "classic",
         watching: Boolean = false,
+        kids: List<String>? = null,
+        kidsOn: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -111,6 +113,8 @@ abstract class ScreenshotBase {
         hidden: List<String> = emptyList(),
         look: String = "classic",
         watching: Boolean = false,
+        kids: List<String>? = null,
+        kidsOn: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
@@ -123,6 +127,8 @@ abstract class ScreenshotBase {
                 settings = s.settings.copy(
                     layout = layout, player = "exo", openLast = true, themeMode = theme,
                     hiddenGroups = mapOf(p.id to hidden), look = look,
+                    kidsGroups = if (kids == null) emptyMap() else mapOf(p.id to kids),
+                    kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
                 ),
                 // Two films part-watched, for "Continue watching".
                 progress = if (!watching) emptyMap() else films.take(2).withIndex().associate { (i, title) ->
@@ -502,6 +508,26 @@ class PhoneHiddenGroupsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_TALL)
     fun phoneHidden() = mainScreens("phone", hidden = listOf("Drama", "News")) { _, shoot ->
         shoot("phone-12-home-drama-news-hidden")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneKidsScreens : ScreenshotBase() {
+    // Kids mode: only the chosen groups, and a Kids badge in place of the bell.
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneKids() = mainScreens("phone", look = "sidebar", kids = listOf("Kids", "Music"), kidsOn = true) { _, shoot ->
+        shoot("phone-13-kids-home")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvKidsGroupsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvKidsGroups() = mainScreens("tv", kids = listOf("Kids")) { vm, shoot ->
+        vm.screen = Screen.KIDS
+        shoot("tv-14-kids-groups")
     }
 }
 

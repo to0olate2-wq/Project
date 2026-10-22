@@ -167,6 +167,11 @@ class MainActivity : ComponentActivity() {
                             },
                             label = "screens",
                         ) { screen ->
+                            // Kids mode: Settings, playlists, groups and What's new need the PIN.
+                            if (s.kidsMode && screen in KIDS_LOCKED && !vm.kidsUnlocked) {
+                                KidsLock(vm, state)
+                                return@AnimatedContent
+                            }
                             when (screen) {
                                 Screen.PLAYLISTS -> PlaylistsScreen(vm, state)
                                 Screen.LIBRARY -> LibraryScreen(vm, state, onPlay = ::play)
@@ -177,6 +182,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.GROUPS -> GroupsScreen(vm, state)
                                 Screen.SYNC -> SyncScreen(vm, state)
                                 Screen.NOTICES -> NoticesScreen(vm, state, onPlay = ::play)
+                                Screen.KIDS -> KidsScreen(vm, state)
                             }
                         }
                     }
@@ -186,6 +192,13 @@ class MainActivity : ComponentActivity() {
                     }
                     vm.guideFixFor?.let { ch -> GuideFixDialog(vm, ch) { vm.guideFixFor = null } }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
+                    // A fresh start: the channel watched last plays again.
+                    vm.autoPlay?.let { (list, ch) ->
+                        LaunchedEffect(ch.id) {
+                            vm.autoPlay = null
+                            play(list, ch)
+                        }
+                    }
                     // Back from a page opened in the player's Menu: play again what was playing.
                     vm.resumePlayerAt?.let { i ->
                         LaunchedEffect(i) {
@@ -212,6 +225,7 @@ class MainActivity : ComponentActivity() {
     /** Opens What's new when started from a "New in …" notification. */
     private fun handleOpen(intent: Intent?) {
         intent?.getStringExtra(app.falak.player.data.Notifier.EXTRA_OPEN)?.let { where ->
+            repo.autoPlayChecked = true // opened for What's new: don't start a channel over it
             intent.removeExtra(app.falak.player.data.Notifier.EXTRA_OPEN)
             vm.navigate(where)
         }
@@ -259,7 +273,7 @@ class MainActivity : ComponentActivity() {
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
-        Screen.GROUPS, Screen.SYNC -> 4
+        Screen.GROUPS, Screen.SYNC, Screen.KIDS -> 4
     }
 
     private fun play(list: List<Channel>, channel: Channel) {

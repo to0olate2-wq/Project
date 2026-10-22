@@ -190,6 +190,7 @@ fun SidebarFrame(
                     onRefresh = { vm.open(p, refresh = true) },
                     unread = state.notices.count { !it.read },
                     onNotices = { vm.screen = Screen.NOTICES },
+                    kids = state.settings.kidsMode,
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -390,6 +391,7 @@ fun SidebarTopBar(
     onRefresh: () -> Unit,
     unread: Int = 0,
     onNotices: () -> Unit = {},
+    kids: Boolean = false,
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -441,7 +443,7 @@ fun SidebarTopBar(
             if (hasGuide && onMenu != null) {
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
-            NoticeBell(unread, onNotices)
+            if (kids) KidsBadge() else NoticeBell(unread, onNotices)
             IconButton(onClick = onRefresh, enabled = !loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
             }
