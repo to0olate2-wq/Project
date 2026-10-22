@@ -35,7 +35,7 @@ fun deviceName(context: Context): String {
 }
 
 /** Announces this device on the home network while sharing, so other devices list it by name. */
-class Announcer(context: Context) {
+class Announcer(context: Context, private val serviceType: String = SERVICE_TYPE) {
     private val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
     private var listener: NsdManager.RegistrationListener? = null
 
@@ -43,7 +43,7 @@ class Announcer(context: Context) {
         val manager = nsd ?: return
         val info = NsdServiceInfo().apply {
             serviceName = name
-            serviceType = SERVICE_TYPE
+            serviceType = this@Announcer.serviceType
             setPort(port)
         }
         val l = object : NsdManager.RegistrationListener {
@@ -72,7 +72,11 @@ class Announcer(context: Context) {
 }
 
 /** Lists devices that are sharing on the home network. Callbacks arrive on the main thread. */
-class DeviceFinder(context: Context, private val onChange: (List<FoundDevice>) -> Unit) {
+class DeviceFinder(
+    context: Context,
+    private val serviceType: String = SERVICE_TYPE,
+    private val onChange: (List<FoundDevice>) -> Unit,
+) {
     private val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
     private val main = Handler(Looper.getMainLooper())
     private val found = LinkedHashMap<String, FoundDevice>()
@@ -104,7 +108,7 @@ class DeviceFinder(context: Context, private val onChange: (List<FoundDevice>) -
             }
         }
         try {
-            manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, l)
+            manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, l)
             listener = l
         } catch (e: Exception) {
             // no discovery on this device: the address can still be typed in
@@ -183,6 +187,25 @@ object SyncClient {
             ((Json.parseToJsonElement(text) as? JsonObject)?.get("message") as? JsonPrimitive)?.content ?: "Sent"
         }
     }
+
+    /** Links this device with the one showing [code]: returns its shared secret, id and name. */
+    suspend fun link(http: OkHttpClient, address: String, code: String, myId: String, myName: String): Triple<String, String, String> =
+        withContext(Dispatchers.IO) {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("deviceId", JsonPrimitive(myId))
+                put("device", JsonPrimitive(myName))
+            }.toString()
+            val req = Request.Builder().url(base(address) + "/api/link").header("X-Code", code.trim())
+                .post(payload.toRequestBody("application/json".toMediaType())).build()
+            http.newCall(req).execute().use { res ->
+                val text = res.body?.string().orEmpty()
+                if (!res.isSuccessful) throw IOException(errorOf(text) ?: "The other device said no (${res.code})")
+                val o = Json.parseToJsonElement(text) as? JsonObject ?: throw IOException("Unexpected answer")
+                fun str(k: String) = (o[k] as? JsonPrimitive)?.content.orEmpty()
+                if (str("key").isEmpty()) throw IOException("That device can't sync yet: update it to The Player 5.0")
+                Triple(str("key"), str("deviceId"), str("device"))
+            }
+        }
 
     private fun errorOf(text: String): String? = try {
         ((Json.parseToJsonElement(text) as? JsonObject)?.get("error") as? JsonPrimitive)?.content

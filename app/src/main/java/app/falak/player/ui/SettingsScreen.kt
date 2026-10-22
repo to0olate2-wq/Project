@@ -302,6 +302,22 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 vm.screen = Screen.SYNC
             }
         }
+        item {
+            val linked = state.sync.key.isNotEmpty()
+            val names = state.sync.peers.values.joinToString(", ") { it.name }
+            SwitchRow(
+                "Sync with my devices",
+                when {
+                    !linked -> "Off. Link a TV or phone on the same Wi-Fi in Your devices"
+                    !s.syncOn -> "Off. Linked with ${names.ifBlank { "another device" }}"
+                    else -> "Playlists, favorites, hidden groups and Continue watching stay the same on " +
+                        names.ifBlank { "your linked devices" }
+                },
+                s.syncOn && linked,
+            ) {
+                if (!linked) vm.screen = Screen.SYNC else vm.updateSettings { it.copy(syncOn = !it.syncOn) }
+            }
+        }
         if (p != null) {
             item {
                 ClickRow("Show & hide groups", "Hide groups you never watch, or bring them back") { vm.screen = Screen.GROUPS }

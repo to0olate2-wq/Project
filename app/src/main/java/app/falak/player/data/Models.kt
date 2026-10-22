@@ -336,6 +336,8 @@ data class Settings(
     val kidsMode: Boolean = false,
     /** playlistId -> the groups kids mode shows. */
     val kidsGroups: Map<String, List<String>> = emptyMap(),
+    /** Keep playlists, favorites, hidden groups and Continue watching the same on linked devices. Off until linked. */
+    val syncOn: Boolean = false,
     /** Asked Android for permission to show notifications (Android 13+), so it isn't asked again. */
     val askedNotify: Boolean = false,
     /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */
@@ -353,6 +355,8 @@ data class Watch(
     val url: String = "",
     val kind: Kind = Kind.MOVIE,
     val seriesId: String = "",
+    /** When it was last watched (for syncing with other devices); 0 on entries saved before 5.0. */
+    val at: Long = 0,
 )
 
 @Serializable
@@ -371,6 +375,8 @@ data class AppState(
     val notices: List<Notice> = emptyList(),
     /** playlistId -> the live channel watched last (played again when the app starts fresh). */
     val lastLive: Map<String, String> = emptyMap(),
+    /** Automatic sync with linked devices. */
+    val sync: SyncMeta = SyncMeta(),
 )
 
 /** One refresh's worth of new channels, films and series (What's new). */

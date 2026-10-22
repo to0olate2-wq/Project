@@ -49,6 +49,14 @@ The app only makes network connections needed for what you ask it to do:
   screen, so your phone or computer can manage playlists or copy them to another device running
   The Player. Your playlists and logins go directly between your devices on your own network;
   sharing stops when you leave that screen.
+- **Sync with my devices** (off unless you link devices). Devices you link with the 6-digit
+  code keep playlists, favorites, hidden groups and Continue watching the same: while the app is
+  open, they find each other on your home network and exchange that data directly, encrypted with
+  a key only your linked devices have. Nothing goes through the Internet or to the developer.
+  Unlinking stops it.
+- **Android TV home screen.** On Android TV, films and episodes you've started appear in the
+  system's Continue watching / Play next row. That list stays on the TV; it never includes hidden,
+  locked or adult groups, or anything while kids mode is on.
 
 The app does not send your viewing history, your playlists or any identifier to the developer.
 
@@ -62,8 +70,9 @@ anyone.
 The app uses the Internet permission to load your playlists, guides and streams, and the network
 state permission, which the video engine uses to adapt playback to your connection. On Android 13
 and later it may ask to show notifications: they only tell you, on your device, when a playlist
-refresh finds new channels, films or series. Nothing is sent anywhere to do this. The version downloaded from
-Google Play asks for nothing else: no location, contacts, camera, microphone or storage access.
+refresh finds new channels, films or series. Nothing is sent anywhere to do this. On Android TV it
+uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
+row. The version downloaded from Google Play asks for nothing else: no location, contacts, camera, microphone or storage access.
 
 ## Changes
 

@@ -118,10 +118,90 @@ class Repository(private val context: Context) {
         AppState()
     }
 
-    /** Changes apply instantly in memory; the file is written shortly after on a background thread. */
-    fun update(transform: (AppState) -> AppState) {
-        synchronized(this) { _state.value = transform(_state.value) }
+    /**
+     * Changes apply instantly in memory; the file is written shortly after on a background thread.
+     * While linked to other devices, the parts that sync are dated as they change ([stamp] = false
+     * for changes that came from another device).
+     */
+    fun update(stamp: Boolean = true, transform: (AppState) -> AppState) {
+        var tell = false
+        synchronized(this) {
+            val old = _state.value
+            var next = transform(old)
+            if (stamp && next !== old && next.sync.key.isNotEmpty()) {
+                next = SyncMerge.stamp(old, next, System.currentTimeMillis())
+                tell = next.sync.stamps !== old.sync.stamps || next.sync.removed !== old.sync.removed ||
+                    next.progress !== old.progress || next.sync.progressGone !== old.sync.progressGone
+            }
+            _state.value = next
+        }
         scheduleWrite()
+        if (tell) onSyncChange?.invoke()
+    }
+
+    /** Called after a change other linked devices should hear about. */
+    @Volatile var onSyncChange: (() -> Unit)? = null
+
+    // ---- automatic sync between linked devices ----
+
+    /** This device's id for sync (made the first time it's needed). */
+    fun syncDeviceId(): String {
+        _state.value.sync.deviceId.takeIf { it.isNotEmpty() }?.let { return it }
+        val id = java.util.UUID.randomUUID().toString()
+        update(stamp = false) { s -> if (s.sync.deviceId.isNotEmpty()) s else s.copy(sync = s.sync.copy(deviceId = id)) }
+        return _state.value.sync.deviceId
+    }
+
+    fun syncSnapshot(device: String): SyncSnapshot {
+        syncDeviceId()
+        return SyncMerge.snapshot(_state.value, device)
+    }
+
+    /** Takes in what another linked device sent. Returns true when something here changed. */
+    fun mergeSync(theirs: SyncSnapshot): Boolean {
+        var changed = false
+        var gone: List<String> = emptyList()
+        update(stamp = false) { s ->
+            if (s.sync.key.isEmpty()) return@update s
+            val (next, removed) = SyncMerge.merge(s, theirs, System.currentTimeMillis())
+            changed = !SyncMerge.sameSynced(s, next)
+            gone = removed
+            next
+        }
+        gone.forEach { deleteCaches(it) }
+        return changed
+    }
+
+    /**
+     * This device shows the code and another one links to it: the shared secret (made now if this
+     * device isn't linked yet). Sync turns on here too.
+     */
+    fun syncKeyForLink(peerId: String, peerName: String): String {
+        syncDeviceId()
+        val key = _state.value.sync.key.ifEmpty { app.falak.player.sync.SyncCrypto.newKey() }
+        update(stamp = false) { s ->
+            val peers = if (peerId.isEmpty()) s.sync.peers else s.sync.peers + (peerId to SyncPeer(peerName))
+            s.copy(sync = s.sync.copy(key = key, peers = peers), settings = s.settings.copy(syncOn = true))
+        }
+        return key
+    }
+
+    /** This device linked to another one: everything here counts as newest, so the first sync shares it all. */
+    fun linkSync(key: String, peerId: String, peerName: String) {
+        syncDeviceId()
+        update(stamp = false) { s ->
+            val peers = if (peerId.isEmpty()) emptyMap() else mapOf(peerId to SyncPeer(peerName))
+            val linked = s.copy(
+                sync = SyncMeta(deviceId = s.sync.deviceId, key = key, peers = peers),
+                settings = s.settings.copy(syncOn = true),
+            )
+            SyncMerge.touchAll(linked, System.currentTimeMillis())
+        }
+    }
+
+    /** Leaves the linked devices: this one keeps everything it has but stops syncing. */
+    fun unlinkSync() = update(stamp = false) { s ->
+        s.copy(sync = SyncMeta(deviceId = s.sync.deviceId), settings = s.settings.copy(syncOn = false))
     }
 
     private val writer = Executors.newSingleThreadExecutor { r ->
@@ -165,21 +245,12 @@ class Repository(private val context: Context) {
     fun addPlaylist(p: Playlist) = update { it.copy(playlists = it.playlists + p, lastPlaylistId = p.id) }
 
     fun removePlaylist(id: String) {
-        update { s ->
-            s.copy(
-                playlists = s.playlists.filterNot { it.id == id },
-                favorites = s.favorites - id,
-                favLists = s.favLists - id,
-                settings = s.settings.copy(
-                    guideOverrides = s.settings.guideOverrides - id,
-                    hiddenGroups = s.settings.hiddenGroups - id,
-                ),
-                recents = s.recents - id,
-                lastPlaylistId = s.lastPlaylistId.takeIf { it != id },
-                notices = s.notices.filterNot { it.playlistId == id },
-                lastLive = s.lastLive - id,
-            )
-        }
+        update { s -> SyncMerge.withoutPlaylist(s, id) }
+        deleteCaches(id)
+    }
+
+    /** A removed playlist's downloaded copy, guide and imported file. */
+    private fun deleteCaches(id: String) {
         if (openLibrary?.playlistId == id) openLibrary = null
         File(cacheDir, "$id.json").delete()
         File(cacheDir, "$id.bin").delete()
@@ -308,17 +379,25 @@ class Repository(private val context: Context) {
 
     /** pos = 0 clears the entry (finished or barely started). Keeps the most recent 300. */
     fun saveProgress(key: String, pos: Long, dur: Long, ch: Channel? = null, seriesId: String = "") = update { s ->
+        val now = System.currentTimeMillis()
         val next = LinkedHashMap(s.progress)
-        next.remove(key)
+        val had = next.remove(key) != null
         if (pos > 0) {
             next[key] = Watch(
                 pos = pos, dur = dur,
                 title = ch?.name.orEmpty(), image = ch?.logo.orEmpty(), url = ch?.url.orEmpty(),
-                kind = ch?.kind ?: Kind.MOVIE, seriesId = seriesId,
+                kind = ch?.kind ?: Kind.MOVIE, seriesId = seriesId, at = now,
             )
         }
         while (next.size > 300) next.remove(next.keys.first())
-        s.copy(progress = next)
+        // Finished or removed: tell linked devices, so they drop it too.
+        val sync = if (pos <= 0 && had && s.sync.key.isNotEmpty()) {
+            val syncKey = SyncMerge.syncId(s, key.substringBefore('|')) + "|" + key.substringAfter('|')
+            s.sync.copy(progressGone = s.sync.progressGone + (syncKey to now))
+        } else {
+            s.sync
+        }
+        s.copy(progress = next, sync = sync)
     }
 
     /** Xtream access for this playlist: Xtream logins and get.php-style M3U links. */

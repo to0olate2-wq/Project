@@ -18,7 +18,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "4.9"
+        versionName = "5.0"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // TVs and phones are ARM; leaving out x86 keeps the download much smaller now that VLC is built in.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }

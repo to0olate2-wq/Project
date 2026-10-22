@@ -4,7 +4,16 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.app.ActivityManager
+import android.app.Activity
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import app.falak.player.data.Repository
+import app.falak.player.sync.AutoSync
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -15,11 +24,18 @@ class FalakApp : Application(), ImageLoaderFactory {
     lateinit var repo: Repository
         private set
 
+    /** Sync with linked devices; runs only while the app is on screen and sync is on. */
+    val autoSync: AutoSync by lazy { AutoSync(this, repo) }
+    private var visible = 0
+    private val main = Handler(Looper.getMainLooper())
+    private val stopSync = Runnable { refreshSync() }
+
     override fun newImageLoader(): ImageLoader = imageLoaderFor(this)
 
     override fun onCreate() {
         super.onCreate()
         repo = Repository(this)
+        watchForSync()
         FreezeWatch.start(filesDir)
         FreezeWatch.note("app started")
 
@@ -36,6 +52,41 @@ class FalakApp : Application(), ImageLoaderFactory {
                 // nothing else we can do
             }
             previous?.uncaughtException(thread, error)
+        }
+    }
+
+    private fun watchForSync() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) {
+                visible++
+                main.removeCallbacks(stopSync)
+                refreshSync()
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                visible = (visible - 1).coerceAtLeast(0)
+                // Not straight away: going from the lists to the player stops one screen as the next starts.
+                if (visible == 0) main.postDelayed(stopSync, 30_000)
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
+        // Switched on or off, linked or unlinked.
+        MainScope().launch {
+            repo.state.map { it.settings.syncOn to it.sync.key }.distinctUntilChanged().collect { refreshSync() }
+        }
+    }
+
+    private fun refreshSync() {
+        val s = repo.state.value
+        if (visible > 0 && s.settings.syncOn && s.sync.key.isNotEmpty()) {
+            autoSync.start(s.sync.key)
+        } else if (autoSync.runningKey != null) {
+            autoSync.stop()
         }
     }
 }
@@ -64,3 +115,6 @@ private fun imageLoaderFor(app: Application): ImageLoader {
 
 val Context.repo: Repository
     get() = (applicationContext as FalakApp).repo
+
+val Context.autoSync: AutoSync
+    get() = (applicationContext as FalakApp).autoSync

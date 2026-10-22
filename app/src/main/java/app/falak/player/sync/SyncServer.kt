@@ -217,6 +217,21 @@ class SyncServer(
                 sendJson(out, 200, buildJsonObject { put("message", result.describe()) }.toString())
             }
             "POST /api/playlists" -> addPlaylist(req, out, who)
+            "POST /api/link" -> {
+                // Another device running The Player links with this one: from now on they sync by themselves.
+                val o = body(req) ?: return error(out, 400, "Bad request")
+                val name = o.str("device").ifBlank { who }
+                val key = repo.syncKeyForLink(o.str("deviceId"), name)
+                sendJson(
+                    out, 200,
+                    buildJsonObject {
+                        put("key", key)
+                        put("deviceId", repo.syncDeviceId())
+                        put("device", deviceName)
+                    }.toString(),
+                )
+                onEvent("Linked with $name: your playlists and favorites now stay in sync")
+            }
             "GET /api/groups" -> {
                 val text = groupsJson(req.query["id"].orEmpty()) ?: return error(out, 404, "No such playlist")
                 sendJson(out, 200, text)

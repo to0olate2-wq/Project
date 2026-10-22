@@ -27,6 +27,8 @@ import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SourceType
+import app.falak.player.data.SyncMeta
+import app.falak.player.data.SyncPeer
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
@@ -74,9 +76,10 @@ abstract class ScreenshotBase {
         watching: Boolean = false,
         kids: List<String>? = null,
         kidsOn: Boolean = false,
+        linked: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -115,6 +118,7 @@ abstract class ScreenshotBase {
         watching: Boolean = false,
         kids: List<String>? = null,
         kidsOn: Boolean = false,
+        linked: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
@@ -129,6 +133,15 @@ abstract class ScreenshotBase {
                     hiddenGroups = mapOf(p.id to hidden), look = look,
                     kidsGroups = if (kids == null) emptyMap() else mapOf(p.id to kids),
                     kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
+                ),
+                // Linked with two devices, sync paused (so nothing starts listening during the test).
+                sync = if (!linked) SyncMeta() else SyncMeta(
+                    deviceId = "this-device",
+                    key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    peers = mapOf(
+                        "tv" to SyncPeer("Living room TV", System.currentTimeMillis() - 3 * 60_000L),
+                        "phone" to SyncPeer("Pixel 8", System.currentTimeMillis() - 2 * 3_600_000L),
+                    ),
                 ),
                 // Two films part-watched, for "Continue watching".
                 progress = if (!watching) emptyMap() else films.take(2).withIndex().associate { (i, title) ->
@@ -562,6 +575,17 @@ class PhoneGuidePreviewScreens : ScreenshotBase() {
         vm.guidePreview = vm.index.live.first { it.name == "Pulse Sports 1" }
         vm.screen = Screen.GUIDE
         shoot("phone-17-guide-preview")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneLinkedScreens : ScreenshotBase() {
+    // Your devices once linked: who with, when it last synced.
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneLinked() = mainScreens("phone", linked = true) { vm, shoot ->
+        vm.screen = Screen.SYNC
+        shoot("phone-18-devices-linked")
     }
 }
 

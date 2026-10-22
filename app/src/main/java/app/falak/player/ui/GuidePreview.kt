@@ -80,7 +80,7 @@ fun GuidePreviewPane(
     val timeFormat = rememberTimeFormat()
     val current = programs?.firstOrNull { now >= it.start && now < it.stop }
     val next = programs?.firstOrNull { it.start >= (current?.stop ?: now) }
-    val height: Dp = if (tv) 168.dp else 118.dp
+    val height: Dp = if (tv) 168.dp else 124.dp
     Row(
         Modifier.fillMaxWidth().height(height).padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -96,7 +96,8 @@ fun GuidePreviewPane(
                 .background(Color.Black),
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Kicker("Preview", color = Signal)
+            // Phones: no room for the label; the picture says it.
+            if (tv) Kicker("Preview", color = Signal)
             Text(
                 ch.name,
                 fontFamily = Serif,
