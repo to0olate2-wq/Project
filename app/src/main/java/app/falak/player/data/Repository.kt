@@ -339,9 +339,10 @@ class Repository(private val context: Context) {
         val groups = added.groupingBy { it.kind to it.group }.eachCount().entries
             .sortedByDescending { it.value }.take(8)
             .map { (k, n) -> NoticeGroup(k.first, k.second, n) }
-        // Films and series with pictures first: they make the best preview.
+        // Films and series with pictures first: they make the best preview. Enough of each group
+        // that What's new can show them by group without sending you to the lists.
         val items = added.sortedByDescending { (if (it.kind != Kind.LIVE) 2 else 0) + (if (it.logo.isNotBlank()) 1 else 0) }
-            .take(12).map { it.id }
+            .take(60).map { it.id }
         val notice = Notice(
             id = System.currentTimeMillis(),
             playlistId = p.id,

@@ -11,6 +11,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import app.falak.player.data.AppState
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -176,9 +181,27 @@ fun SidebarFrame(
                 modifier = m,
             )
         }
+        // TV, tablets, phones on their side: a slim icon rail that opens out (with names) over the
+        // page while the remote is on it, so the page keeps the room.
+        var railOpen by remember { mutableStateOf(false) }
+        val rail: @Composable (Modifier) -> Unit = { m ->
+            SideRail(
+                p, sections, section, counts, hasGuide,
+                open = railOpen,
+                onOpen = { railOpen = it },
+                onSelect = { s ->
+                    vm.section = s
+                    vm.group = null
+                },
+                onGuide = { vm.screen = Screen.GUIDE },
+                onPlaylists = { vm.screen = Screen.PLAYLISTS },
+                onSettings = { vm.screen = Screen.SETTINGS },
+                modifier = m,
+            )
+        }
         val openMenu: () -> Unit = { scope.launch { drawer.open() } }
         val main: @Composable (Modifier) -> Unit = { m ->
-            Column(m.padding(horizontal = if (tv) 32.dp else 16.dp)) {
+            Column(m.padding(horizontal = if (tv) 28.dp else 16.dp)) {
                 SidebarTopBar(
                     query = vm.query,
                     scope = section.label,
@@ -199,9 +222,11 @@ fun SidebarFrame(
         }
         CompositionLocalProvider(LocalCardDetails provides true) {
             if (permanent) {
-                Row(Modifier.fillMaxSize()) {
-                    side(Modifier.width(if (tv) 250.dp else 220.dp))
-                    main(Modifier.weight(1f).fillMaxHeight())
+                Box(Modifier.fillMaxSize()) {
+                    main(Modifier.fillMaxSize().padding(start = railWidth()))
+                    // The page dims while the rail is open over it.
+                    if (railOpen) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+                    rail(Modifier.fillMaxHeight())
                 }
             } else {
                 ModalNavigationDrawer(
@@ -215,7 +240,130 @@ fun SidebarFrame(
     }
 }
 
-// ---------- side menu ----------
+// ---------- slim side rail (TV, tablets, phones on their side) ----------
+
+@Composable
+private fun railWidth(): Dp = if (isTv()) 72.dp else 64.dp
+
+/**
+ * Icons only, so the page gets the width. With the remote on it (TV), it opens out over the page
+ * with the names and counts, and folds back when you move right.
+ */
+@Composable
+fun SideRail(
+    playlist: Playlist,
+    sections: List<Section>,
+    selected: Section,
+    counts: Map<Section, Int>,
+    hasGuide: Boolean,
+    open: Boolean,
+    onOpen: (Boolean) -> Unit,
+    onSelect: (Section) -> Unit,
+    onGuide: () -> Unit,
+    onPlaylists: () -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tv = isTv()
+    val shut = railWidth()
+    val width by animateDpAsState(if (open) 236.dp else shut, tween(200), label = "railWidth")
+    Column(
+        modifier
+            .width(width)
+            .fillMaxHeight()
+            .background(Ink2)
+            .onFocusChanged { if (tv) onOpen(it.hasFocus) }
+            .padding(horizontal = 10.dp),
+    ) {
+        Row(
+            Modifier.padding(top = if (tv) 22.dp else 14.dp, bottom = 18.dp).height(36.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(shut - 20.dp), contentAlignment = Alignment.Center) { BrandMark(32.dp) }
+            if (open) {
+                Spacer(Modifier.width(6.dp))
+                Wordmark(19)
+            }
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            sections.forEach { s ->
+                RailItem(navIcon(s), navLabel(s), counts[s], s == selected, open) { onSelect(s) }
+            }
+            if (hasGuide) RailItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, open, onClick = onGuide)
+        }
+        // The playlist (its initials) and Settings stay at the bottom.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
+        Spacer(Modifier.height(6.dp))
+        RailItem(
+            icon = null,
+            label = playlist.name,
+            sub = "Switch playlist",
+            count = null,
+            selected = false,
+            open = open,
+            badge = playlist.name.split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "P" },
+            onClick = onPlaylists,
+        )
+        RailItem(rememberVectorPainter(Icons.Outlined.Settings), "Settings", null, false, open, onClick = onSettings)
+        Spacer(Modifier.height(if (tv) 14.dp else 8.dp))
+    }
+}
+
+@Composable
+private fun RailItem(
+    icon: Painter?,
+    label: String,
+    count: Int?,
+    selected: Boolean,
+    open: Boolean,
+    sub: String? = null,
+    badge: String? = null,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    val bg by animateColorAsState(if (selected) Ink3 else Color.Transparent, tween(180), label = "railBg")
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .focusRing(shape)
+            .clip(shape)
+            .background(bg)
+            .clickable(onClick = onClick)
+            .height(46.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(railWidth() - 20.dp), contentAlignment = Alignment.Center) {
+            if (badge != null) {
+                Box(Modifier.size(26.dp).clip(CircleShape).background(Ink3), contentAlignment = Alignment.Center) {
+                    Text(badge, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Paper, maxLines = 1)
+                }
+            } else if (icon != null) {
+                Icon(icon, contentDescription = label, tint = if (selected) Signal else Muted, modifier = Modifier.size(22.dp))
+            }
+        }
+        if (open) {
+            Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                Text(
+                    label,
+                    fontFamily = Sans,
+                    fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) Paper else Muted,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (sub != null) Text(sub, fontFamily = Sans, fontSize = 11.sp, color = Faint, maxLines = 1, softWrap = false)
+            }
+            if (count != null && count > 0) {
+                Text(countLabel(count), style = Tabular.copy(fontSize = 11.sp), color = Faint, modifier = Modifier.padding(end = 10.dp))
+            }
+        }
+    }
+}
+
+// ---------- side menu (the drawer on phones held upright) ----------
 
 @Composable
 internal fun navIcon(s: Section): Painter = when (s) {

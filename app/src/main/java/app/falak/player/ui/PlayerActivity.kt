@@ -1083,7 +1083,12 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (live && !controlsShown) { zap(-1); return true }
                 // Films and episodes: left/right jump 10 s per press, faster while held; the jump
                 // happens once you stop pressing, so it is quick and precise.
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> if (!controlsShown && canSeek()) {
+                // Live channels: Left opens the channel list (Right brings up the controls).
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> if (live && !controlsShown && event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (event.repeatCount == 0) openBrowser()
+                    swallowUpKey = event.keyCode
+                    return true
+                } else if (!controlsShown && canSeek()) {
                     val dir = if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1
                     val step = when {
                         event.repeatCount < 8 -> SEEK_STEP_MS

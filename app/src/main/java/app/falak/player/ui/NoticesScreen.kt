@@ -28,6 +28,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -109,31 +113,49 @@ private fun NoticeCard(vm: LibraryViewModel, state: AppState, n: Notice, onPlay:
         }
         Spacer(Modifier.height(4.dp))
         Text(n.summary(), fontFamily = Sans, fontSize = 14.sp, color = Muted)
-        if (n.groups.isNotEmpty()) {
+        // Everything here opens straight away: channels and films play, a series opens its episodes.
+        // The group chips only narrow the row below (they don't take you to the group's list).
+        val open = vm.playlist?.id == n.playlistId
+        val items = if (open) n.items.mapNotNull { vm.index.byId[it] } else emptyList()
+        var pick by remember(n.id) { mutableStateOf<NoticeGroup?>(null) }
+        val shown = pick?.let { g -> items.filter { it.kind == g.kind && it.group == g.group } } ?: items
+        if (open && n.groups.size > 1 && items.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(n.groups, key = { it.kind.name + it.group }) { g ->
-                    CountChip(g.group, g.count, selected = false) { vm.showNoticeGroup(n, g) }
+                item(key = "all") { CountChip("All", items.size, selected = pick == null) { pick = null } }
+                items(n.groups.filter { g -> items.any { it.kind == g.kind && it.group == g.group } }, key = { it.kind.name + it.group }) { g ->
+                    CountChip(g.group, g.count, selected = pick == g) { pick = if (pick == g) null else g }
                 }
             }
         }
-        // A few of the new ones, when that playlist is the one open (they open straight away).
-        val items = if (vm.playlist?.id == n.playlistId) n.items.mapNotNull { vm.index.byId[it] } else emptyList()
-        if (items.isNotEmpty()) {
+        if (!open) {
+            // Another playlist: open it here to see (and play) what's new in it.
+            val p = state.playlists.firstOrNull { it.id == n.playlistId }
+            if (p != null) {
+                Spacer(Modifier.height(12.dp))
+                GhostButton("Open ${p.name} to watch them") { vm.open(p) }
+            }
+        } else if (shown.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
-            val live = items.filter { it.kind == Kind.LIVE }
+            val live = shown.filter { it.kind == Kind.LIVE }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
-                items(items, key = { "n:" + it.id }) { ch ->
+                items(shown, key = { "n:" + it.id }) { ch ->
                     if (ch.kind == Kind.LIVE) {
                         ChannelCard(ch, null, System.currentTimeMillis(), onClick = { onPlay(live, ch) }, width = if (tv) 200.dp else 160.dp)
                     } else {
                         PosterCard(
                             ch, state.progress[progressKey(n.playlistId, ch.id)],
-                            onClick = { if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
+                            onClick = { if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
                             width = if (tv) 120.dp else 100.dp,
                         )
                     }
                 }
+            }
+            // More arrived in that group than the card keeps: the whole group, on request.
+            val g = pick
+            if (g != null && g.count > shown.size) {
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = { vm.showNoticeGroup(n, g) }) { Text("See all ${g.count} in ${g.group}", color = Signal) }
             }
         }
     }
