@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Watch
@@ -158,7 +159,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     // The player gets every episode of every season, so the next one follows across seasons.
                     val all = info.seasons.flatMap { it.episodes }
                     items(season.episodes, key = { it.id }) { ep ->
-                        EpisodeRow(ep, state.progress[progressKey(p.id, ep.id)]) { onPlay(all, ep) }
+                        EpisodeRow(ep, state.progress[progressKey(state.mine(p.id), ep.id)]) { onPlay(all, ep) }
                     }
                 }
             }

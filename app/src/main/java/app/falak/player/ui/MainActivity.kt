@@ -148,7 +148,7 @@ class MainActivity : ComponentActivity() {
                         // Pages slide and fade: forward from the right, back from the left.
                         val tv = isTv()
                         // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
-                        if (vm.choosingProfile && s.kidsMode) {
+                        if (vm.choosingProfile && vm.profilesWanted(state)) {
                             ProfilePicker(vm, state, onBack = { vm.confirmExit = true })
                         } else AnimatedContent(
                             targetState = vm.screen,
@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.NOTICES -> NoticesScreen(vm, state, onPlay = ::play)
                                 Screen.KIDS -> KidsScreen(vm, state)
                                 Screen.LOCKS -> LocksScreen(vm, state)
+                                Screen.PROFILES -> ProfilesScreen(vm, state)
                             }
                         }
                     }
@@ -198,7 +199,7 @@ class MainActivity : ComponentActivity() {
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
                     // A fresh start: the channel watched last plays again.
                     // (Once the profile is chosen; the Kids profile only gets its own groups.)
-                    vm.autoPlay?.takeIf { !(vm.choosingProfile && s.kidsMode) }?.let { (list, ch) ->
+                    vm.autoPlay?.takeIf { !(vm.choosingProfile && vm.profilesWanted(state)) }?.let { (list, ch) ->
                         LaunchedEffect(ch.id) {
                             vm.autoPlay = null
                             if (ch.group.isEmpty() || ch.group !in vm.currentExclusions()) play(list, ch)
@@ -294,7 +295,7 @@ class MainActivity : ComponentActivity() {
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
-        Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS -> 4
+        Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES -> 4
     }
 
     private fun play(list: List<Channel>, channel: Channel) {

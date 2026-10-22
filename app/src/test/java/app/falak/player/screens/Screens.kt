@@ -28,6 +28,8 @@ import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SourceType
 import app.falak.player.data.SyncMeta
+import app.falak.player.data.KIDS_PROFILE
+import app.falak.player.data.Profile
 import app.falak.player.data.SyncPeer
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
@@ -77,9 +79,10 @@ abstract class ScreenshotBase {
         kids: List<String>? = null,
         kidsOn: Boolean = false,
         linked: Boolean = false,
+        profiles: List<String> = emptyList(),
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -121,6 +124,7 @@ abstract class ScreenshotBase {
         kids: List<String>? = null,
         kidsOn: Boolean = false,
         linked: Boolean = false,
+        profiles: List<String> = emptyList(),
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
@@ -135,7 +139,9 @@ abstract class ScreenshotBase {
                     hiddenGroups = mapOf(p.id to hidden), look = look,
                     kidsGroups = if (kids == null) emptyMap() else mapOf(p.id to kids),
                     kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
+                    profilesOn = profiles.isNotEmpty(),
                 ),
+                profiles = profiles.mapIndexed { i, name -> Profile("p$i", name, color = i) },
                 // Linked with two devices, sync paused (so nothing starts listening during the test).
                 sync = if (!linked) SyncMeta() else SyncMeta(
                     deviceId = "this-device",
@@ -534,7 +540,7 @@ class PhoneKidsScreens : ScreenshotBase() {
     fun phoneKids() = mainScreens("phone", look = "sidebar", kids = listOf("Kids", "Music"), kidsOn = true) { vm, shoot ->
         // Kids mode on: the app opens on "Who's watching?".
         shoot("phone-19-profiles")
-        vm.chooseProfile(kids = true)
+        vm.chooseProfile(KIDS_PROFILE)
         shoot("phone-13-kids-home")
     }
 }
@@ -612,6 +618,27 @@ class TvUpNextScreens : ScreenshotBase() {
     // The next episode in the corner while the credits roll.
     @Test @Config(qualifiers = TV)
     fun tvUpNext() = player(tv = true, live = false, upNext = true) { shoot -> shoot("tv-23-up-next") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvMoreProfilesScreens : ScreenshotBase() {
+    // Extra profiles and kids mode: everyone in "Who's watching?".
+    @Test @Config(qualifiers = TV)
+    fun tvMoreProfiles() = mainScreens("tv", kids = listOf("Kids"), kidsOn = true, profiles = listOf("Sara", "Omar")) { _, shoot ->
+        shoot("tv-24-profiles-more")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneProfilesPageScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneProfilesPage() = mainScreens("phone", profiles = listOf("Sara", "Omar")) { vm, shoot ->
+        vm.screen = Screen.PROFILES
+        vm.chooseProfile("")
+        shoot("phone-20-profiles-page")
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)

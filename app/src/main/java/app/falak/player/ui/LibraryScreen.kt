@@ -79,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.falak.player.data.mine
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
@@ -104,9 +105,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             value = System.currentTimeMillis()
         }
     }
-    val favIds = state.favorites[p.id].orEmpty()
-    val recentIds = state.recents[p.id].orEmpty()
-    val lists = state.favLists[p.id].orEmpty()
+    val favIds = state.favorites[state.mine(p.id)].orEmpty()
+    val recentIds = state.recents[state.mine(p.id)].orEmpty()
+    val lists = state.favLists[state.mine(p.id)].orEmpty()
     val savedList = vm.savedList.takeIf { id -> id == DEFAULT_LIST || lists.any { it.id == id } } ?: DEFAULT_LIST
     val savedIds = if (savedList == DEFAULT_LIST) favIds else lists.firstOrNull { it.id == savedList }?.ids.orEmpty()
     // The star lights up when an item is in any of your lists.
@@ -297,7 +298,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                     visible == null -> Box(m)
                                     sidebarLook && shown.kind != null && !(shown.name in state.settings.gridSections) -> ChannelList(
                                         list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
-                                        progress = state.progress, playlistId = p.id,
+                                        progress = state.progress, playlistId = state.mine(p.id),
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                         focusId = focusId, modifier = m,
                                     )
@@ -324,7 +325,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         }
                                         ChannelList(
                                             list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
-                                            progress = state.progress, playlistId = p.id,
+                                            progress = state.progress, playlistId = state.mine(p.id),
                                             onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                             focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
                                             emptyText = if (savedList == DEFAULT_LIST) "Tap the star on any channel, film or series to add it to Favorites."
@@ -333,7 +334,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                     }
                                     else -> ChannelList(
                                         list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
-                                        progress = state.progress, playlistId = p.id,
+                                        progress = state.progress, playlistId = state.mine(p.id),
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                         focusId = focusId, modifier = m,
                                     )
@@ -429,7 +430,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             }
                         }
                     }
-                    if (state.settings.kidsMode) ProfileButton(vm.kidsActive) { vm.choosingProfile = true }
+                    if (vm.profilesWanted(state)) ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true }
                     if (!vm.kidsActive) NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
                     IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
                         Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)

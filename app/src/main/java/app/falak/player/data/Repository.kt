@@ -78,7 +78,8 @@ class Repository(private val context: Context) {
 
     /** Remembers the live channel being watched, to start with it next time. */
     fun setLastLive(playlistId: String, channelId: String) {
-        if (_state.value.lastLive[playlistId] != channelId) update { it.copy(lastLive = it.lastLive + (playlistId to channelId)) }
+        val k = _state.value.mine(playlistId)
+        if (_state.value.lastLive[k] != channelId) update { it.copy(lastLive = it.lastLive + (it.mine(playlistId) to channelId)) }
     }
 
     /**
@@ -266,25 +267,32 @@ class Repository(private val context: Context) {
         if (_state.value.lastPlaylistId != id) update { it.copy(lastPlaylistId = id) }
     }
 
+    // Favorites, lists, recents, Continue watching and the last channel belong to the profile
+    // watching: AppState.mine(playlistId) is the key they're kept under.
+
     fun toggleFavorite(playlistId: String, channelId: String) = update { s ->
-        val cur = s.favorites[playlistId].orEmpty()
+        val k = s.mine(playlistId)
+        val cur = s.favorites[k].orEmpty()
         val next = if (channelId in cur) cur - channelId else cur + channelId
-        s.copy(favorites = s.favorites + (playlistId to next))
+        s.copy(favorites = s.favorites + (k to next))
     }
 
     // ---- the user's own lists ----
 
     /** Ids in a list; [DEFAULT_LIST] is the built-in Favourites. */
-    fun listIds(s: AppState, playlistId: String, listId: String): List<String> =
-        if (listId == DEFAULT_LIST) s.favorites[playlistId].orEmpty()
-        else s.favLists[playlistId].orEmpty().firstOrNull { it.id == listId }?.ids.orEmpty()
+    fun listIds(s: AppState, playlistId: String, listId: String): List<String> {
+        val k = s.mine(playlistId)
+        return if (listId == DEFAULT_LIST) s.favorites[k].orEmpty()
+        else s.favLists[k].orEmpty().firstOrNull { it.id == listId }?.ids.orEmpty()
+    }
 
     private fun editList(playlistId: String, listId: String, edit: (List<String>) -> List<String>) = update { s ->
+        val k = s.mine(playlistId)
         if (listId == DEFAULT_LIST) {
-            s.copy(favorites = s.favorites + (playlistId to edit(s.favorites[playlistId].orEmpty())))
+            s.copy(favorites = s.favorites + (k to edit(s.favorites[k].orEmpty())))
         } else {
-            val lists = s.favLists[playlistId].orEmpty().map { if (it.id == listId) it.copy(ids = edit(it.ids)) else it }
-            s.copy(favLists = s.favLists + (playlistId to lists))
+            val lists = s.favLists[k].orEmpty().map { if (it.id == listId) it.copy(ids = edit(it.ids)) else it }
+            s.copy(favLists = s.favLists + (k to lists))
         }
     }
 
@@ -305,29 +313,33 @@ class Repository(private val context: Context) {
     fun createList(playlistId: String, name: String, firstId: String? = null): String {
         val id = "l" + java.util.UUID.randomUUID().toString().take(8)
         update { s ->
-            val lists = s.favLists[playlistId].orEmpty() + FavList(id, name.trim().ifEmpty { "My list" }, listOfNotNull(firstId))
-            s.copy(favLists = s.favLists + (playlistId to lists))
+            val k = s.mine(playlistId)
+            val lists = s.favLists[k].orEmpty() + FavList(id, name.trim().ifEmpty { "My list" }, listOfNotNull(firstId))
+            s.copy(favLists = s.favLists + (k to lists))
         }
         return id
     }
 
     fun renameList(playlistId: String, listId: String, name: String) = update { s ->
-        val lists = s.favLists[playlistId].orEmpty().map { if (it.id == listId) it.copy(name = name.trim().ifEmpty { it.name }) else it }
-        s.copy(favLists = s.favLists + (playlistId to lists))
+        val k = s.mine(playlistId)
+        val lists = s.favLists[k].orEmpty().map { if (it.id == listId) it.copy(name = name.trim().ifEmpty { it.name }) else it }
+        s.copy(favLists = s.favLists + (k to lists))
     }
 
     fun deleteList(playlistId: String, listId: String) = update { s ->
-        s.copy(favLists = s.favLists + (playlistId to s.favLists[playlistId].orEmpty().filterNot { it.id == listId }))
+        val k = s.mine(playlistId)
+        s.copy(favLists = s.favLists + (k to s.favLists[k].orEmpty().filterNot { it.id == listId }))
     }
 
     /** Moves a whole list left/right among the user's lists. */
     fun moveList(playlistId: String, listId: String, delta: Int) = update { s ->
-        val lists = s.favLists[playlistId].orEmpty().toMutableList()
+        val k = s.mine(playlistId)
+        val lists = s.favLists[k].orEmpty().toMutableList()
         val i = lists.indexOfFirst { it.id == listId }
         if (i < 0) return@update s
         val l = lists.removeAt(i)
         lists.add((i + delta).coerceIn(0, lists.size), l)
-        s.copy(favLists = s.favLists + (playlistId to lists))
+        s.copy(favLists = s.favLists + (k to lists))
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
@@ -370,6 +382,38 @@ class Repository(private val context: Context) {
         )
         update { s -> s.copy(notices = (listOf(notice) + s.notices).take(40)) }
         return notice
+    }
+
+    // ---- profiles ----
+
+    /** Switches whose favorites, lists and Continue watching are in use ("" = the main profile). */
+    fun setActiveProfile(id: String) {
+        if (_state.value.activeProfile != id) update(stamp = false) { it.copy(activeProfile = id) }
+    }
+
+    fun addProfile(name: String): Profile {
+        val p = Profile("p" + java.util.UUID.randomUUID().toString().take(8), name.trim().ifEmpty { "Profile" }, color = _state.value.profiles.size % PROFILE_COLORS)
+        update { s -> s.copy(profiles = s.profiles + p) }
+        return p
+    }
+
+    fun renameProfile(id: String, name: String) = update { s ->
+        s.copy(profiles = s.profiles.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it })
+    }
+
+    /** Deletes a profile and everything it kept (its favorites, lists, recents, Continue watching). */
+    fun deleteProfile(id: String) = update { s ->
+        val tag = "@$id"
+        fun <V> drop(m: Map<String, V>) = m.filterKeys { !it.endsWith(tag) }
+        s.copy(
+            profiles = s.profiles.filterNot { it.id == id },
+            activeProfile = if (s.activeProfile == id) "" else s.activeProfile,
+            favorites = drop(s.favorites),
+            favLists = drop(s.favLists),
+            recents = drop(s.recents),
+            lastLive = drop(s.lastLive),
+            progress = s.progress.filterKeys { !it.substringBefore('|').endsWith(tag) },
+        )
     }
 
     // ---- series: intros and following ----
@@ -444,7 +488,7 @@ class Repository(private val context: Context) {
         }
         while (next.size > 300) next.remove(next.keys.first())
         // Finished or removed: tell linked devices, so they drop it too.
-        val sync = if (pos <= 0 && had && s.sync.key.isNotEmpty()) {
+        val sync = if (pos <= 0 && had && s.sync.key.isNotEmpty() && '@' !in key.substringBefore('|')) {
             val syncKey = SyncMerge.syncId(s, key.substringBefore('|')) + "|" + key.substringAfter('|')
             s.sync.copy(progressGone = s.sync.progressGone + (syncKey to now))
         } else {
@@ -472,8 +516,9 @@ class Repository(private val context: Context) {
     }
 
     fun addRecent(playlistId: String, channelId: String) = update { s ->
-        val cur = s.recents[playlistId].orEmpty()
-        s.copy(recents = s.recents + (playlistId to (listOf(channelId) + (cur - channelId)).take(40)))
+        val k = s.mine(playlistId)
+        val cur = s.recents[k].orEmpty()
+        s.copy(recents = s.recents + (k to (listOf(channelId) + (cur - channelId)).take(40)))
     }
 
     // ---- loading ----

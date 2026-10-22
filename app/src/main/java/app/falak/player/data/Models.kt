@@ -326,6 +326,10 @@ data class Settings(
     val nightSound: String = "auto",
     /** Series: the next episode starts by itself after a short countdown. */
     val autoNextEpisode: Boolean = true,
+    /** More profiles than "Me" (each with its own favorites and Continue watching). Off until switched on. */
+    val profilesOn: Boolean = false,
+    /** The main profile's name in "Who's watching?". */
+    val mainProfileName: String = "Me",
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
     val playerRotation: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
@@ -385,7 +389,25 @@ data class AppState(
     val intros: Map<String, Intro> = emptyMap(),
     /** Series you follow, per playlist: told when new episodes appear. */
     val followed: Map<String, List<FollowedSeries>> = emptyMap(),
+    /** Extra profiles (Settings → Profiles); the main one isn't listed. */
+    val profiles: List<Profile> = emptyList(),
+    /** The profile watching: "" = the main one, [KIDS_PROFILE] or a [Profile.id]. */
+    val activeProfile: String = "",
 )
+
+/** The Kids profile's id (kids mode). */
+const val KIDS_PROFILE = "kids"
+const val PROFILE_COLORS = 6
+
+/** Someone else in the house: their own favorites, lists, recents and Continue watching. */
+@Serializable
+data class Profile(val id: String, val name: String, val color: Int = 0)
+
+/**
+ * The key a playlist's personal data (favorites, lists, recents, Continue watching, last channel)
+ * is kept under for the profile watching: the playlist id itself for the main profile.
+ */
+fun AppState.mine(playlistId: String): String = if (activeProfile.isEmpty()) playlistId else "$playlistId@$activeProfile"
 
 /** A show's opening titles, in ms from the start of an episode. */
 @Serializable

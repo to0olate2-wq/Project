@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.falak.player.data.mine
+import app.falak.player.data.AppState
+import app.falak.player.data.KIDS_PROFILE
 import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
 import app.falak.player.data.DEFAULT_LIST
@@ -36,10 +39,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES }
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -139,7 +142,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearProgress(ch: Channel) {
         val p = playlist ?: return
-        repo.saveProgress(progressKey(p.id, ch.id), 0, 0)
+        repo.saveProgress(progressKey(state.value.mine(p.id), ch.id), 0, 0)
     }
     var group by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
@@ -653,9 +656,21 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private fun maybeStartLastChannel(p: Playlist) {
         if (repo.autoPlayChecked) return
         repo.autoPlayChecked = true
+        // "Who's watching?" first: then that profile's last channel.
+        if (choosingProfile) {
+            lastChannelPending = true
+            return
+        }
+        startLastChannel(p)
+    }
+
+    /** A fresh start waits for the profile to be picked before playing its last channel. */
+    private var lastChannelPending = false
+
+    private fun startLastChannel(p: Playlist) {
         val s = state.value
         if (!s.settings.startLastChannel || crashReport != null) return
-        val ch = s.lastLive[p.id]?.let { index.byId[it] } ?: return
+        val ch = s.lastLive[s.mine(p.id)]?.let { index.byId[it] } ?: return
         if (ch.kind != Kind.LIVE || ch.group in currentExclusions()) return
         autoPlay = (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
     }
@@ -750,15 +765,32 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Back on the first page: "Leave The Player?" */
     var confirmExit by mutableStateOf(false)
 
-    fun chooseProfile(kids: Boolean) {
+    /** "Who's watching?" when the app opens: with kids mode on, or with extra profiles. */
+    fun profilesWanted(s: AppState = state.value): Boolean =
+        s.settings.kidsMode || (s.settings.profilesOn && s.profiles.isNotEmpty())
+
+    /** [id]: "" the main profile, [KIDS_PROFILE], or one of the extra profiles. */
+    fun chooseProfile(id: String) {
+        val kids = id == KIDS_PROFILE
         kidsActive = kids
         repo.kidsActive = kids
+        repo.setActiveProfile(id)
         repo.excludedGroups = currentExclusions()
         choosingProfile = false
         kidsUnlocked = false
         group = null
         query = ""
         if (kids && screen in KIDS_LOCKED) screen = if (playlist != null) Screen.LIBRARY else Screen.PLAYLISTS
+        if (lastChannelPending) {
+            lastChannelPending = false
+            playlist?.let { startLastChannel(it) }
+        }
+    }
+
+    /** Profiles on or off (Settings): off goes back to the main profile. */
+    fun setProfilesOn(on: Boolean) {
+        updateSettings { it.copy(profilesOn = on) }
+        if (!on && !kidsActive) repo.setActiveProfile("")
     }
 
     /** Locks or unlocks groups of the open playlist behind the PIN. */
@@ -781,7 +813,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (on) {
             app.falak.player.data.WatchNext.clear(getApplication())
         } else {
-            // No kids profile any more: back to the normal app, no profile question.
+            // No kids profile any more: back to the normal app (no question unless there are profiles).
+            if (kidsActive) repo.setActiveProfile("")
             kidsActive = false
             repo.kidsActive = false
             choosingProfile = false
@@ -795,7 +828,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun resumeFromHome(key: String) {
         repo.autoPlayChecked = true
         val s = state.value
-        val pid = key.substringBefore('|')
+        // "playlistId@profile|item" for a profile other than the main one.
+        val scope = key.substringBefore('|')
+        val pid = scope.substringBefore('@')
+        val profile = scope.substringAfter('@', "")
+        if (profile != s.activeProfile || choosingProfile) {
+            // Grown-up profiles need the PIN while kids mode is on: ask who's watching instead.
+            if (s.settings.kidsMode && s.settings.pin.isNotEmpty()) {
+                choosingProfile = true
+                return
+            }
+            chooseProfile(profile)
+        }
         val id = key.substringAfter('|', "")
         val p = s.playlists.firstOrNull { it.id == pid } ?: return
         val saved = s.progress[key]
@@ -889,7 +933,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Star: one tap saves to Favourites; with lists of your own it opens the list sheet. */
     fun onStar(ch: Channel) {
         val p = playlist ?: return
-        if (state.value.favLists[p.id].isNullOrEmpty()) repo.toggleFavorite(p.id, ch.id) else listSheetFor = ch
+        if (state.value.favLists[state.value.mine(p.id)].isNullOrEmpty()) repo.toggleFavorite(p.id, ch.id) else listSheetFor = ch
     }
 
     // ---- fixing a channel's guide ----
@@ -1063,9 +1107,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         renameAddressNamedPlaylists()
         crashReport = repo.takeCrashReport()
         val s = state.value
-        // Kids mode on: ask who's watching each time the app opens.
-        choosingProfile = s.settings.kidsMode
+        // Kids mode or extra profiles: ask who's watching each time the app opens.
+        choosingProfile = profilesWanted(s)
         repo.kidsActive = false
+        if (!choosingProfile) repo.setActiveProfile("")
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
         if (crashReport == null && s.settings.openLast) {
             s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }

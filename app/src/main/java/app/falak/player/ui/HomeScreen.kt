@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
@@ -85,13 +86,15 @@ fun HomeContent(
 ) {
     val p = vm.playlist ?: return
     val index = vm.index
-    val favIds = state.favorites[p.id].orEmpty()
-    val recentIds = state.recents[p.id].orEmpty()
+    // This profile's favorites, recents, lists and Continue watching.
+    val me = state.mine(p.id)
+    val favIds = state.favorites[me].orEmpty()
+    val recentIds = state.recents[me].orEmpty()
     fun ok(ch: Channel) = locked.isEmpty() || ch.group !in locked
 
-    val continueWatching = remember(state.progress, index, p.id, locked) {
+    val continueWatching = remember(state.progress, index, me, locked) {
         state.progress.entries.toList().asReversed()
-            .filter { it.key.startsWith("${p.id}|") }
+            .filter { it.key.startsWith("$me|") }
             .mapNotNull { (key, w) ->
                 val id = key.substringAfter('|')
                 index.byId[id] ?: if (w.url.isNotBlank()) {
@@ -106,8 +109,8 @@ fun HomeContent(
     val favLive = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) } }
     val favVod = remember(favIds, index, locked) { favIds.mapNotNull { index.byId[it] }.filter { it.kind != Kind.LIVE && ok(it) } }
     // Your own lists get a shelf each (live channels and videos separately).
-    val myLists = remember(state.favLists, p.id, index, locked) {
-        state.favLists[p.id].orEmpty().map { l ->
+    val myLists = remember(state.favLists, me, index, locked) {
+        state.favLists[me].orEmpty().map { l ->
             val items = l.ids.mapNotNull { index.byId[it] }.filter(::ok)
             Triple(l, items.filter { it.kind == Kind.LIVE }, items.filter { it.kind != Kind.LIVE })
         }.filter { it.second.isNotEmpty() || it.third.isNotEmpty() }
@@ -149,7 +152,7 @@ fun HomeContent(
         vm.group = group
         vm.sort = sort
     }
-    val watched = { ch: Channel -> state.progress[progressKey(p.id, ch.id)] }
+    val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
 
     val tvHome = isTv()
     val scope = rememberCoroutineScope()
@@ -171,7 +174,7 @@ fun HomeContent(
     ) {
         if (bigContinue) {
             item(key = "continueBig") {
-                ContinueRow(continueWatching, vm.heroArt, state.progress, p.id) { ch -> onPlay(listOf(ch), ch) }
+                ContinueRow(continueWatching, vm.heroArt, state.progress, me) { ch -> onPlay(listOf(ch), ch) }
             }
         }
         if (hero.isNotEmpty() && !bigContinue) {

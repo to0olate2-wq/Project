@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
@@ -144,7 +145,7 @@ private fun NoticeCard(vm: LibraryViewModel, state: AppState, n: Notice, onPlay:
                         ChannelCard(ch, null, System.currentTimeMillis(), onClick = { onPlay(live, ch) }, width = if (tv) 200.dp else 160.dp)
                     } else {
                         PosterCard(
-                            ch, state.progress[progressKey(n.playlistId, ch.id)],
+                            ch, state.progress[progressKey(state.mine(n.playlistId), ch.id)],
                             onClick = { if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
                             width = if (tv) 120.dp else 100.dp,
                         )

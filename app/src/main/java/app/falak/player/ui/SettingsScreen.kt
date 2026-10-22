@@ -437,6 +437,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        item {
+            ClickRow(
+                "Profiles",
+                if (!s.profilesOn) "Off. Give each person their own favorites and Continue watching"
+                else "On · " + (listOf(s.mainProfileName.ifBlank { "Me" }) + state.profiles.map { it.name }).joinToString(", "),
+            ) { guarded { vm.screen = Screen.PROFILES } }
+        }
+
         item { SectionTitle("Kids profile") }
         if (p == null) {
             item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }

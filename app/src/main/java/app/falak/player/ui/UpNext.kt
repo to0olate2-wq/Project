@@ -58,7 +58,7 @@ fun BoxScope.UpNextCard(next: Channel?, label: String, seconds: Int?, onPlay: ()
         val shape = RoundedCornerShape(16.dp)
         Column(
             Modifier
-                .width(if (tv) 380.dp else 300.dp)
+                .width(if (tv) 430.dp else 310.dp)
                 .clip(shape)
                 .background(Color(0xF0141210))
                 .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
@@ -112,7 +112,7 @@ fun BoxScope.UpNextCard(next: Channel?, label: String, seconds: Int?, onPlay: ()
                     Modifier.clip(pill).border(1.dp, Color.White.copy(alpha = 0.35f), pill).clickable(onClick = onHide).padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Keep watching", fontFamily = Sans, fontSize = 14.sp, color = Color.White)
+                    Text("Keep watching", fontFamily = Sans, fontSize = 14.sp, color = Color.White, maxLines = 1, softWrap = false)
                     if (tv) KeyHint("Back", dark = false)
                 }
             }
@@ -156,6 +156,6 @@ private fun KeyHint(key: String, dark: Boolean) {
             .background(if (dark) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.16f))
             .padding(horizontal = 7.dp, vertical = 2.dp),
     ) {
-        Text(key, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = if (dark) Color.Black else Color.White)
+        Text(key, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = if (dark) Color.Black else Color.White, maxLines = 1, softWrap = false)
     }
 }

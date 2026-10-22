@@ -83,6 +83,7 @@ import app.falak.player.player.SniffingExtractorsFactory
 import app.falak.player.player.SniffingHlsExtractorFactory
 import app.falak.player.player.VlcPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
+import app.falak.player.data.mine
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
@@ -438,7 +439,7 @@ class PlayerActivity : ComponentActivity() {
                 val app by repo.state.collectAsState()
                 val epg by repo.epg.collectAsState()
                 val favorites = remember(app.favorites) {
-                    repo.currentPlaylist?.let { app.favorites[it.id] }.orEmpty().toHashSet()
+                    repo.currentPlaylist?.let { app.favorites[app.mine(it.id)] }.orEmpty().toHashSet()
                 }
                 // Over the picture the channel list is always dark, whatever the time of day.
                 FalakTheme(dark = true, layout = app.settings.layout) {
@@ -755,7 +756,7 @@ class PlayerActivity : ComponentActivity() {
         autoSubtitlesDone = false
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
-        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(pl.id, ch.id)]?.pos }
+        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.pos }
         val resume = when {
             ch.kind == Kind.LIVE -> C.TIME_UNSET
             resumePositionMs > 0 -> resumePositionMs
@@ -964,11 +965,11 @@ class PlayerActivity : ComponentActivity() {
         val excluded = repo.excludedGroups
         val pl = repo.currentPlaylist
         if (pl != null) {
-            val favs = repo.state.value.favorites[pl.id].orEmpty()
+            val favs = repo.state.value.favorites[repo.state.value.mine(pl.id)].orEmpty()
                 .mapNotNull { idx.byId[it] }
                 .filter { it.kind == ch.kind && it.group !in excluded }
             if (favs.isNotEmpty()) out["★ Favorites"] = favs
-            for (l in repo.state.value.favLists[pl.id].orEmpty()) {
+            for (l in repo.state.value.favLists[repo.state.value.mine(pl.id)].orEmpty()) {
                 val items = l.ids.mapNotNull { idx.byId[it] }.filter { it.kind == ch.kind && it.group !in excluded }
                 if (items.isNotEmpty()) out["★ ${l.name}"] = items
             }
@@ -1339,7 +1340,7 @@ class PlayerActivity : ComponentActivity() {
         val finished = p.playbackState == Player.STATE_ENDED || pos > dur - 120_000
         val show = repo.currentSeries
         val meta = metaFor(ch)
-        val key = progressKey(pl.id, ch.id)
+        val key = progressKey(repo.state.value.mine(pl.id), ch.id)
         val kept = if (finished || pos < 30_000) 0 else pos
         repo.saveProgress(key, kept, dur, meta, show?.seriesId.orEmpty())
         // Android TV home screen row: never for hidden, locked or adult groups, nor in kids mode.
@@ -1352,7 +1353,7 @@ class PlayerActivity : ComponentActivity() {
             // Watched to the end: the next episode waits in Continue watching (and on the TV's
             // Play next row), and the show is followed for new episodes.
             nextEpisode()?.let { n ->
-                val nextKey = progressKey(pl.id, n.id)
+                val nextKey = progressKey(repo.state.value.mine(pl.id), n.id)
                 if (repo.state.value.progress[nextKey] == null) {
                     val nm = metaFor(n)
                     repo.saveProgress(nextKey, 1, 0, nm, show?.seriesId.orEmpty())
@@ -1963,7 +1964,7 @@ class PlayerActivity : ComponentActivity() {
         if (ch.kind != Kind.SERIES) return null
         val pl = repo.currentPlaylist ?: return null
         val sid = repo.currentSeries?.seriesId?.takeIf { it.isNotEmpty() }
-            ?: repo.state.value.progress[progressKey(pl.id, ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
+            ?: repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
         val show = sid?.let { "s:$it" } ?: episodeShow(ch.name).takeIf { it.isNotBlank() }?.let { "n:" + it.lowercase() } ?: return null
         return "${pl.id}|$show"
     }
@@ -2068,7 +2069,7 @@ class PlayerActivity : ComponentActivity() {
         if (ch.kind != Kind.SERIES || queue.size > 1) return
         val pl = repo.currentPlaylist ?: return
         val sid = repo.currentSeries?.seriesId?.takeIf { it.isNotEmpty() }
-            ?: repo.state.value.progress[progressKey(pl.id, ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
+            ?: repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
             ?: return
         val show = repo.currentSeries?.takeIf { it.seriesId == sid } ?: repo.currentIndex.series.firstOrNull { it.seriesId == sid }
         lifecycleScope.launch {
@@ -2218,7 +2219,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun isFavorite(ch: Channel): Boolean {
         val pl = repo.currentPlaylist ?: return false
-        return ch.id in repo.state.value.favorites[pl.id].orEmpty()
+        return ch.id in repo.state.value.favorites[repo.state.value.mine(pl.id)].orEmpty()
     }
 
     private fun toggleFavorite(ch: Channel) {

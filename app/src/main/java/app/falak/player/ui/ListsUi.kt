@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.DEFAULT_LIST
@@ -62,8 +63,8 @@ import app.falak.player.data.normName
 @Composable
 fun ItemSheet(vm: LibraryViewModel, state: AppState, ch: Channel, orderInList: String?, onDismiss: () -> Unit) {
     val p = vm.playlist ?: return
-    val lists = state.favLists[p.id].orEmpty()
-    val favIds = state.favorites[p.id].orEmpty()
+    val lists = state.favLists[state.mine(p.id)].orEmpty()
+    val favIds = state.favorites[state.mine(p.id)].orEmpty()
     var creating by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 

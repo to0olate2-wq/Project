@@ -8,6 +8,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
@@ -133,8 +134,8 @@ fun SidebarFrame(
 ) {
     val tv = isTv()
     val index = vm.index
-    val favIds = state.favorites[p.id].orEmpty()
-    val recentIds = state.recents[p.id].orEmpty()
+    val favIds = state.favorites[state.mine(p.id)].orEmpty()
+    val recentIds = state.recents[state.mine(p.id)].orEmpty()
     val counts = remember(index, favIds, recentIds) {
         mapOf(
             Section.LIVE to index.live.size,
@@ -207,9 +208,12 @@ fun SidebarFrame(
                     onRefresh = { vm.open(p, refresh = true) },
                     unread = state.notices.count { !it.read },
                     onNotices = { vm.screen = Screen.NOTICES },
-                    profiles = state.settings.kidsMode,
+                    profileButton = if (vm.profilesWanted(state)) {
+                        { ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true } }
+                    } else {
+                        null
+                    },
                     kids = vm.kidsActive,
-                    onProfiles = { vm.choosingProfile = true },
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -510,9 +514,9 @@ fun SidebarTopBar(
     onRefresh: () -> Unit,
     unread: Int = 0,
     onNotices: () -> Unit = {},
-    profiles: Boolean = false,
+    /** Who's watching (when there are profiles). */
+    profileButton: (@Composable () -> Unit)? = null,
     kids: Boolean = false,
-    onProfiles: () -> Unit = {},
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -564,7 +568,7 @@ fun SidebarTopBar(
             if (hasGuide && onMenu != null) {
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
-            if (profiles) ProfileButton(kids, onProfiles)
+            profileButton?.invoke()
             if (!kids) NoticeBell(unread, onNotices)
             IconButton(onClick = onRefresh, enabled = !loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)

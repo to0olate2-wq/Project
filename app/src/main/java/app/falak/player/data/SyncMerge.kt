@@ -133,7 +133,9 @@ object SyncMerge {
             },
             removed = s.sync.removed,
             parts = parts,
-            progress = s.progress.mapKeys { (k, _) -> sid(k.substringBefore('|')) + "|" + k.substringAfter('|') },
+            // Only the main profile syncs; other profiles stay on this device.
+            progress = s.progress.filterKeys { '@' !in it.substringBefore('|') }
+                .mapKeys { (k, _) -> sid(k.substringBefore('|')) + "|" + k.substringAfter('|') },
             progressGone = s.sync.progressGone,
         )
     }
@@ -265,16 +267,17 @@ object SyncMerge {
     /** [s] without playlist [id] and everything that belonged to it. */
     fun withoutPlaylist(s: AppState, id: String): AppState = s.copy(
         playlists = s.playlists.filterNot { it.id == id },
-        favorites = s.favorites - id,
-        favLists = s.favLists - id,
+        // The main profile's keys are the id; other profiles' are "id@profile".
+        favorites = s.favorites.filterKeys { it != id && !it.startsWith("$id@") },
+        favLists = s.favLists.filterKeys { it != id && !it.startsWith("$id@") },
         settings = s.settings.copy(
             guideOverrides = s.settings.guideOverrides - id,
             hiddenGroups = s.settings.hiddenGroups - id,
         ),
-        recents = s.recents - id,
+        recents = s.recents.filterKeys { it != id && !it.startsWith("$id@") },
         lastPlaylistId = s.lastPlaylistId.takeIf { it != id },
         notices = s.notices.filterNot { it.playlistId == id },
-        lastLive = s.lastLive - id,
+        lastLive = s.lastLive.filterKeys { it != id && !it.startsWith("$id@") },
     )
 
     /** The parts of two states that sync, for telling whether a merge changed anything. */

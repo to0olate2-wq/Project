@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
+import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.progressKey
@@ -60,8 +61,9 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val p = vm.playlist ?: return
     val ch = vm.details ?: return
     val info = vm.vodInfo
-    val watched = state.progress[progressKey(p.id, ch.id)]
-    val isFav = ch.id in state.favorites[p.id].orEmpty() || state.favLists[p.id].orEmpty().any { ch.id in it.ids }
+    val me = state.mine(p.id)
+    val watched = state.progress[progressKey(me, ch.id)]
+    val isFav = ch.id in state.favorites[me].orEmpty() || state.favLists[me].orEmpty().any { ch.id in it.ids }
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val playFocus = remember { FocusRequester() }
