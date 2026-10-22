@@ -468,10 +468,13 @@ class PlayerActivity : ComponentActivity() {
         repo.playerOpen = true
         FreezeWatch.note("player opened")
         if (::playerView.isInitialized) initPlayer()
+        handler.removeCallbacks(rateTick)
+        handler.postDelayed(rateTick, 1_000)
     }
 
     override fun onStop() {
         super.onStop()
+        handler.removeCallbacks(rateTick)
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
@@ -675,6 +678,9 @@ class PlayerActivity : ComponentActivity() {
         val ch = queue.getOrNull(index) ?: return
         val wanted = desiredEngine(ch)
         if (player == null || wanted != engine) startEngine(wanted)
+        // A new stream: its data rate is measured afresh.
+        rateSamples.clear()
+        rateBps = 0
         currentChannelId = ch.id
         FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
@@ -724,7 +730,7 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         val p = exo ?: return
-        val httpSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua)
+        val httpSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua).setTransferListener(transferMeter)
         if (ch.referrer.isNotBlank()) httpSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
         // DefaultDataSource adds local files (downloaded subtitles) on top of the network source.
         val dataSource = DefaultDataSource.Factory(this, httpSource)
@@ -866,13 +872,25 @@ class PlayerActivity : ComponentActivity() {
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
         )
 
+        // Live channels: no seek bar and no ±10 s, so nothing moves the show back or forward.
+        private val seekCommands = intArrayOf(
+            Player.COMMAND_SEEK_BACK,
+            Player.COMMAND_SEEK_FORWARD,
+            Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+        )
+        private fun liveNow() = queue.getOrNull(index)?.kind == Kind.LIVE
+
         override fun getAvailableCommands(): Player.Commands {
-            val base = super.getAvailableCommands()
-            return if (queue.size < 2) base else base.buildUpon().addAll(*zapCommands).build()
+            var b = super.getAvailableCommands().buildUpon()
+            if (queue.size > 1) b = b.addAll(*zapCommands)
+            if (liveNow()) b = b.removeAll(*seekCommands)
+            return b.build()
         }
 
-        override fun isCommandAvailable(command: Int): Boolean =
-            (queue.size > 1 && command in zapCommands) || super.isCommandAvailable(command)
+        override fun isCommandAvailable(command: Int): Boolean {
+            if (liveNow() && command in seekCommands) return false
+            return (queue.size > 1 && command in zapCommands) || super.isCommandAvailable(command)
+        }
 
         override fun hasNextMediaItem(): Boolean = queue.size > 1
         override fun hasPreviousMediaItem(): Boolean = queue.size > 1
@@ -1046,8 +1064,9 @@ class PlayerActivity : ComponentActivity() {
                         useTypedNumber()
                         swallowUpKey = event.keyCode
                         return true
-                    } else if (live && !controlsShown && event.repeatCount == 0) {
-                        openBrowser()
+                    } else if (!controlsShown && event.repeatCount == 0) {
+                        // OK always brings up the controls (subtitles, audio, channels…).
+                        playerView.showController()
                         swallowUpKey = event.keyCode
                         return true
                     }
@@ -1111,6 +1130,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** Films, episodes and replays that know their length can be sought; live TV can't. */
     private fun canSeek(): Boolean {
+        // Live channels never jump back or forward, even when the stream keeps a time window.
+        if (queue.getOrNull(index)?.kind == Kind.LIVE) return false
         val p = playerView.player ?: return false
         return p.duration > 0 && p.isCurrentMediaItemSeekable && !inPip
     }
@@ -1249,7 +1270,7 @@ class PlayerActivity : ComponentActivity() {
         // Android TV home screen row: never for hidden, locked or adult groups, nor in kids mode.
         val s = repo.state.value.settings
         val group = if (show != null && ch.kind == Kind.SERIES) show.group else ch.group
-        val onHome = !s.kidsMode && group !in repo.excludedGroups &&
+        val onHome = !repo.kidsActive && group !in repo.excludedGroups &&
             group !in s.lockedGroups[pl.id].orEmpty() && !app.falak.player.data.ADULT_GROUP.containsMatchIn(group)
         app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome)
     }
@@ -1586,16 +1607,10 @@ class PlayerActivity : ComponentActivity() {
 
     /** e.g. "Audio: Arabic, English · Subtitles: 2" */
     private fun trackSummary(): String {
-        val audios = vlc?.audioTracks()?.map { it.name }?.distinct()
-            ?: exo?.currentTracks?.groups?.filter { it.type == C.TRACK_TYPE_AUDIO }
-                ?.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { trackNames.getTrackName(g.getTrackFormat(it)) } }
-                ?.distinct()
-            ?: return ""
+        // The audio languages aren't listed (the Audio button has them); only whether there are subtitles.
+        if (vlc == null && exo == null) return ""
         val subs = countTracks(C.TRACK_TYPE_TEXT)
-        val parts = ArrayList<String>()
-        if (audios.size > 1) parts += "Audio: " + audios.take(4).joinToString(", ")
-        if (subs > 0) parts += "Subtitles: $subs"
-        return parts.joinToString("  ·  ")
+        return if (subs > 0) "Subtitles: $subs" else ""
     }
 
     // ---- player controls: layout & the remote's highlight ----
@@ -1806,6 +1821,43 @@ class PlayerActivity : ComponentActivity() {
         return true
     }
 
+    // ---- data rate ----
+
+    /** Bytes ExoPlayer has downloaded (VLC keeps its own count). */
+    private val bytesIn = java.util.concurrent.atomic.AtomicLong()
+    private val transferMeter = object : androidx.media3.datasource.TransferListener {
+        override fun onTransferInitializing(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+        override fun onTransferStart(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+        override fun onTransferEnd(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+        override fun onBytesTransferred(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+            if (isNetwork) bytesIn.addAndGet(bytesTransferred.toLong())
+        }
+    }
+    private val rateSamples = ArrayDeque<Pair<Long, Long>>()
+    private var rateBps = 0L
+
+    /** Once a second: how fast the stream is coming in, over the last few seconds. */
+    private val rateTick = object : Runnable {
+        override fun run() {
+            val total = vlc?.readBytes() ?: bytesIn.get()
+            val now = android.os.SystemClock.elapsedRealtime()
+            rateSamples.addLast(now to total)
+            while (rateSamples.size > 5) rateSamples.removeFirst()
+            val (t0, b0) = rateSamples.first()
+            rateBps = if (now > t0 && total >= b0) (total - b0) * 8_000 / (now - t0) else 0
+            // The banner on screen shows it as it settles.
+            val shown = bannerFor
+            if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
+            handler.postDelayed(this, 1_000)
+        }
+    }
+
+    /** "5.2 Mbps", "850 kbps"; null until there's something to show. */
+    private fun rateLabel(): String? {
+        if (rateSamples.size < 2 || rateBps <= 0) return null
+        return if (rateBps >= 1_000_000) String.format(java.util.Locale.US, "%.1f Mbps", rateBps / 1_000_000.0) else "${rateBps / 1_000} kbps"
+    }
+
     // ---- picture quality ----
 
     /** "4K", "1080p", "720p"… from the size of the video being played; null until it is known. */
@@ -1840,7 +1892,7 @@ class PlayerActivity : ComponentActivity() {
             add(MenuPlace("FAVORITES", "Favorites", Section.FAVORITES))
             if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
             // Kids mode: no way out to grown-up pages from the player.
-            if (!repo.state.value.settings.kidsMode) {
+            if (!repo.kidsActive) {
                 add(MenuPlace("NOTICES", "What's new"))
                 add(MenuPlace("SETTINGS", "Settings"))
             }
@@ -2009,8 +2061,9 @@ class PlayerActivity : ComponentActivity() {
             text.append("${index + 1}   ", ForegroundColorSpan(0xFFFF4F2E.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        // The picture's real quality, from the video being played (not from the channel's name).
-        qualityLabel()?.let { q ->
+        // The picture's real quality, from the video being played (not from the channel's name), and
+        // how fast the stream is coming in.
+        listOfNotNull(qualityLabel(), rateLabel()).joinToString(" · ").takeIf { it.isNotEmpty() }?.let { q ->
             text.append("   ")
             val start = text.length
             text.append(q)

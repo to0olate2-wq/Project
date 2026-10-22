@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
         // Registered first, so every page's own Back handling comes before it.
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                moveTaskToBack(true)
+                vm.confirmExit = true
             }
         })
         handleOpen(intent)
@@ -147,7 +147,10 @@ class MainActivity : ComponentActivity() {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
                         val tv = isTv()
-                        AnimatedContent(
+                        // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
+                        if (vm.choosingProfile && s.kidsMode) {
+                            ProfilePicker(vm, state, onBack = { vm.confirmExit = true })
+                        } else AnimatedContent(
                             targetState = vm.screen,
                             transitionSpec = {
                                 if (tv) {
@@ -168,7 +171,7 @@ class MainActivity : ComponentActivity() {
                             label = "screens",
                         ) { screen ->
                             // Kids mode: Settings, playlists, groups and What's new need the PIN.
-                            if (s.kidsMode && screen in KIDS_LOCKED && !vm.kidsUnlocked) {
+                            if (vm.kidsActive && screen in KIDS_LOCKED && !vm.kidsUnlocked) {
                                 KidsLock(vm, state)
                                 return@AnimatedContent
                             }
@@ -183,6 +186,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.SYNC -> SyncScreen(vm, state)
                                 Screen.NOTICES -> NoticesScreen(vm, state, onPlay = ::play)
                                 Screen.KIDS -> KidsScreen(vm, state)
+                                Screen.LOCKS -> LocksScreen(vm, state)
                             }
                         }
                     }
@@ -193,11 +197,23 @@ class MainActivity : ComponentActivity() {
                     vm.guideFixFor?.let { ch -> GuideFixDialog(vm, ch) { vm.guideFixFor = null } }
                     vm.crashReport?.let { report -> CrashDialog(report) { vm.crashReport = null } }
                     // A fresh start: the channel watched last plays again.
-                    vm.autoPlay?.let { (list, ch) ->
+                    // (Once the profile is chosen; the Kids profile only gets its own groups.)
+                    vm.autoPlay?.takeIf { !(vm.choosingProfile && s.kidsMode) }?.let { (list, ch) ->
                         LaunchedEffect(ch.id) {
                             vm.autoPlay = null
-                            play(list, ch)
+                            if (ch.group.isEmpty() || ch.group !in vm.currentExclusions()) play(list, ch)
                         }
+                    }
+                    if (vm.confirmExit) {
+                        ExitDialog(
+                            onStay = { vm.confirmExit = false },
+                            onExit = {
+                                vm.confirmExit = false
+                                // Closed on purpose: next time it opens like a fresh start (last channel, profiles).
+                                repo.autoPlayChecked = false
+                                finish()
+                            },
+                        )
                     }
                     // Back from a page opened in the player's Menu: play again what was playing.
                     vm.resumePlayerAt?.let { i ->
@@ -278,7 +294,7 @@ class MainActivity : ComponentActivity() {
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
-        Screen.GROUPS, Screen.SYNC, Screen.KIDS -> 4
+        Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS -> 4
     }
 
     private fun play(list: List<Channel>, channel: Channel) {

@@ -74,9 +74,48 @@ fun KidsLock(vm: LibraryViewModel, state: AppState) {
     )
 }
 
-/** Choose the groups kids may see in the open playlist; everything else is hidden in kids mode. */
+/** Choose the groups kids may see in the open playlist; everything else is hidden in the Kids profile. */
 @Composable
 fun KidsScreen(vm: LibraryViewModel, state: AppState) {
+    val p = vm.playlist
+    GroupPickerPage(
+        vm = vm,
+        title = "Groups for kids",
+        note = "The Kids profile shows only the ticked groups. Settings and the other pages need the PIN.",
+        chosen = p?.let { state.settings.kidsGroups[it.id] }.orEmpty().toSet(),
+        countLabel = "for kids",
+        suggest = ::looksForKids,
+        onSet = { groups, on -> vm.setKidsGroups(groups, allowed = on) },
+    )
+}
+
+/** Choose the groups that need the PIN in the open playlist. */
+@Composable
+fun LocksScreen(vm: LibraryViewModel, state: AppState) {
+    val p = vm.playlist
+    GroupPickerPage(
+        vm = vm,
+        title = "Locked groups",
+        note = "Ticked groups need the PIN before they open." +
+            if (state.settings.lockAdult) " Adult groups are locked anyway." else "",
+        chosen = p?.let { state.settings.lockedGroups[it.id] }.orEmpty().toSet(),
+        countLabel = "locked",
+        suggest = { app.falak.player.data.ADULT_GROUP.containsMatchIn(it) },
+        onSet = { groups, on -> vm.setLockedGroups(groups, locked = on) },
+    )
+}
+
+/** A page of the playlist's groups with a tick each, a search box and "suggested" ones first. */
+@Composable
+private fun GroupPickerPage(
+    vm: LibraryViewModel,
+    title: String,
+    note: String,
+    chosen: Set<String>,
+    countLabel: String,
+    suggest: (String) -> Boolean,
+    onSet: (Collection<String>, Boolean) -> Unit,
+) {
     val p = vm.playlist
     val back: () -> Unit = { vm.screen = Screen.SETTINGS }
     BackHandler { back() }
@@ -88,26 +127,20 @@ fun KidsScreen(vm: LibraryViewModel, state: AppState) {
     val kinds = remember(index) { Kind.entries.filter { index.groupsOf(it).isNotEmpty() } }
     var kind by remember { mutableStateOf(kinds.firstOrNull() ?: Kind.LIVE) }
     var query by remember { mutableStateOf("") }
-    val allowed = state.settings.kidsGroups[p.id].orEmpty().toSet()
     val groups = index.groupsOf(kind)
     val names = remember(groups, query) {
-        // Groups that look made for children come first.
+        // Suggested groups come first.
         groups.keys
             .filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
-            .sortedByDescending { looksForKids(it) }
+            .sortedByDescending { suggest(it) }
     }
-    val allowedHere = groups.keys.count { it in allowed }
-    val suggested = remember(groups) { groups.keys.filter { looksForKids(it) } }
+    val chosenHere = groups.keys.count { it in chosen }
+    val suggested = remember(groups) { groups.keys.filter { suggest(it) } }
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader("Groups for kids", onBack = back, subtitle = p.name)
+        PageHeader(title, onBack = back, subtitle = p.name)
         Spacer(Modifier.height(10.dp))
-        Text(
-            "In kids mode only the ticked groups show. Everything else, Settings included, needs the PIN.",
-            fontFamily = Sans,
-            fontSize = 13.sp,
-            color = Muted,
-        )
+        Text(note, fontFamily = Sans, fontSize = 13.sp, color = Muted)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             kinds.forEach { k ->
@@ -143,24 +176,24 @@ fun KidsScreen(vm: LibraryViewModel, state: AppState) {
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "$allowedHere of ${groups.size} for kids",
+                "$chosenHere of ${groups.size} $countLabel",
                 style = Tabular.copy(fontSize = 13.sp),
                 color = Muted,
                 modifier = Modifier.weight(1f),
             )
             if (query.isBlank() && suggested.isNotEmpty()) {
-                GhostButton("Suggested") { vm.setKidsGroups(suggested, allowed = true) }
+                GhostButton("Suggested") { onSet(suggested, true) }
                 Spacer(Modifier.width(8.dp))
             }
-            GhostButton(if (query.isBlank()) "None" else "Untick these") { vm.setKidsGroups(names, allowed = false) }
+            GhostButton(if (query.isBlank()) "None" else "Untick these") { onSet(names, false) }
             Spacer(Modifier.width(8.dp))
-            GhostButton(if (query.isBlank()) "All" else "Tick these") { vm.setKidsGroups(names, allowed = true) }
+            GhostButton(if (query.isBlank()) "All" else "Tick these") { onSet(names, true) }
         }
         Spacer(Modifier.height(8.dp))
         Rule()
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             items(names, key = { it }) { g ->
-                val on = g in allowed
+                val on = g in chosen
                 val shape = RoundedCornerShape(6.dp)
                 Row(
                     Modifier
@@ -168,7 +201,7 @@ fun KidsScreen(vm: LibraryViewModel, state: AppState) {
                         .animateItem()
                         .focusRing(shape)
                         .clip(shape)
-                        .clickable { vm.setKidsGroups(listOf(g), allowed = !on) }
+                        .clickable { onSet(listOf(g), !on) }
                         .padding(vertical = 12.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -192,7 +225,7 @@ fun KidsScreen(vm: LibraryViewModel, state: AppState) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    if (looksForKids(g)) {
+                    if (suggest(g)) {
                         Text("Suggested", fontFamily = Sans, fontSize = 11.sp, color = Signal, modifier = Modifier.padding(end = 10.dp))
                     }
                     Text("${groups[g]?.size ?: 0}", style = Tabular.copy(fontSize = 12.sp), color = Faint)

@@ -108,7 +108,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val windowEnd = windowStart + if (day == 0) 28 * HALF_HOUR else 48 * HALF_HOUR
     val totalWidth = xOf(windowEnd, windowStart)
     val locked = rememberLockedGroups(vm, state)
-    val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.playlist?.id, vm.index) {
+    val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.kidsActive, vm.playlist?.id, vm.index) {
         vm.playlist?.let { state.settings.hiddenGroups[it.id] }.orEmpty().toHashSet().apply { addAll(vm.kidsHidden(state.settings, vm.index)) }
     }
     val group = vm.group

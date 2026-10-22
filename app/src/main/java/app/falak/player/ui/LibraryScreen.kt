@@ -115,7 +115,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     var newList by remember { mutableStateOf(false) }
     val locked = rememberLockedGroups(vm, state)
     // Hidden groups, plus (in kids mode) every group not chosen for kids.
-    val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, p.id, index) {
+    val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.kidsActive, p.id, index) {
         state.settings.hiddenGroups[p.id].orEmpty().toHashSet().apply { addAll(vm.kidsHidden(state.settings, index)) }
     }
     val excluded = remember(locked, hidden) { if (hidden.isEmpty()) locked else locked + hidden }
@@ -366,19 +366,19 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         onGrid = { vm.setGridView(shown, it) },
                                     )
                                     if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
-                                        FilterChips(groupMap, visibleTotal, favOfKind.size, group, locked, selectGroup, { if (!state.settings.kidsMode) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                        FilterChips(groupMap, visibleTotal, favOfKind.size, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                     }
                                     content(Modifier.weight(1f).fillMaxWidth())
                                 }
                             } else if (wide && groupsVisible) {
                                 Row(Modifier.fillMaxSize()) {
-                                    GroupColumn(groupMap, base.size, group, locked, selectGroup, { if (!state.settings.kidsMode) groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
+                                    GroupColumn(groupMap, base.size, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
                                     Spacer(Modifier.width(20.dp))
                                     content(Modifier.weight(1f).fillMaxHeight())
                                 }
                             } else {
                                 Column(Modifier.fillMaxSize()) {
-                                    if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { if (!state.settings.kidsMode) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                     content(Modifier.weight(1f).fillMaxWidth())
                                 }
                             }
@@ -429,7 +429,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             }
                         }
                     }
-                    if (state.settings.kidsMode) KidsBadge() else NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
+                    if (state.settings.kidsMode) ProfileButton(vm.kidsActive) { vm.choosingProfile = true }
+                    if (!vm.kidsActive) NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
                     IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
                         Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
                     }

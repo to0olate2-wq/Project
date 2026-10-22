@@ -149,22 +149,6 @@ private fun noticeAge(at: Long): String {
     }
 }
 
-/** Shown in place of the bell while kids mode is on, so grown-ups can tell at a glance. */
-@Composable
-fun KidsBadge() {
-    Text(
-        "Kids",
-        fontFamily = Sans,
-        fontWeight = FontWeight.Bold,
-        fontSize = 12.sp,
-        color = Color.White,
-        modifier = Modifier
-            .padding(horizontal = 8.dp)
-            .background(Signal, CircleShape)
-            .padding(horizontal = 10.dp, vertical = 3.dp),
-    )
-}
-
 /** The bell in the top bar, with how many What's new entries haven't been seen. */
 @Composable
 fun NoticeBell(unread: Int, onClick: () -> Unit) {

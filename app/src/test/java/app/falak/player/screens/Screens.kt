@@ -529,8 +529,20 @@ class PhoneHiddenGroupsScreens : ScreenshotBase() {
 class PhoneKidsScreens : ScreenshotBase() {
     // Kids mode: only the chosen groups, and a Kids badge in place of the bell.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneKids() = mainScreens("phone", look = "sidebar", kids = listOf("Kids", "Music"), kidsOn = true) { _, shoot ->
+    fun phoneKids() = mainScreens("phone", look = "sidebar", kids = listOf("Kids", "Music"), kidsOn = true) { vm, shoot ->
+        // Kids mode on: the app opens on "Who's watching?".
+        shoot("phone-19-profiles")
+        vm.chooseProfile(kids = true)
         shoot("phone-13-kids-home")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvProfilesScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvProfiles() = mainScreens("tv", kids = listOf("Kids"), kidsOn = true) { _, shoot ->
+        shoot("tv-21-profiles")
     }
 }
 

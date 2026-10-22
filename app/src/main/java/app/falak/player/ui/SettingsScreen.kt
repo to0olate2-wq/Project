@@ -86,11 +86,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
     val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS }
-    // Group names come from the pre-built index (walking every channel here made Settings slow to open).
     val index = vm.index
-    val groups = remember(index) {
-        LinkedHashSet<String>().apply { app.falak.player.data.Kind.entries.forEach { addAll(index.groupsOf(it).keys) } }.toList()
-    }
     LaunchedEffect(index, p?.extraEpg) { vm.refreshGuideSuggestions() }
     val lockedHere = if (p != null) s.lockedGroups[p.id].orEmpty() else emptyList()
 
@@ -389,21 +385,22 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     guarded { vm.updateSettings { it.copy(lockAdult = !it.lockAdult) } }
                 }
             }
-            if (p != null && groups.isNotEmpty()) {
+            if (p != null) {
+                // The groups themselves are chosen on their own page, not listed here.
                 item {
-                    Text(
-                        "Lock groups in ${p.name}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp),
-                    )
-                }
-                items(groups, key = { "lock:$it" }) { g ->
-                    CheckRow(g, g in lockedHere) { guarded { vm.toggleLockedGroup(g) } }
+                    ClickRow(
+                        "Locked groups",
+                        when (lockedHere.size) {
+                            0 -> "None in ${p.name}. Choose groups that need the PIN"
+                            1 -> "1 group in ${p.name} needs the PIN"
+                            else -> "${lockedHere.size} groups in ${p.name} need the PIN"
+                        },
+                    ) { guarded { vm.screen = Screen.LOCKS } }
                 }
             }
         }
 
-        item { SectionTitle("Kids mode") }
+        item { SectionTitle("Kids profile") }
         if (p == null) {
             item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
         } else {
@@ -411,34 +408,39 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             item {
                 SwitchRow(
                     "Kids mode",
-                    if (s.kidsMode) "On: only the chosen groups show; Settings needs the PIN" else "Show only the groups you choose; Settings stays behind the PIN",
+                    if (s.kidsMode) {
+                        "On: the app asks who's watching when it opens. The Kids profile shows only the groups you choose"
+                    } else {
+                        "Adds a Kids profile you can pick when the app opens"
+                    },
                     s.kidsMode,
                 ) {
                     if (s.kidsMode) {
-                        vm.setKidsMode(false)
+                        guarded { vm.setKidsMode(false) }
                     } else {
                         // First time: start from the groups that look made for children.
                         if (kidsHere.isEmpty()) vm.setKidsGroups(vm.kidsSuggestions(), allowed = true)
-                        when {
-                            !pinSet -> { kidsAfterPin = true; editPin = true }
-                            kidsHere.isEmpty() && vm.kidsSuggestions().isEmpty() -> vm.screen = Screen.KIDS
-                            else -> {
-                                vm.kidsUnlocked = true
-                                vm.setKidsMode(true)
-                            }
+                        if (!pinSet) {
+                            kidsAfterPin = true
+                            editPin = true
+                        } else {
+                            guarded { vm.setKidsMode(true) }
                         }
                     }
                 }
             }
-            item {
-                ClickRow(
-                    "Groups for kids",
-                    when (kidsHere.size) {
-                        0 -> "None chosen yet in ${p.name}"
-                        1 -> "1 group in ${p.name}"
-                        else -> "${kidsHere.size} groups in ${p.name}"
-                    },
-                ) { vm.screen = Screen.KIDS }
+            // Only while it's on: which groups the Kids profile shows (on its own page).
+            if (s.kidsMode) {
+                item {
+                    ClickRow(
+                        "Groups for kids",
+                        when (kidsHere.size) {
+                            0 -> "None chosen yet: the Kids profile shows nothing"
+                            1 -> "1 group in ${p.name}"
+                            else -> "${kidsHere.size} groups in ${p.name}"
+                        },
+                    ) { guarded { vm.screen = Screen.KIDS } }
+                }
             }
         }
 
@@ -569,11 +571,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 if (newPin.isEmpty()) {
                     // No PIN, no lock: kids mode can't stay on without one.
                     vm.setKidsMode(false)
-                } else if (kidsAfterPin && vm.kidsReady()) {
-                    vm.kidsUnlocked = true
-                    vm.setKidsMode(true)
                 } else if (kidsAfterPin) {
-                    vm.screen = Screen.KIDS
+                    vm.setKidsMode(true)
                 }
                 kidsAfterPin = false
             },
@@ -957,27 +956,6 @@ private fun ClickRow(title: String, subtitle: String, onClick: () -> Unit) {
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun CheckRow(title: String, checked: Boolean, onToggle: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
-    Row(
-        Modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onToggle).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = null,
-            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                checkedColor = Signal,
-                uncheckedColor = Faint,
-                checkmarkColor = androidx.compose.ui.graphics.Color.White,
-            ),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(title, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 12.dp))
     }
 }
 

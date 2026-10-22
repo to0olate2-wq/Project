@@ -38,7 +38,6 @@ class VlcPlayer(
         context.applicationContext,
         arrayListOf(
             "--http-reconnect",
-            "--no-stats",
             // Never look up cover art or other metadata online (VLC's default, made explicit):
             // the app only talks to the servers in the user's own playlists.
             "--no-metadata-network-access",
@@ -105,6 +104,19 @@ class VlcPlayer(
         if (playWhenReady) vlc.play()
         if (speed != 1f) vlc.rate = speed
         invalidateState()
+    }
+
+    /** Bytes read from the network so far for the current stream (for the data rate), or null. */
+    fun readBytes(): Long? {
+        if (released) return null
+        val m = vlc.media ?: return null
+        return try {
+            m.stats?.readBytes?.toLong()?.let { if (it < 0) it + (1L shl 32) else it }
+        } catch (e: Exception) {
+            null
+        } finally {
+            m.release()
+        }
     }
 
     // ---- tracks ----

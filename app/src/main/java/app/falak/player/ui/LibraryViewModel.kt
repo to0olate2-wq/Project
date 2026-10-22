@@ -36,10 +36,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS }
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -671,12 +671,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Hidden groups of the open playlist. */
     private fun hiddenNow(): Set<String> =
-        playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet().apply { addAll(kidsHidden()) }
+        playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet()
 
     /** Kids mode: every group of the open playlist that wasn't chosen for kids. */
     fun kidsHidden(s: Settings = state.value.settings, idx: LibraryIndex = index): Set<String> {
         val p = playlist ?: return emptySet()
-        if (!s.kidsMode) return emptySet()
+        if (!s.kidsMode || !kidsActive) return emptySet()
         val allowed = s.kidsGroups[p.id].orEmpty().toHashSet()
         val out = HashSet<String>()
         for (kind in Kind.entries) idx.groupsOf(kind).keys.filterTo(out) { it !in allowed }
@@ -686,6 +686,37 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Kids mode is on and the PIN was given for this visit to Settings (or another locked page). */
     var kidsUnlocked by mutableStateOf(false)
 
+    /** The Kids profile is the one watching (only when kids mode is on in Settings). */
+    var kidsActive by mutableStateOf(false)
+        private set
+
+    /** "Who's watching?" is on screen: each time the app opens while kids mode is on. */
+    var choosingProfile by mutableStateOf(false)
+
+    /** Back on the first page: "Leave The Player?" */
+    var confirmExit by mutableStateOf(false)
+
+    fun chooseProfile(kids: Boolean) {
+        kidsActive = kids
+        repo.kidsActive = kids
+        repo.excludedGroups = currentExclusions()
+        choosingProfile = false
+        kidsUnlocked = false
+        group = null
+        query = ""
+        if (kids && screen in KIDS_LOCKED) screen = if (playlist != null) Screen.LIBRARY else Screen.PLAYLISTS
+    }
+
+    /** Locks or unlocks groups of the open playlist behind the PIN. */
+    fun setLockedGroups(groups: Collection<String>, locked: Boolean) {
+        val p = playlist ?: return
+        updateSettings { s ->
+            val cur = LinkedHashSet(s.lockedGroups[p.id].orEmpty())
+            if (locked) cur += groups else cur -= groups.toSet()
+            s.copy(lockedGroups = s.lockedGroups + (p.id to cur.toList()))
+        }
+    }
+
     /** The guide's preview channel, and its programme search (null = closed). */
     var guidePreview by mutableStateOf<Channel?>(null)
     var guideSearch by mutableStateOf<String?>(null)
@@ -693,7 +724,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Kids mode on also empties the TV home screen's "Play next" row of grown-up things. */
     fun setKidsMode(on: Boolean) {
         updateSettings { it.copy(kidsMode = on) }
-        if (on) app.falak.player.data.WatchNext.clear(getApplication())
+        if (on) {
+            app.falak.player.data.WatchNext.clear(getApplication())
+        } else {
+            // No kids profile any more: back to the normal app, no profile question.
+            kidsActive = false
+            repo.kidsActive = false
+            choosingProfile = false
+        }
     }
 
     /**
@@ -736,12 +774,6 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Groups whose names look made for children: a starting point the first time kids mode is set up. */
     fun kidsSuggestions(): List<String> =
         Kind.entries.flatMap { k -> index.groupsOf(k).keys.filter { looksForKids(it) } }
-
-    /** Kids mode can only be switched on with a PIN and at least one group to show. */
-    fun kidsReady(s: Settings = state.value.settings): Boolean {
-        val p = playlist ?: return false
-        return s.pin.isNotEmpty() && s.kidsGroups[p.id].orEmpty().isNotEmpty()
-    }
 
     /** Live channels outside hidden groups: the only ones the guide is matched and kept for. */
     private fun guideTargets(): List<Channel> {
@@ -977,6 +1009,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         renameAddressNamedPlaylists()
         crashReport = repo.takeCrashReport()
         val s = state.value
+        // Kids mode on: ask who's watching each time the app opens.
+        choosingProfile = s.settings.kidsMode
+        repo.kidsActive = false
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
         if (crashReport == null && s.settings.openLast) {
             s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }

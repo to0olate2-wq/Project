@@ -61,6 +61,9 @@ class Repository(private val context: Context) {
     /** The player is on screen: heavy background work (playlist refresh) waits until it closes. */
     @Volatile var playerOpen = false
 
+    /** The Kids profile is watching (the player hides grown-up pages from its Menu). */
+    @Volatile var kidsActive = false
+
     /** The guide is playing a small preview (counts as playing for background work). */
     @Volatile var previewOpen = false
 
