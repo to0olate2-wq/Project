@@ -54,6 +54,13 @@ The app only makes network connections needed for what you ask it to do:
   open, they find each other on your home network and exchange that data directly, encrypted with
   a key only your linked devices have. Nothing goes through the Internet or to the developer.
   Unlinking stops it.
+- **Phone remote** (only after you pair a phone). While the app is open, it answers paired phones
+  on your home network so they can work as a remote and keyboard and start channels, films and
+  series. Phones pair with a code shown on the TV; the TV keeps only a fingerprint of each
+  phone's key. Nothing goes through the Internet or to the developer. Remove a phone in
+  Settings → Phone remote.
+- **Prayer times** (off by default). Worked out on the device from its time zone; nothing is
+  looked up online.
 - **Android TV home screen.** On Android TV, films and episodes you've started appear in the
   system's Continue watching / Play next row. That list stays on the TV; it never includes hidden,
   locked or adult groups, or anything while kids mode is on.

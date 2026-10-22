@@ -10,6 +10,8 @@ import android.os.Handler
 import android.os.Looper
 import app.falak.player.data.Repository
 import app.falak.player.sync.AutoSync
+import app.falak.player.sync.RemoteBridge
+import app.falak.player.sync.RemoteServer
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -26,9 +28,23 @@ class FalakApp : Application(), ImageLoaderFactory {
 
     /** Sync with linked devices; runs only while the app is on screen and sync is on. */
     val autoSync: AutoSync by lazy { AutoSync(this, repo) }
+
+    /** The phone remote's server: while the app is on screen and a phone is paired (or pairing). */
+    val remote: RemoteServer by lazy { RemoteServer(this, repo) }
+
+    /** Settings → Phone remote is open (pairing a phone). */
+    var pairingRemote = false
+        set(value) {
+            field = value
+            refreshRemote()
+        }
     private var visible = 0
     private val main = Handler(Looper.getMainLooper())
-    private val stopSync = Runnable { refreshSync() }
+    private val stopSync = Runnable {
+        refreshSync()
+        refreshRemote()
+        PrayerAlerts.schedule(this, repo, visible = false)
+    }
 
     override fun newImageLoader(): ImageLoader = imageLoaderFor(this)
 
@@ -61,6 +77,8 @@ class FalakApp : Application(), ImageLoaderFactory {
                 visible++
                 main.removeCallbacks(stopSync)
                 refreshSync()
+                refreshRemote()
+                if (visible == 1) PrayerAlerts.schedule(this@FalakApp, repo, visible = true)
             }
 
             override fun onActivityStopped(activity: Activity) {
@@ -70,14 +88,35 @@ class FalakApp : Application(), ImageLoaderFactory {
             }
 
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityResumed(activity: Activity) {}
-            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) {
+                RemoteBridge.activity = java.lang.ref.WeakReference(activity)
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                if (RemoteBridge.activity?.get() === activity) RemoteBridge.activity = null
+            }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
         })
         // Switched on or off, linked or unlinked.
         MainScope().launch {
             repo.state.map { it.settings.syncOn to it.sync.key }.distinctUntilChanged().collect { refreshSync() }
+        }
+        MainScope().launch {
+            repo.state.map { it.remotes.isNotEmpty() }.distinctUntilChanged().collect { refreshRemote() }
+        }
+        // Prayer reminders switched on or off, or another method chosen.
+        MainScope().launch {
+            repo.state.map { Triple(it.settings.prayerMode, it.settings.prayerMethod, it.settings.prayerAsr) }.distinctUntilChanged()
+                .collect { PrayerAlerts.schedule(this@FalakApp, repo, visible > 0) }
+        }
+    }
+
+    private fun refreshRemote() {
+        if (visible > 0 && (pairingRemote || repo.state.value.remotes.isNotEmpty())) {
+            remote.start()
+        } else if (remote.running) {
+            remote.stop()
         }
     }
 
@@ -118,3 +157,6 @@ val Context.repo: Repository
 
 val Context.autoSync: AutoSync
     get() = (applicationContext as FalakApp).autoSync
+
+val Context.falakApp: FalakApp
+    get() = applicationContext as FalakApp

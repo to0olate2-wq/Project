@@ -199,6 +199,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
+    // A search typed elsewhere (the phone remote) opens the search here too.
+    LaunchedEffect(vm.query.isNotEmpty()) { if (vm.query.isNotEmpty()) searching = true }
     // The sidebar look's search bar is always there: "searching" just means something is typed.
     val searchOn = if (sidebarLook) vm.query.isNotEmpty() else searching
     val listState = vm.listStateFor(section)

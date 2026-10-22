@@ -426,6 +426,10 @@ class PlayerActivity : ComponentActivity() {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                         SkipIntroButton(skipIntroShown && upNext == null) { skipIntro() }
                         UpNextCard(upNext, upNextLabel, upNextSecs, onPlay = { playUpNext() }, onHide = { dismissUpNext() })
+                        val prayer by app.falak.player.PrayerAlerts.current.collectAsState()
+                        PrayerBanner(prayer, paused = prayerPaused) { endPrayerPause(resume = false) }
+                        // Paused for a while: the ambient screen, over everything.
+                        if (ambientOn) AmbientScreen(ambientSlides, paused = queue.getOrNull(index)?.name) { hideAmbient() }
                     }
                 }
             }
@@ -498,10 +502,14 @@ class PlayerActivity : ComponentActivity() {
         if (::playerView.isInitialized) initPlayer()
         handler.removeCallbacks(rateTick)
         handler.postDelayed(rateTick, 1_000)
+        prayerJob?.cancel()
+        prayerJob = lifecycleScope.launch { app.falak.player.PrayerAlerts.current.collect { onPrayer(it) } }
     }
 
     override fun onStop() {
         super.onStop()
+        repo.nowPlaying = null
+        prayerJob?.cancel()
         handler.removeCallbacks(rateTick)
         repo.playerOpen = false
         FreezeWatch.note("player closing")
@@ -727,6 +735,13 @@ class PlayerActivity : ComponentActivity() {
         upNextSecs = null
         skipIntroShown = false
         ensureSeriesQueue(ch)
+        // For the phone remote's "now playing" line.
+        repo.nowPlaying = ch.name to if (ch.kind == Kind.LIVE) {
+            val now = System.currentTimeMillis()
+            repo.epg.value[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop }?.title.orEmpty()
+        } else {
+            ch.info.ifBlank { ch.group }
+        }
         currentChannelId = ch.id
         FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
@@ -1084,6 +1099,14 @@ class PlayerActivity : ComponentActivity() {
             swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
             return true
         }
+        // The ambient screen: any key just brings the picture back.
+        if (ambientOn) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                hideAmbient()
+                swallowUpKey = event.keyCode
+            }
+            return true
+        }
         // The Menu takes the remote while it is open; Back closes it.
         if (menuOpen) {
             if (event.action == KeyEvent.ACTION_DOWN &&
@@ -1112,6 +1135,12 @@ class PlayerActivity : ComponentActivity() {
             val ok = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER ||
                 event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
             val back = event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE
+            // Paused for a prayer: OK carries on, Back just closes the banner.
+            if (app.falak.player.PrayerAlerts.current.value != null && (ok || back)) {
+                endPrayerPause(resume = ok)
+                swallowUpKey = event.keyCode
+                return true
+            }
             if (upNext != null && (ok || back)) {
                 if (ok) playUpNext() else dismissUpNext()
                 swallowUpKey = event.keyCode
@@ -1231,6 +1260,22 @@ class PlayerActivity : ComponentActivity() {
         upNext = next
         upNextLabel = "S1 E3"
         upNextSecs = 8
+    }
+
+    /** Screenshot tests: the ambient screen over a paused video. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewAmbient() {
+        val idx = repo.currentIndex
+        ambientSlides = ambientSlides(idx.movies, idx.series, emptyMap(), emptySet())
+        ambientOn = true
+    }
+
+    /** Screenshot tests: paused for a prayer, with its banner. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewPrayer() {
+        playerView.hideController()
+        prayerPaused = true
+        app.falak.player.PrayerAlerts.showForTest(app.falak.player.PrayerAlerts.Alert("Maghrib", "5:45 PM", 1L))
     }
 
     /** Finger position when a sideways swipe started (−1 = not swiping). */
@@ -2088,11 +2133,72 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    // ---- ambient screen ----
+
+    private var ambientOn by mutableStateOf(false)
+    private var ambientSlides: List<AmbientSlide> = emptyList()
+    private var pausedSecs = 0
+
+    /** Once a second: paused long enough (and nothing else on screen)? */
+    private fun ambientTick() {
+        val p = player
+        val resting = p != null && !p.playWhenReady && p.playbackState != Player.STATE_IDLE && p.playbackState != Player.STATE_ENDED &&
+            !browserOpen && !menuOpen && upNext == null && !inPip
+        pausedSecs = if (resting) pausedSecs + 1 else 0
+        if (!ambientOn && pausedSecs >= AMBIENT_PAUSED_S && repo.state.value.settings.ambient) {
+            val idx = repo.currentIndex
+            ambientSlides = ambientSlides(idx.movies, idx.series, emptyMap(), repo.excludedGroups)
+            ambientOn = true
+            FreezeWatch.note("ambient screen")
+        }
+    }
+
+    private fun hideAmbient() {
+        ambientOn = false
+        pausedSecs = 0
+        playerView.showController()
+    }
+
+    // ---- prayer times ----
+
+    /** Paused by a prayer reminder (Settings → Prayer times → Reminder and pause). */
+    private var prayerPaused by mutableStateOf(false)
+    private var prayerSeen = 0L
+
+    /** A new reminder: pause what's playing, if that's what was chosen. */
+    private fun onPrayer(alert: app.falak.player.PrayerAlerts.Alert?) {
+        if (alert == null) {
+            prayerPaused = false
+            return
+        }
+        if (alert.at == prayerSeen) return
+        prayerSeen = alert.at
+        val p = player ?: return
+        if (repo.state.value.settings.prayerMode == "pause" && p.isPlaying) {
+            p.pause()
+            prayerPaused = true
+            FreezeWatch.note("paused for prayer")
+        }
+    }
+
+    private fun endPrayerPause(resume: Boolean) {
+        val wasPaused = prayerPaused
+        prayerPaused = false
+        app.falak.player.PrayerAlerts.dismiss()
+        if (resume && wasPaused) {
+            val p = player ?: return
+            // Live TV picks up where the channel is now, not where it stopped.
+            if (queue.getOrNull(index)?.kind == Kind.LIVE) p.seekToDefaultPosition()
+            p.play()
+        }
+    }
+
     // ---- night sound ----
 
     /** ExoPlayer's night-sound stage (null with VLC or when it's set to Off). */
     private var nightSound: app.falak.player.player.NightSound? = null
     private var nightChecks = 0
+    private var prayerJob: kotlinx.coroutines.Job? = null
 
     /** Night sound wanted right now: always, never, or from sunset to sunrise where the user is. */
     private fun nightNow(): Boolean = when (repo.state.value.settings.nightSound) {
@@ -2129,6 +2235,7 @@ class PlayerActivity : ComponentActivity() {
             val shown = bannerFor
             if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
             seriesTick()
+            ambientTick()
             // Once a minute: night sound follows sunset and sunrise while something plays.
             if (++nightChecks % 60 == 0) nightSound?.enabled = nightNow()
             handler.postDelayed(this, 1_000)

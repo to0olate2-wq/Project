@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
         })
         handleOpen(intent)
         askForNotificationsOnce()
+        app.falak.player.sync.RemoteBridge.handler = remoteHandler
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
@@ -188,8 +189,33 @@ class MainActivity : ComponentActivity() {
                                 Screen.KIDS -> KidsScreen(vm, state)
                                 Screen.LOCKS -> LocksScreen(vm, state)
                                 Screen.PROFILES -> ProfilesScreen(vm, state)
+                                Screen.REMOTE -> RemoteScreen(vm, state)
+                                Screen.PRAYER -> PrayerScreen(vm, state)
                             }
                         }
+                        // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
+                        val prayer by app.falak.player.PrayerAlerts.current.collectAsStateWithLifecycle()
+                        PrayerBanner(prayer, paused = false) { app.falak.player.PrayerAlerts.dismiss() }
+                    }
+                    // Left alone for a while on the lists: the ambient screen.
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            kotlinx.coroutines.delay(15_000)
+                            val idle = android.os.SystemClock.elapsedRealtime() - lastInput
+                            val calm = vm.screen in AMBIENT_SCREENS && !vm.choosingProfile && vm.guidePreview == null &&
+                                vm.listSheetFor == null && vm.crashReport == null && !vm.confirmExit
+                            if (!ambient && vm.state.value.settings.ambient && idle >= AMBIENT_IDLE_MS && calm &&
+                                lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                            ) {
+                                ambient = true
+                            }
+                        }
+                    }
+                    if (ambient) {
+                        val slides = remember {
+                            ambientSlides(vm.index.movies, vm.index.series, vm.heroArt, vm.currentExclusions())
+                        }
+                        AmbientScreen(slides, paused = null) { leaveAmbient() }
                     }
                     vm.listSheetFor?.let { ch ->
                         val inSaved = vm.screen == Screen.LIBRARY && vm.section == Section.FAVORITES && vm.query.isBlank()
@@ -295,7 +321,71 @@ class MainActivity : ComponentActivity() {
         Screen.LIBRARY -> 1
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
-        Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES -> 4
+        Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
+    }
+
+    // ---- ambient screen ----
+
+    private var ambient by mutableStateOf(false)
+    private var lastInput = android.os.SystemClock.elapsedRealtime()
+
+    private fun leaveAmbient() {
+        ambient = false
+        lastInput = android.os.SystemClock.elapsedRealtime()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInput = android.os.SystemClock.elapsedRealtime()
+    }
+
+    /** While the ambient screen shows, the first key only brings the lists back. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (ambient) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) leaveAmbient()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onDestroy() {
+        if (app.falak.player.sync.RemoteBridge.handler === remoteHandler) app.falak.player.sync.RemoteBridge.handler = null
+        super.onDestroy()
+    }
+
+    /** The phone remote's requests (on the main thread). */
+    private val remoteHandler = object : app.falak.player.sync.RemoteHandler {
+        override fun library(): Pair<app.falak.player.data.LibraryIndex, Set<String>>? {
+            if (vm.playlist == null || vm.choosingProfile || vm.index.all.isEmpty()) return null
+            return vm.index to vm.currentExclusions()
+        }
+
+        override fun play(list: List<Channel>, ch: Channel) = this@MainActivity.play(list, ch)
+
+        override fun openSeries(ch: Channel) {
+            toFront()
+            vm.openSeries(ch)
+        }
+
+        override fun search(text: String) {
+            toFront()
+            vm.screen = Screen.LIBRARY
+            vm.group = null
+            vm.query = text
+        }
+
+        override fun home() {
+            toFront()
+            vm.screen = Screen.LIBRARY
+            vm.section = Section.HOME
+            vm.group = null
+            vm.query = ""
+        }
+    }
+
+    /** Closes the player if it's on top, so this screen shows. */
+    private fun toFront() {
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
     private fun play(list: List<Channel>, channel: Channel) {
@@ -717,3 +807,6 @@ private fun Field(
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/** Pages the ambient screen may come up over (not Settings, the guide's preview or pages being typed in). */
+private val AMBIENT_SCREENS = setOf(Screen.LIBRARY, Screen.SERIES, Screen.DETAILS, Screen.NOTICES, Screen.PLAYLISTS)

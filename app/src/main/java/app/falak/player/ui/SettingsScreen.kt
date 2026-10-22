@@ -190,6 +190,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        item {
+            SwitchRow(
+                "Ambient screen",
+                "Left idle for 5 minutes (or a video paused for 90 seconds): a slideshow of your films and series with the time",
+                s.ambient,
+            ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
+        }
+
         item { SectionTitle("Player") }
         item { PlayerChoice(vm, s.player) }
 
@@ -337,6 +345,26 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ClickRow("Your devices", "Copy your playlists to other TVs and phones, or manage them from a phone or computer") {
                 vm.screen = Screen.SYNC
             }
+        }
+        item {
+            ClickRow(
+                "Prayer times",
+                when (s.prayerMode) {
+                    "remind" -> "On: a reminder at each prayer"
+                    "pause" -> "On: a reminder, and the player pauses"
+                    else -> "Off. A reminder at each prayer time where you are"
+                },
+            ) { vm.screen = Screen.PRAYER }
+        }
+        item {
+            ClickRow(
+                "Phone remote",
+                when (state.remotes.size) {
+                    0 -> "Use your phone as a remote and keyboard for this device"
+                    1 -> "1 phone paired"
+                    else -> "${state.remotes.size} phones paired"
+                },
+            ) { vm.screen = Screen.REMOTE }
         }
         item {
             val linked = state.sync.key.isNotEmpty()

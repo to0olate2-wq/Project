@@ -316,6 +316,8 @@ data class Settings(
     val themeMode: String = "auto",
     /** "sidebar" (side menu, big continue cards, filter chips; the default) or "classic" (tabs on top, slideshow). */
     val look: String = "sidebar",
+    /** Idle or paused for a while: a slideshow of the library with the time (instead of a still picture). */
+    val ambient: Boolean = true,
     /** Sidebar look: sections shown as a grid rather than a list. */
     val gridSections: List<String> = listOf("MOVIES", "SERIES"),
     /** Screen layout: "auto" (detected), "tv" (remote control) or "phone" (touch). */
@@ -330,6 +332,12 @@ data class Settings(
     val profilesOn: Boolean = false,
     /** The main profile's name in "Who's watching?". */
     val mainProfileName: String = "Me",
+    /** Prayer time reminders: "off" (default), "remind" (a banner), "pause" (banner, and the player pauses). */
+    val prayerMode: String = "off",
+    /** Calculation method key ([PrayerTimes.Method]); "" = the usual one where the user is. */
+    val prayerMethod: String = "",
+    /** Asr: "std", "hanafi", or "" for the local custom. */
+    val prayerAsr: String = "",
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
     val playerRotation: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
@@ -393,7 +401,13 @@ data class AppState(
     val profiles: List<Profile> = emptyList(),
     /** The profile watching: "" = the main one, [KIDS_PROFILE] or a [Profile.id]. */
     val activeProfile: String = "",
+    /** Phones paired as remotes (Settings → Phone remote). */
+    val remotes: List<RemotePhone> = emptyList(),
 )
+
+/** A phone paired as a remote: a hash of its key (the key itself stays on the phone). */
+@Serializable
+data class RemotePhone(val hash: String, val label: String, val addedAt: Long, val lastUsed: Long = 0)
 
 /** The Kids profile's id (kids mode). */
 const val KIDS_PROFILE = "kids"

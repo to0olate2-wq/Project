@@ -80,9 +80,10 @@ abstract class ScreenshotBase {
         kidsOn: Boolean = false,
         linked: Boolean = false,
         profiles: List<String> = emptyList(),
+        prayerMode: String = "off",
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -97,6 +98,8 @@ abstract class ScreenshotBase {
         groups: Boolean = false,
         menu: Boolean = false,
         upNext: Boolean = false,
+        ambient: Boolean = false,
+        prayer: Boolean = false,
         block: ((String) -> Unit) -> Unit,
     ) {
         seed(if (tv) "tv" else "phone")
@@ -111,6 +114,8 @@ abstract class ScreenshotBase {
         idle(500)
         activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
         if (upNext) activity.previewUpNext(queue[3])
+        if (ambient) activity.previewAmbient()
+        if (prayer) activity.previewPrayer()
         block { name -> capture(activity, name) }
     }
 
@@ -125,6 +130,7 @@ abstract class ScreenshotBase {
         kidsOn: Boolean = false,
         linked: Boolean = false,
         profiles: List<String> = emptyList(),
+        prayerMode: String = "off",
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
@@ -140,6 +146,7 @@ abstract class ScreenshotBase {
                     kidsGroups = if (kids == null) emptyMap() else mapOf(p.id to kids),
                     kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
                     profilesOn = profiles.isNotEmpty(),
+                    prayerMode = prayerMode,
                 ),
                 profiles = profiles.mapIndexed { i, name -> Profile("p$i", name, color = i) },
                 // Linked with two devices, sync paused (so nothing starts listening during the test).
@@ -639,6 +646,40 @@ class PhoneProfilesPageScreens : ScreenshotBase() {
         vm.chooseProfile("")
         shoot("phone-20-profiles-page")
     }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvRemoteScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvRemote() = mainScreens("tv") { vm, shoot ->
+        vm.screen = Screen.REMOTE
+        shoot("tv-25-phone-remote")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhonePrayerScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phonePrayer() = mainScreens("phone", prayerMode = "pause") { vm, shoot ->
+        vm.screen = Screen.PRAYER
+        shoot("phone-21-prayer-times")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvAmbientScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvAmbient() = player(tv = true, live = false, ambient = true) { shoot -> shoot("tv-26-ambient") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvPrayerBannerScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvPrayer() = player(tv = true, live = true, prayer = true) { shoot -> shoot("tv-27-prayer-paused") }
 }
 
 @RunWith(RobolectricTestRunner::class)

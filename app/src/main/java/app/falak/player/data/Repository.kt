@@ -384,6 +384,26 @@ class Repository(private val context: Context) {
         return notice
     }
 
+    // ---- phone remote ----
+
+    /** What's on the TV for the phone remote: name and a second line (null when nothing plays). */
+    @Volatile var nowPlaying: Pair<String, String>? = null
+
+    fun addRemote(hash: String, label: String) = update(stamp = false) { s ->
+        val now = System.currentTimeMillis()
+        s.copy(remotes = (s.remotes.filterNot { it.hash == hash } + RemotePhone(hash, label, now, now)).takeLast(10))
+    }
+
+    /** A paired phone was used (saved at most every few minutes). */
+    fun touchRemote(hash: String) {
+        val now = System.currentTimeMillis()
+        val r = _state.value.remotes.firstOrNull { it.hash == hash } ?: return
+        if (now - r.lastUsed < 5 * 60_000L) return
+        update(stamp = false) { s -> s.copy(remotes = s.remotes.map { if (it.hash == hash) it.copy(lastUsed = now) else it }) }
+    }
+
+    fun removeRemote(hash: String) = update(stamp = false) { s -> s.copy(remotes = s.remotes.filterNot { it.hash == hash }) }
+
     // ---- profiles ----
 
     /** Switches whose favorites, lists and Continue watching are in use ("" = the main profile). */
