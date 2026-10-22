@@ -324,6 +324,8 @@ data class Settings(
     val levelVolume: Boolean = true,
     /** Night sound (clearer voices, softer bangs): "auto" = from sunset to sunrise where you are, "on", "off". */
     val nightSound: String = "auto",
+    /** Series: the next episode starts by itself after a short countdown. */
+    val autoNextEpisode: Boolean = true,
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
     val playerRotation: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
@@ -379,6 +381,24 @@ data class AppState(
     val lastLive: Map<String, String> = emptyMap(),
     /** Automatic sync with linked devices. */
     val sync: SyncMeta = SyncMeta(),
+    /** Where each show's intro starts and ends ("playlistId|show"), learned when you skip it. */
+    val intros: Map<String, Intro> = emptyMap(),
+    /** Series you follow, per playlist: told when new episodes appear. */
+    val followed: Map<String, List<FollowedSeries>> = emptyMap(),
+)
+
+/** A show's opening titles, in ms from the start of an episode. */
+@Serializable
+data class Intro(val start: Long, val end: Long)
+
+/** A followed series and how many episodes it had when last checked. */
+@Serializable
+data class FollowedSeries(
+    val seriesId: String,
+    val name: String,
+    val logo: String = "",
+    val episodes: Int = 0,
+    val checkedAt: Long = 0,
 )
 
 /** One refresh's worth of new channels, films and series (What's new). */
@@ -395,9 +415,14 @@ data class Notice(
     /** A few of the new items, to show and open (up to 12). */
     val items: List<String> = emptyList(),
     val read: Boolean = false,
+    /** New episodes of a followed series ([show] is its name). */
+    val episodes: Int = 0,
+    val show: String = "",
 ) {
-    /** "27 films · 3 channels · 2 series" */
-    fun summary(): String = listOfNotNull(
+    /** "27 films · 3 channels · 2 series", or "2 new episodes of The Show" */
+    fun summary(): String = if (episodes > 0 && show.isNotBlank()) {
+        "$episodes new episode" + (if (episodes == 1) "" else "s") + " of $show"
+    } else listOfNotNull(
         films.takeIf { it > 0 }?.let { "$it new film" + if (it == 1) "" else "s" },
         series.takeIf { it > 0 }?.let { "$it new series" },
         live.takeIf { it > 0 }?.let { "$it new channel" + if (it == 1) "" else "s" },

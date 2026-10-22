@@ -71,6 +71,12 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Follow: What's new (and a notification) when new episodes come out.
+            if (show.seriesId.isNotEmpty()) {
+                val following = state.followed[p.id].orEmpty().any { it.seriesId == show.seriesId }
+                val count = info?.seasons?.sumOf { it.episodes.size } ?: 0
+                TagChip(if (following) "✓ Following" else "Follow", following) { vm.toggleFollow(show, count) }
+            }
         }
 
         when {
@@ -149,8 +155,10 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                             }
                         }
                     }
+                    // The player gets every episode of every season, so the next one follows across seasons.
+                    val all = info.seasons.flatMap { it.episodes }
                     items(season.episodes, key = { it.id }) { ep ->
-                        EpisodeRow(ep, state.progress[progressKey(p.id, ep.id)]) { onPlay(season.episodes, ep) }
+                        EpisodeRow(ep, state.progress[progressKey(p.id, ep.id)]) { onPlay(all, ep) }
                     }
                 }
             }

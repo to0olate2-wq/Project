@@ -259,24 +259,27 @@ fun SideRail(
             Modifier.weight(1f).fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(if (tv) 22.dp else 14.dp))
-            BrandMark(if (tv) 34.dp else 30.dp)
+            Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
+            BrandMark(if (tv) 32.dp else 28.dp)
+            Spacer(Modifier.height(if (tv) 14.dp else 10.dp))
             Column(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp, Alignment.CenterVertically),
+                verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected) { onSelect(s) } }
                 if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, onClick = onGuide)
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // A short rule sets the playlist and Settings apart from the sections.
+                Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
                 RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, onClick = onPlaylists)
                 RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", false, onClick = onSettings)
             }
-            Spacer(Modifier.height(if (tv) 18.dp else 10.dp))
+            Spacer(Modifier.height(if (tv) 16.dp else 10.dp))
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
     }
@@ -302,7 +305,7 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, onClick: (
         selected -> Signal
         else -> Muted
     }
-    val box = if (tv) 50.dp else 46.dp
+    val box = if (tv) 46.dp else 44.dp
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         // The section you're in: a short orange mark on the rail's edge.
         if (selected) {

@@ -258,6 +258,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
+            SwitchRow(
+                "Play the next episode automatically",
+                "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
+                s.autoNextEpisode,
+            ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
+        }
+        item {
             SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }

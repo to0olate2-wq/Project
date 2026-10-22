@@ -357,6 +357,55 @@ class Repository(private val context: Context) {
         return notice
     }
 
+    /** New episodes of a followed series: a What's new entry that opens the series. */
+    fun addEpisodeNotice(p: Playlist, show: Channel, count: Int): Notice {
+        val notice = Notice(
+            id = System.currentTimeMillis(),
+            playlistId = p.id,
+            playlistName = p.name,
+            live = 0, films = 0, series = 0,
+            items = listOf(show.id),
+            episodes = count,
+            show = show.name,
+        )
+        update { s -> s.copy(notices = (listOf(notice) + s.notices).take(40)) }
+        return notice
+    }
+
+    // ---- series: intros and following ----
+
+    fun setIntro(key: String, start: Long, end: Long) = update { s -> s.copy(intros = s.intros + (key to Intro(start, end))) }
+
+    fun isFollowed(playlistId: String, seriesId: String): Boolean =
+        _state.value.followed[playlistId].orEmpty().any { it.seriesId == seriesId }
+
+    /** Follows a series (or updates its name, picture and episode count). */
+    fun follow(playlistId: String, show: Channel, episodes: Int) = update { s ->
+        val list = s.followed[playlistId].orEmpty()
+        val old = list.firstOrNull { it.seriesId == show.seriesId }
+        val entry = FollowedSeries(
+            show.seriesId, show.name, show.logo.ifBlank { old?.logo.orEmpty() },
+            episodes = maxOf(episodes, old?.episodes ?: 0),
+            checkedAt = maxOf(old?.checkedAt ?: 0, System.currentTimeMillis()),
+        )
+        if (old == entry) s else s.copy(followed = s.followed + (playlistId to (list.filterNot { it.seriesId == show.seriesId } + entry).takeLast(60)))
+    }
+
+    fun unfollow(playlistId: String, seriesId: String) = update { s ->
+        s.copy(followed = s.followed + (playlistId to s.followed[playlistId].orEmpty().filterNot { it.seriesId == seriesId }))
+    }
+
+    /** After checking a followed series: its episode count now. */
+    fun setFollowedCount(playlistId: String, seriesId: String, episodes: Int) = update { s ->
+        s.copy(
+            followed = s.followed + (
+                playlistId to s.followed[playlistId].orEmpty().map {
+                    if (it.seriesId == seriesId) it.copy(episodes = episodes, checkedAt = System.currentTimeMillis()) else it
+                }
+                ),
+        )
+    }
+
     fun markNoticesRead() {
         if (_state.value.notices.any { !it.read }) update { s -> s.copy(notices = s.notices.map { it.copy(read = true) }) }
     }

@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.res.ResourcesCompat
@@ -97,6 +98,14 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_INDEX = "index"
         private const val SEEK_STEP_MS = 10_000L
+        /** The Up next card comes up this long before an episode ends. */
+        private const val UP_NEXT_MS = 20_000L
+        /** …and the next episode starts after this many seconds. */
+        private const val COUNTDOWN_S = 10
+        /** A forward jump that starts this early in an episode can be the intro being skipped. */
+        private const val INTRO_WINDOW_MS = 6 * 60_000L
+        /** "S01E02", "S1 E2", "Season 1", "Episode 2", "1x02" and everything after it. */
+        private val EPISODE_MARK = Regex("(?i)\\s*[-–|:·]?\\s*(\\bS\\d{1,2}\\s*[ .x-]?\\s*E\\d{1,3}\\b|\\bseason\\s*\\d+|\\bepisode\\s*\\d+|\\b\\d{1,2}x\\d{2,3}\\b).*$")
 
         /** Automatic mode: items ExoPlayer couldn't open this session; they go straight to VLC. */
         private val needsVlc = HashSet<String>()
@@ -404,6 +413,24 @@ class PlayerActivity : ComponentActivity() {
             true
         }
 
+        // "Skip intro" and "Up next" in the corner: drawn over the picture, never taking the remote's
+        // focus (the player handles OK and Back for them).
+        extrasView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            isFocusable = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            setContent {
+                val app by repo.state.collectAsState()
+                FalakTheme(dark = true, layout = app.settings.layout) {
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                        SkipIntroButton(skipIntroShown && upNext == null) { skipIntro() }
+                        UpNextCard(upNext, upNextLabel, upNextSecs, onPlay = { playUpNext() }, onHide = { dismissUpNext() })
+                    }
+                }
+            }
+        }
+        root.addView(extrasView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
         browserView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             visibility = View.GONE
@@ -690,6 +717,15 @@ class PlayerActivity : ComponentActivity() {
         // A new stream: its data rate is measured afresh.
         rateSamples.clear()
         rateBps = 0
+        // A new episode: no card or button yet; a resumed episode gets the rest of its series.
+        if (ch.id != currentChannelId) {
+            upNextDismissed = null
+            introSkippedFor = null
+        }
+        upNext = null
+        upNextSecs = null
+        skipIntroShown = false
+        ensureSeriesQueue(ch)
         currentChannelId = ch.id
         FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
@@ -833,9 +869,15 @@ class PlayerActivity : ComponentActivity() {
             if (playbackState == Player.STATE_ENDED) {
                 saveProgress()
                 val ch = queue.getOrNull(index)
-                // Episodes: go straight to the next one.
-                if (ch != null && ch.kind == Kind.SERIES && index < queue.lastIndex) zap(1)
+                // Episodes: on to the next one (unless "Keep watching" was chosen).
+                if (ch != null && nextEpisode() != null && upNextDismissed != ch.id) {
+                    if (repo.state.value.settings.autoNextEpisode) playUpNext() else seriesTick()
+                }
             }
+        }
+
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) learnIntro(oldPosition.positionMs, newPosition.positionMs)
         }
 
         override fun onCues(cueGroup: CueGroup) {
@@ -1064,6 +1106,22 @@ class PlayerActivity : ComponentActivity() {
         if (browserOpen) return super.dispatchKeyEvent(event)
         val live = queue.getOrNull(index)?.kind == Kind.LIVE
         val controlsShown = playerView.isControllerFullyVisible
+        // Up next / Skip intro on screen: OK takes it, Back keeps watching.
+        if (event.action == KeyEvent.ACTION_DOWN && !controlsShown && event.repeatCount == 0) {
+            val ok = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+            val back = event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE
+            if (upNext != null && (ok || back)) {
+                if (ok) playUpNext() else dismissUpNext()
+                swallowUpKey = event.keyCode
+                return true
+            }
+            if (skipIntroShown && ok) {
+                skipIntro()
+                swallowUpKey = event.keyCode
+                return true
+            }
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
@@ -1163,6 +1221,15 @@ class PlayerActivity : ComponentActivity() {
         if (browser) openBrowser() else playerView.showController()
         if (browser && groups) setBrowserGroups(true)
         if (menu) showAppMenu()
+    }
+
+    /** Screenshot tests: the Up next card over the picture. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewUpNext(next: Channel) {
+        playerView.hideController()
+        upNext = next
+        upNextLabel = "S1 E3"
+        upNextSecs = 8
     }
 
     /** Finger position when a sideways swipe started (−1 = not swiping). */
@@ -1270,14 +1337,8 @@ class PlayerActivity : ComponentActivity() {
         if (dur <= 0) return
         val pos = p.currentPosition
         val finished = p.playbackState == Player.STATE_ENDED || pos > dur - 120_000
-        // Episodes are saved with the show's name and artwork so "Continue watching" looks right.
         val show = repo.currentSeries
-        val meta = if (show != null && ch.kind == Kind.SERIES) {
-            val episode = ch.info.split(" · ").take(2).joinToString(" ").ifBlank { ch.name }
-            ch.copy(name = "${show.name} · $episode", logo = show.logo.ifBlank { ch.logo })
-        } else {
-            ch
-        }
+        val meta = metaFor(ch)
         val key = progressKey(pl.id, ch.id)
         val kept = if (finished || pos < 30_000) 0 else pos
         repo.saveProgress(key, kept, dur, meta, show?.seriesId.orEmpty())
@@ -1287,6 +1348,29 @@ class PlayerActivity : ComponentActivity() {
         val onHome = !repo.kidsActive && group !in repo.excludedGroups &&
             group !in s.lockedGroups[pl.id].orEmpty() && !app.falak.player.data.ADULT_GROUP.containsMatchIn(group)
         app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome)
+        if (finished && ch.kind == Kind.SERIES) {
+            // Watched to the end: the next episode waits in Continue watching (and on the TV's
+            // Play next row), and the show is followed for new episodes.
+            nextEpisode()?.let { n ->
+                val nextKey = progressKey(pl.id, n.id)
+                if (repo.state.value.progress[nextKey] == null) {
+                    val nm = metaFor(n)
+                    repo.saveProgress(nextKey, 1, 0, nm, show?.seriesId.orEmpty())
+                    app.falak.player.data.WatchNext.update(this, nextKey, nm, 1, 0, onHome, next = true)
+                }
+            }
+            if (show != null && show.seriesId.isNotEmpty() && !repo.kidsActive) {
+                repo.follow(pl.id, show, if (queue.size > 1) queue.size else 0)
+            }
+        }
+    }
+
+    /** Episodes are saved with the show's name and artwork so "Continue watching" looks right. */
+    private fun metaFor(ch: Channel): Channel {
+        val show = repo.currentSeries
+        if (show == null || ch.kind != Kind.SERIES) return ch
+        val episode = ch.info.split(" · ").take(2).joinToString(" ").ifBlank { ch.name }
+        return ch.copy(name = "${show.name} · $episode", logo = show.logo.ifBlank { ch.logo })
     }
 
     // ---- rotation (phone layout) ----
@@ -1835,6 +1919,174 @@ class PlayerActivity : ComponentActivity() {
         return true
     }
 
+    // ---- series: up next, skip intro ----
+
+    private lateinit var extrasView: ComposeView
+    /** The next episode, while its card is up; null otherwise. */
+    private var upNext by mutableStateOf<Channel?>(null)
+    private var upNextLabel by mutableStateOf("")
+    /** Seconds until it starts by itself (null: no countdown, "Play next" only). */
+    private var upNextSecs by mutableStateOf<Int?>(null)
+    /** "Keep watching" was chosen for this episode: no card, no automatic next. */
+    private var upNextDismissed: String? = null
+    private var skipIntroShown by mutableStateOf(false)
+    private var introSkippedFor: String? = null
+    private var skippingIntro = false
+
+    /** "Show Name" from "Show Name S01E02", "Show Name - S1 E2 - Title", "Show 1x02"… */
+    private fun episodeShow(name: String): String =
+        name.replace(EPISODE_MARK, "").trim().trimEnd('-', '–', '|', ':', '·').trim()
+
+    /** The episode after this one, if it's the same show (across seasons for Xtream series). */
+    private fun nextEpisode(): Channel? {
+        val ch = queue.getOrNull(index) ?: return null
+        if (ch.kind != Kind.SERIES || ch.id.startsWith("cu:")) return null
+        val n = queue.getOrNull(index + 1) ?: return null
+        if (n.kind != Kind.SERIES) return null
+        // An Xtream series' queue is its own episodes; in other lists, only the same show follows.
+        if (repo.currentSeries == null) {
+            val a = episodeShow(ch.name)
+            if (a.isEmpty() || !a.equals(episodeShow(n.name), ignoreCase = true)) return null
+        }
+        return n
+    }
+
+    /** "S1 E3", from the episode's details or its name. */
+    private fun episodeLabel(ch: Channel): String {
+        ch.info.split(" · ").take(2).joinToString(" ").takeIf { it.startsWith("S") }?.let { return it }
+        val m = Regex("(?i)\\bS(\\d{1,2})\\s*[ .x-]?\\s*E(\\d{1,3})\\b").find(ch.name) ?: return ""
+        return "S${m.groupValues[1].toInt()} E${m.groupValues[2].toInt()}"
+    }
+
+    /** The show an episode belongs to, for its learned intro: "playlistId|s:<series id>" or "|n:<name>". */
+    private fun showKey(ch: Channel): String? {
+        if (ch.kind != Kind.SERIES) return null
+        val pl = repo.currentPlaylist ?: return null
+        val sid = repo.currentSeries?.seriesId?.takeIf { it.isNotEmpty() }
+            ?: repo.state.value.progress[progressKey(pl.id, ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
+        val show = sid?.let { "s:$it" } ?: episodeShow(ch.name).takeIf { it.isNotBlank() }?.let { "n:" + it.lowercase() } ?: return null
+        return "${pl.id}|$show"
+    }
+
+    /** Once a second while an episode plays: the Skip intro button and the Up next card. */
+    private fun seriesTick() {
+        val p = player
+        val ch = queue.getOrNull(index)
+        if (p == null || ch == null || ch.kind != Kind.SERIES || inPip) {
+            if (upNext != null) upNext = null
+            skipIntroShown = false
+            return
+        }
+        val dur = p.duration
+        val pos = p.currentPosition
+        val intro = showKey(ch)?.let { repo.state.value.intros[it] }
+        skipIntroShown = intro != null && introSkippedFor != ch.id && dur > 0 &&
+            pos >= intro.start - 2_000 && pos < intro.end - 6_000
+        val next = nextEpisode()
+        val ended = p.playbackState == Player.STATE_ENDED
+        val credits = dur > 5 * 60_000 && dur - pos <= UP_NEXT_MS
+        if (next == null || upNextDismissed == ch.id || !(ended || credits)) {
+            if (upNext != null) {
+                upNext = null
+                upNextSecs = null
+            }
+            return
+        }
+        if (upNext?.id != next.id) {
+            upNext = next
+            upNextLabel = episodeLabel(next)
+            upNextSecs = if (repo.state.value.settings.autoNextEpisode) COUNTDOWN_S else null
+            return
+        }
+        val secs = upNextSecs ?: return
+        // Counts down while playing (a pause holds it).
+        if (p.isPlaying || ended) {
+            if (secs <= 1) playUpNext() else upNextSecs = secs - 1
+        }
+    }
+
+    private fun playUpNext() {
+        upNext = null
+        upNextSecs = null
+        if (nextEpisode() == null) return
+        FreezeWatch.note("up next")
+        zap(1)
+    }
+
+    private fun dismissUpNext() {
+        upNextDismissed = queue.getOrNull(index)?.id
+        upNext = null
+        upNextSecs = null
+    }
+
+    private fun skipIntro() {
+        val ch = queue.getOrNull(index) ?: return
+        val intro = showKey(ch)?.let { repo.state.value.intros[it] } ?: return
+        introSkippedFor = ch.id
+        skipIntroShown = false
+        skippingIntro = true
+        player?.seekTo(intro.end)
+    }
+
+    // Learning a show's intro: a jump forward early in an episode (one drag, or several presses
+    // in a row), 20 s to 4 min long, is taken as "skip the intro" for the show's next episodes.
+    private var introFrom = -1L
+    private var introTo = -1L
+    private var introAt = 0L
+    private val saveIntro = Runnable {
+        val ch = queue.getOrNull(index)
+        val key = ch?.let { showKey(it) }
+        val from = introFrom
+        val to = introTo
+        introFrom = -1L
+        if (key != null && from in 0..INTRO_WINDOW_MS && to - from in 20_000L..240_000L) repo.setIntro(key, from, to)
+    }
+
+    private fun learnIntro(from: Long, to: Long) {
+        val ch = queue.getOrNull(index) ?: return
+        if (ch.kind != Kind.SERIES) return
+        if (skippingIntro) {
+            skippingIntro = false // our own Skip intro: nothing new to learn
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (introFrom >= 0 && now - introAt < 10_000) {
+            // More presses, or a small step back after going too far: still the same skip.
+            if (to > introFrom) introTo = to else introFrom = -1L
+        } else {
+            if (to <= from) return
+            introFrom = from
+            introTo = to
+        }
+        introAt = now
+        handler.removeCallbacks(saveIntro)
+        if (introFrom >= 0) handler.postDelayed(saveIntro, 4_000)
+    }
+
+    /** An episode resumed on its own (Continue watching): fetch the rest of its series for Up next. */
+    private fun ensureSeriesQueue(ch: Channel) {
+        if (ch.kind != Kind.SERIES || queue.size > 1) return
+        val pl = repo.currentPlaylist ?: return
+        val sid = repo.currentSeries?.seriesId?.takeIf { it.isNotEmpty() }
+            ?: repo.state.value.progress[progressKey(pl.id, ch.id)]?.seriesId?.takeIf { it.isNotEmpty() }
+            ?: return
+        val show = repo.currentSeries?.takeIf { it.seriesId == sid } ?: repo.currentIndex.series.firstOrNull { it.seriesId == sid }
+        lifecycleScope.launch {
+            val info = try {
+                repo.loadSeries(pl, sid)
+            } catch (e: Exception) {
+                return@launch
+            }
+            val all = info.seasons.flatMap { it.episodes }
+            val at = all.indexOfFirst { it.id == ch.id }
+            if (at < 0 || queue.size != 1 || queue[0].id != ch.id) return@launch
+            queue = all
+            index = at
+            repo.playQueue = all
+            if (show != null) repo.currentSeries = show
+        }
+    }
+
     // ---- night sound ----
 
     /** ExoPlayer's night-sound stage (null with VLC or when it's set to Off). */
@@ -1875,6 +2127,7 @@ class PlayerActivity : ComponentActivity() {
             // The banner on screen shows it as it settles.
             val shown = bannerFor
             if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
+            seriesTick()
             // Once a minute: night sound follows sunset and sunrise while something plays.
             if (++nightChecks % 60 == 0) nightSound?.enabled = nightNow()
             handler.postDelayed(this, 1_000)

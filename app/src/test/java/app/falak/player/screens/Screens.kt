@@ -93,6 +93,7 @@ abstract class ScreenshotBase {
         browser: Boolean = false,
         groups: Boolean = false,
         menu: Boolean = false,
+        upNext: Boolean = false,
         block: ((String) -> Unit) -> Unit,
     ) {
         seed(if (tv) "tv" else "phone")
@@ -106,6 +107,7 @@ abstract class ScreenshotBase {
         val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
         idle(500)
         activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
+        if (upNext) activity.previewUpNext(queue[3])
         block { name -> capture(activity, name) }
     }
 
@@ -602,6 +604,14 @@ class PhoneLinkedScreens : ScreenshotBase() {
         vm.screen = Screen.SYNC
         shoot("phone-18-devices-linked")
     }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvUpNextScreens : ScreenshotBase() {
+    // The next episode in the corner while the credits roll.
+    @Test @Config(qualifiers = TV)
+    fun tvUpNext() = player(tv = true, live = false, upNext = true) { shoot -> shoot("tv-23-up-next") }
 }
 
 @RunWith(RobolectricTestRunner::class)

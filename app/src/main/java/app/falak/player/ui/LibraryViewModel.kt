@@ -54,6 +54,8 @@ enum class Section(val label: String, val kind: Kind?) {
 
 /** The automatic playlist refresh starts this long after the app opens or comes back. */
 private const val REFRESH_DELAY_MS = 3 * 60_000L
+/** Followed series are checked for new episodes at most this often. */
+private const val FOLLOW_CHECK_MS = 6 * 3_600_000L
 
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = app.repo
@@ -282,6 +284,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     loadedAt = kept.savedAt
                     if (loadToken === token) loading = false
                     maybeStartLastChannel(p)
+                    scheduleFollowCheck(p, token)
                     loadGuide(force = false)
                     if (isStale(kept.savedAt)) {
                         refreshJob?.cancel()
@@ -295,6 +298,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 show(data, announce = refresh)
                 if (loadToken === token) loading = false
                 maybeStartLastChannel(p)
+                scheduleFollowCheck(p, token)
                 loadGuide(force = refresh)
                 if (cached != null && isStale(cached.savedAt)) {
                     refreshJob?.cancel()
@@ -391,6 +395,20 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             // same
         } finally {
             refreshing = false
+        }
+    }
+
+    private var followJob: Job? = null
+
+    /** A few minutes after a playlist opens (once the guide and any refresh are done): followed series. */
+    private fun scheduleFollowCheck(p: Playlist, token: Any) {
+        followJob?.cancel()
+        followJob = viewModelScope.launch {
+            delay(REFRESH_DELAY_MS + 60_000L)
+            guideJob?.join()
+            refreshJob?.join()
+            if (loadToken !== token || playlist?.id != p.id) return@launch
+            checkFollowedSeries(p)
         }
     }
 
@@ -585,6 +603,42 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
+
+    /** Follow or stop following a series (new episodes show in What's new). */
+    fun toggleFollow(show: Channel, episodes: Int) {
+        val p = playlist ?: return
+        if (repo.isFollowed(p.id, show.seriesId)) repo.unfollow(p.id, show.seriesId) else repo.follow(p.id, show, episodes)
+    }
+
+    /**
+     * Followed series of [p]: any new episodes since last time? At most every few hours, one series
+     * at a time, never while something plays. Each find goes to What's new (and a notification).
+     */
+    private suspend fun checkFollowedSeries(p: Playlist) {
+        if (repo.xtreamFor(p) == null) return
+        val now = System.currentTimeMillis()
+        val due = state.value.followed[p.id].orEmpty().filter { now - it.checkedAt > FOLLOW_CHECK_MS }.take(25)
+        for (f in due) {
+            while (repo.playerOpen || repo.previewOpen) delay(30_000)
+            if (playlist?.id != p.id) return
+            val count = try {
+                repo.loadSeries(p, f.seriesId).seasons.sumOf { it.episodes.size }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                continue // the server didn't answer: try again next time
+            }
+            val known = f.episodes
+            repo.setFollowedCount(p.id, f.seriesId, count)
+            if (known > 0 && count > known) {
+                val show = index.series.firstOrNull { it.seriesId == f.seriesId }
+                    ?: Channel(id = "series:${f.seriesId}", name = f.name, group = "", url = "", logo = f.logo, kind = Kind.SERIES, seriesId = f.seriesId)
+                val notice = repo.addEpisodeNotice(p, show, count - known)
+                if (state.value.settings.notifyNew) app.falak.player.data.Notifier.newContent(getApplication<Application>(), notice)
+            }
+            delay(1_500)
+        }
+    }
 
     // ---- What's new, and pages asked for from elsewhere (the player, a notification) ----
 

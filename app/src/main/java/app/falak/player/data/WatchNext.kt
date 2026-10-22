@@ -36,12 +36,12 @@ object WatchNext {
      * pos = 0 (finished or barely started) or [allowed] = false (a hidden or locked group, kids
      * mode) takes it out.
      */
-    fun update(context: Context, key: String, item: Channel, pos: Long, dur: Long, allowed: Boolean) {
+    fun update(context: Context, key: String, item: Channel, pos: Long, dur: Long, allowed: Boolean, next: Boolean = false) {
         if (!supported(context)) return
         val app = context.applicationContext
         worker.execute {
             try {
-                if (pos <= 0 || !allowed) remove(app, key) else upsert(app, key, item, pos, dur)
+                if (pos <= 0 || !allowed) remove(app, key) else upsert(app, key, item, pos, dur, next)
             } catch (e: Exception) {
                 // The home screen is a nicety: never let it disturb playback.
                 Log.w(TAG, "Couldn't update the home screen row", e)
@@ -92,7 +92,7 @@ object WatchNext {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun upsert(context: Context, key: String, item: Channel, pos: Long, dur: Long) {
+    private fun upsert(context: Context, key: String, item: Channel, pos: Long, dur: Long, next: Boolean) {
         val all = mine(context)
         val existing = all.firstOrNull { it.internalProviderId == key }
         // Taken off the row by the user: leave it off.
@@ -102,15 +102,22 @@ object WatchNext {
             .putExtra(EXTRA_RESUME, key)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val builder = WatchNextProgram.Builder()
-            .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
+            .setWatchNextType(
+                // The episode after one you finished is "next"; one you stopped in is "continue".
+                if (next) TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT
+                else TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE,
+            )
             .setLastEngagementTimeUtcMillis(System.currentTimeMillis())
             .setType(
                 if (item.kind == Kind.SERIES) TvContractCompat.WatchNextPrograms.TYPE_TV_EPISODE
                 else TvContractCompat.WatchNextPrograms.TYPE_MOVIE,
             )
             .setTitle(item.name)
-            .setLastPlaybackPositionMillis(pos.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-            .setDurationMillis(dur.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        if (!next) {
+            builder.setLastPlaybackPositionMillis(pos.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                .setDurationMillis(dur.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        }
+        builder
             .setInternalProviderId(key)
             .setIntentUri(Uri.parse(open.toUri(Intent.URI_INTENT_SCHEME)))
         if (item.logo.isNotBlank()) {
