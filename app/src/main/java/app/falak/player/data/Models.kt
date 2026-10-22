@@ -322,6 +322,8 @@ data class Settings(
     val layout: String = "auto",
     /** Turn quiet channels up and loud ones down so every channel plays at a similar volume. */
     val levelVolume: Boolean = true,
+    /** Night sound (clearer voices, softer bangs): "auto" = from sunset to sunrise where you are, "on", "off". */
+    val nightSound: String = "auto",
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
     val playerRotation: String = "auto",
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */

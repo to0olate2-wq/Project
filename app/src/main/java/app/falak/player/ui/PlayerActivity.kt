@@ -527,18 +527,25 @@ class PlayerActivity : ComponentActivity() {
         // FFmpeg takes over audio the device can't decode (AC-3, E-AC-3, DTS, MP2…),
         // or all audio when "Software audio" is on.
         val level = s.levelVolume
+        // Night sound stays in the chain whenever it's not off, so it can come on at sunset mid-film.
+        val night = if (s.nightSound != "off") app.falak.player.player.NightSound().also { it.enabled = nightNow() } else null
+        nightSound = night
         val renderers = object : DefaultRenderersFactory(this) {
-            // Volume levelling runs inside the audio output, for every decoder (hardware or FFmpeg).
+            // Volume levelling and night sound run inside the audio output, for every decoder (hardware or FFmpeg).
             override fun buildAudioSink(
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink? {
-                if (!level) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+                val processors = listOfNotNull<androidx.media3.common.audio.AudioProcessor>(
+                    if (level) app.falak.player.player.VolumeLeveler() else null,
+                    night,
+                )
+                if (processors.isEmpty()) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
                 return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false) // the leveller works on 16-bit sound
+                    .setEnableFloatOutput(false) // both work on 16-bit sound
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(app.falak.player.player.VolumeLeveler()))
+                    .setAudioProcessors(processors.toTypedArray())
                     .build()
             }
         }
@@ -591,8 +598,10 @@ class PlayerActivity : ComponentActivity() {
     private fun createVlc() {
         val caching = if (repo.state.value.settings.bigBuffer) 5_000 else 1_500
         val st = repo.state.value.settings
+        nightSound = null
         val v = VlcPlayer(
             this, caching, st.levelVolume,
+            nightSound = nightNow(),
             audioLang = st.audioLang,
             subtitleLang = if (st.subtitlesOn) st.subtitleLang.ifBlank { "en" } else "",
         )
@@ -1826,6 +1835,19 @@ class PlayerActivity : ComponentActivity() {
         return true
     }
 
+    // ---- night sound ----
+
+    /** ExoPlayer's night-sound stage (null with VLC or when it's set to Off). */
+    private var nightSound: app.falak.player.player.NightSound? = null
+    private var nightChecks = 0
+
+    /** Night sound wanted right now: always, never, or from sunset to sunrise where the user is. */
+    private fun nightNow(): Boolean = when (repo.state.value.settings.nightSound) {
+        "on" -> true
+        "off" -> false
+        else -> app.falak.player.data.SunTimes.isDark(this)
+    }
+
     // ---- data rate ----
 
     /** Bytes ExoPlayer has downloaded (VLC keeps its own count). */
@@ -1853,6 +1875,8 @@ class PlayerActivity : ComponentActivity() {
             // The banner on screen shows it as it settles.
             val shown = bannerFor
             if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
+            // Once a minute: night sound follows sunset and sunrise while something plays.
+            if (++nightChecks % 60 == 0) nightSound?.enabled = nightNow()
             handler.postDelayed(this, 1_000)
         }
     }

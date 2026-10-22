@@ -11,9 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import app.falak.player.data.AppState
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.animation.core.tween
@@ -181,14 +179,10 @@ fun SidebarFrame(
                 modifier = m,
             )
         }
-        // TV, tablets, phones on their side: a slim icon rail that opens out (with names) over the
-        // page while the remote is on it, so the page keeps the room.
-        var railOpen by remember { mutableStateOf(false) }
+        // TV, tablets, phones on their side: a slim rail of icons, so the page keeps the room.
         val rail: @Composable (Modifier) -> Unit = { m ->
             SideRail(
-                p, sections, section, counts, hasGuide,
-                open = railOpen,
-                onOpen = { railOpen = it },
+                sections, section, hasGuide,
                 onSelect = { s ->
                     vm.section = s
                     vm.group = null
@@ -222,11 +216,9 @@ fun SidebarFrame(
         }
         CompositionLocalProvider(LocalCardDetails provides true) {
             if (permanent) {
-                Box(Modifier.fillMaxSize()) {
-                    main(Modifier.fillMaxSize().padding(start = railWidth()))
-                    // The page dims while the rail is open over it.
-                    if (railOpen) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+                Row(Modifier.fillMaxSize()) {
                     rail(Modifier.fillMaxHeight())
+                    main(Modifier.weight(1f).fillMaxHeight())
                 }
             } else {
                 ModalNavigationDrawer(
@@ -243,21 +235,18 @@ fun SidebarFrame(
 // ---------- slim side rail (TV, tablets, phones on their side) ----------
 
 @Composable
-private fun railWidth(): Dp = if (isTv()) 72.dp else 64.dp
+private fun railWidth(): Dp = if (isTv()) 76.dp else 64.dp
 
 /**
- * Icons only, so the page gets the width. With the remote on it (TV), it opens out over the page
- * with the names and counts, and folds back when you move right.
+ * Icons only (no names or counts), so the page gets the width: the sections in the middle, the
+ * playlist and Settings at the bottom. The section you're in is orange with a mark at the edge;
+ * the one the remote is on turns white.
  */
 @Composable
 fun SideRail(
-    playlist: Playlist,
     sections: List<Section>,
     selected: Section,
-    counts: Map<Section, Int>,
     hasGuide: Boolean,
-    open: Boolean,
-    onOpen: (Boolean) -> Unit,
     onSelect: (Section) -> Unit,
     onGuide: () -> Unit,
     onPlaylists: () -> Unit,
@@ -265,100 +254,77 @@ fun SideRail(
     modifier: Modifier = Modifier,
 ) {
     val tv = isTv()
-    val shut = railWidth()
-    val width by animateDpAsState(if (open) 236.dp else shut, tween(200), label = "railWidth")
-    Column(
-        modifier
-            .width(width)
-            .fillMaxHeight()
-            .background(Ink2)
-            .onFocusChanged { if (tv) onOpen(it.hasFocus) }
-            .padding(horizontal = 10.dp),
-    ) {
-        Row(
-            Modifier.padding(top = if (tv) 22.dp else 14.dp, bottom = 18.dp).height(36.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(modifier.width(railWidth()).background(Ink2)) {
+        Column(
+            Modifier.weight(1f).fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.width(shut - 20.dp), contentAlignment = Alignment.Center) { BrandMark(32.dp) }
-            if (open) {
-                Spacer(Modifier.width(6.dp))
-                Wordmark(19)
+            Spacer(Modifier.height(if (tv) 22.dp else 14.dp))
+            BrandMark(if (tv) 34.dp else 30.dp)
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp, Alignment.CenterVertically),
+            ) {
+                sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected) { onSelect(s) } }
+                if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, onClick = onGuide)
             }
-        }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            sections.forEach { s ->
-                RailItem(navIcon(s), navLabel(s), counts[s], s == selected, open) { onSelect(s) }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp),
+            ) {
+                RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, onClick = onPlaylists)
+                RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", false, onClick = onSettings)
             }
-            if (hasGuide) RailItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, open, onClick = onGuide)
+            Spacer(Modifier.height(if (tv) 18.dp else 10.dp))
         }
-        // The playlist (its initials) and Settings stay at the bottom.
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
-        Spacer(Modifier.height(6.dp))
-        RailItem(
-            icon = null,
-            label = playlist.name,
-            sub = "Switch playlist",
-            count = null,
-            selected = false,
-            open = open,
-            badge = playlist.name.split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "P" },
-            onClick = onPlaylists,
-        )
-        RailItem(rememberVectorPainter(Icons.Outlined.Settings), "Settings", null, false, open, onClick = onSettings)
-        Spacer(Modifier.height(if (tv) 14.dp else 8.dp))
+        Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
     }
 }
 
+/** One square icon button of the rail (its name is read out by TalkBack, not shown). */
 @Composable
-private fun RailItem(
-    icon: Painter?,
-    label: String,
-    count: Int?,
-    selected: Boolean,
-    open: Boolean,
-    sub: String? = null,
-    badge: String? = null,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(10.dp)
-    val bg by animateColorAsState(if (selected) Ink3 else Color.Transparent, tween(180), label = "railBg")
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .focusRing(shape)
-            .clip(shape)
-            .background(bg)
-            .clickable(onClick = onClick)
-            .height(46.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.width(railWidth() - 20.dp), contentAlignment = Alignment.Center) {
-            if (badge != null) {
-                Box(Modifier.size(26.dp).clip(CircleShape).background(Ink3), contentAlignment = Alignment.Center) {
-                    Text(badge, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Paper, maxLines = 1)
-                }
-            } else if (icon != null) {
-                Icon(icon, contentDescription = label, tint = if (selected) Signal else Muted, modifier = Modifier.size(22.dp))
-            }
+private fun RailIcon(icon: Painter, label: String, selected: Boolean, onClick: () -> Unit) {
+    val tv = isTv()
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
+    val bg by animateColorAsState(
+        when {
+            focused -> Paper
+            selected -> Signal.copy(alpha = 0.16f)
+            else -> Color.Transparent
+        },
+        tween(150),
+        label = "railIconBg",
+    )
+    val tint = when {
+        focused -> Ink
+        selected -> Signal
+        else -> Muted
+    }
+    val box = if (tv) 50.dp else 46.dp
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // The section you're in: a short orange mark on the rail's edge.
+        if (selected) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .width(3.dp)
+                    .height(22.dp)
+                    .clip(RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp))
+                    .background(Signal),
+            )
         }
-        if (open) {
-            Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                Text(
-                    label,
-                    fontFamily = Sans,
-                    fontSize = 14.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (selected) Paper else Muted,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (sub != null) Text(sub, fontFamily = Sans, fontSize = 11.sp, color = Faint, maxLines = 1, softWrap = false)
-            }
-            if (count != null && count > 0) {
-                Text(countLabel(count), style = Tabular.copy(fontSize = 11.sp), color = Faint, modifier = Modifier.padding(end = 10.dp))
-            }
+        Box(
+            Modifier
+                .size(box)
+                .onFocusChanged { focused = it.isFocused }
+                .clip(shape)
+                .background(bg)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(if (tv) 24.dp else 22.dp))
         }
     }
 }

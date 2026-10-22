@@ -225,6 +225,39 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) { vm.updateSettings { it.copy(levelVolume = !it.levelVolume) } }
         }
         item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val place = remember { app.falak.player.data.SunTimes.place(context) }
+            val day = remember(place) { app.falak.player.data.SunTimes.day(place) }
+            val fmt = rememberTimeFormat()
+            fun at(min: Int?) = min?.let {
+                val c = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, it / 60); set(java.util.Calendar.MINUTE, it % 60) }
+                fmt.format(c.time)
+            }
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Night sound", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "Clearer voices and softer bangs, for late viewing. " + when (s.nightSound) {
+                        "on" -> "On all the time."
+                        "off" -> "Off."
+                        else -> {
+                            val from = at(day.sunset)
+                            val to = at(day.sunrise)
+                            if (from != null && to != null) "Automatic: from sunset ($from) to sunrise ($to) in ${place.city}."
+                            else "Automatic: after dark in ${place.city}."
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("auto" to "Automatic", "on" to "Always", "off" to "Off").forEach { (key, label) ->
+                        TagChip(label, s.nightSound == key) { vm.updateSettings { it.copy(nightSound = key) } }
+                    }
+                }
+            }
+        }
+        item {
             SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }

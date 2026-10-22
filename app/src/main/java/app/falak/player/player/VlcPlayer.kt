@@ -28,6 +28,8 @@ class VlcPlayer(
     context: Context,
     cachingMs: Int,
     levelVolume: Boolean,
+    /** Night sound (dialogue-friendly compression) for this session. */
+    nightSound: Boolean = false,
     /** Preferred audio language (ISO 639, "" = the stream's choice). */
     audioLang: String = "",
     /** Subtitle language to switch on by itself ("" = no subtitles unless chosen). */
@@ -45,8 +47,20 @@ class VlcPlayer(
             "--network-caching=$cachingMs",
             "--live-caching=$cachingMs",
         ).apply {
-            // VLC's own volume normaliser evens out loud and quiet channels.
-            if (levelVolume) addAll(listOf("--audio-filter=normvol", "--norm-buff-size=20", "--norm-max-level=2.0"))
+            // VLC's own volume normaliser evens out loud and quiet channels; its compressor is the
+            // night sound (loud moments down, quiet speech up).
+            val filters = listOfNotNull(if (levelVolume) "normvol" else null, if (nightSound) "compressor" else null)
+            if (filters.isNotEmpty()) add("--audio-filter=" + filters.joinToString(":"))
+            if (levelVolume) addAll(listOf("--norm-buff-size=20", "--norm-max-level=2.0"))
+            if (nightSound) {
+                addAll(
+                    listOf(
+                        "--compressor-rms-peak=0.2", "--compressor-attack=8", "--compressor-release=250",
+                        "--compressor-threshold=-24", "--compressor-ratio=3.5", "--compressor-knee=4",
+                        "--compressor-makeup-gain=6",
+                    ),
+                )
+            }
             // Same language choices as ExoPlayer (Settings → Playback).
             if (audioLang.isNotBlank()) add("--audio-language=$audioLang")
             if (subtitleLang.isNotBlank()) add("--sub-language=$subtitleLang")
