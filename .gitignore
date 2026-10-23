@@ -10,3 +10,9 @@
 .cxx/
 *.keystore
 !app/debug.keystore
+
+# User counter (stats/): local tools and test password
+stats/node_modules/
+stats/.dev.vars
+stats/.wrangler/
+stats/deploy.log

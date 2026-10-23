@@ -79,10 +79,12 @@ class FalakApp : Application(), ImageLoaderFactory {
                 refreshSync()
                 refreshRemote()
                 if (visible == 1) PrayerAlerts.schedule(this@FalakApp, repo, visible = true)
+                if (visible == 1) Stats.start(this@FalakApp, repo)
             }
 
             override fun onActivityStopped(activity: Activity) {
                 visible = (visible - 1).coerceAtLeast(0)
+                if (visible == 0) Stats.stop()
                 // Not straight away: going from the lists to the player stops one screen as the next starts.
                 if (visible == 0) main.postDelayed(stopSync, 30_000)
             }
@@ -104,6 +106,12 @@ class FalakApp : Application(), ImageLoaderFactory {
         }
         MainScope().launch {
             repo.state.map { it.remotes.isNotEmpty() }.distinctUntilChanged().collect { refreshRemote() }
+        }
+        // The user count switched off (its number is deleted) or back on.
+        MainScope().launch {
+            repo.state.map { it.settings.countMe }.distinctUntilChanged().collect { on ->
+                if (!on) Stats.forget(this@FalakApp, repo) else if (visible > 0) Stats.start(this@FalakApp, repo)
+            }
         }
         // Prayer reminders switched on or off, or another method chosen.
         MainScope().launch {

@@ -1,0 +1,14 @@
+# The Player's user counter: a tiny Cloudflare Worker. GitHub Actions deploys it when the
+# repository has the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (see stats/README.md).
+name = "the-player-stats"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "STATS"
+class_name = "Stats"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Stats"]

@@ -8,10 +8,65 @@ permissions:
   contents: write # needed to publish releases (one-tap updates read the latest release)
 
 jobs:
+  # The user counter (stats/), deployed to the owner's Cloudflare account when the repository has
+  # the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (STATS_PASSWORD locks its page).
+  # Without them nothing is deployed and the app is built without counting.
+  stats:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy the user counter
+        id: deploy
+        continue-on-error: true
+        working-directory: stats
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STATS_PASSWORD: ${{ secrets.STATS_PASSWORD }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::No Cloudflare secrets yet: the user counter isn't deployed and the app counts nothing."
+            exit 0
+          fi
+          # A new Cloudflare account has no workers.dev address yet: make one.
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          sub=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api" | jq -r '.result.subdomain // empty')
+          if [ -z "$sub" ]; then
+            sub="theplayer-$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | sha256sum | cut -c1-8)"
+            curl -s -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+              --data "{\"subdomain\":\"$sub\"}" "$api" | jq -c '{success, errors}'
+          fi
+          set -o pipefail
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$url" ]; then
+            echo "::error::The user counter didn't deploy: check the Cloudflare token and account ID."
+            exit 1
+          fi
+          if [ -n "$STATS_PASSWORD" ]; then
+            printf '%s' "$STATS_PASSWORD" | npx --yes wrangler@4 secret put STATS_PASSWORD
+          else
+            echo "::warning::No STATS_PASSWORD secret: the stats page stays locked."
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### User counter is live: $url (sign in with any name and your STATS_PASSWORD)" >> "$GITHUB_STEP_SUMMARY"
+
   build:
+    needs: stats
+    # Builds even when the counter is skipped (other branches) or couldn't deploy.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
       VERSION_CODE: ${{ github.run_number }}
+      STATS_URL: ${{ needs.stats.outputs.url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +97,7 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleGithubRelease bundlePlayRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleGithubRelease bundlePlayRelease -PstatsUrl="$STATS_URL" --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Report build errors
         if: failure()

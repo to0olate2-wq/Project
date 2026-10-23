@@ -1,14 +1,17 @@
 # The Player: Privacy Policy
 
-_Last updated: 21 October 2026 (version 4.6)_
+_Last updated: 23 October 2026 (version 6.6)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
 
 ## The short version
 
-- The Player has **no account, no ads, no analytics and no tracking**.
-- Everything you enter stays **on your device**. The developer never receives it.
+- The Player has **no account, no ads and no tracking**.
+- Everything you enter stays **on your devices**. The developer never receives it.
+- The only thing sent to the developer is an **anonymous user count**: a random number made up
+  on your device, the app version, and whether it's a TV or a phone. You can turn it off, which
+  deletes that number (see *Anonymous user count* below).
 - The app only connects to the servers **you** choose (your playlist provider, the TV guide
   sources you add) and, if you turn it on, to OpenSubtitles.
 
@@ -22,7 +25,9 @@ The app keeps these in its private storage on your device:
 - the TV guide sources you add and a copy of the guide data;
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
-- a short technical report if the app crashes, shown to you the next time you open the app.
+- a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
+  was playing; it is never shown or sent anywhere;
+- the random number used for the anonymous user count, while that count is on.
 
 None of this is sent to the developer or to anyone else. Removing a playlist removes it from the
 app; clearing the app's data or uninstalling the app deletes everything.
@@ -65,7 +70,29 @@ The app only makes network connections needed for what you ask it to do:
   system's Continue watching / Play next row. That list stays on the TV; it never includes hidden,
   locked or adult groups, or anything while kids mode is on.
 
-The app does not send your viewing history, your playlists or any identifier to the developer.
+The app does not send your viewing history, your playlists, your logins or anything that
+identifies you to the developer.
+
+## Anonymous user count
+
+So the developer knows how many people use The Player, the app sends a small message when it
+comes on screen and every 10 minutes while it stays there. Each message contains only:
+
+- a random number made up on your device the first time (it is not linked to you, your account,
+  your email or the device's own identifiers, and a reinstall makes a new one);
+- the app version;
+- whether the app is running on a TV or a phone.
+
+It never contains your name, email, playlists, logins, what you watch or your location. The
+messages go to the developer's own counter, a small program on Cloudflare (cloudflare.com), which
+keeps for each random number only when it was first and last seen, the app version and TV or
+phone. Like any server, Cloudflare receives your IP address to deliver the message; the counter
+doesn't store it. The developer sees totals only: how many devices use the app now, today, this
+week, this month and ever, by TV or phone and by version. A number not seen for 400 days is
+deleted.
+
+To stop it, turn off **Settings → About → Count me in the user numbers**. The app then asks the
+counter to delete your number and sends nothing more.
 
 ## Children
 
