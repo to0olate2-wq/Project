@@ -68,6 +68,12 @@ private fun Crescent(color: Color, size: androidx.compose.ui.unit.Dp) {
     }
 }
 
+/** The crescent as an icon (its cut-out needs its own layer). */
+@Composable
+internal fun CrescentIcon(color: Color, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).graphicsLayerOffscreen()) { Crescent(color, size) }
+}
+
 /**
  * At a prayer time: a banner at the top for a couple of minutes. In the player, with "pause"
  * chosen, it says the video paused and OK continues (the player handles the keys).

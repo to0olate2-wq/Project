@@ -49,7 +49,8 @@ import app.falak.player.data.Kind
 @Composable
 fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     val p = vm.playlist
-    val back: () -> Unit = { vm.screen = if (p != null) Screen.LIBRARY else Screen.SETTINGS }
+    // Opened from Settings: back there; from the lists ("Edit groups"): back to them.
+    val back: () -> Unit = { vm.screen = if (p != null && vm.settingsPage == null) Screen.LIBRARY else Screen.SETTINGS }
     BackHandler { back() }
     if (p == null) {
         Centered { Text("Open a playlist first", color = Muted) }

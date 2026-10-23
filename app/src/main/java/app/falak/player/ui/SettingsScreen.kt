@@ -61,9 +61,31 @@ import androidx.compose.ui.unit.dp
 import app.falak.player.BuildConfig
 import app.falak.player.data.AppState
 import app.falak.player.data.guideSourceName
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.runtime.key
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.painterResource
+import app.falak.player.R
+import kotlinx.coroutines.delay
 
 /** Public privacy policy (also linked from the Google Play listing). */
 const val PRIVACY_URL = "https://github.com/to0olate2-wq/Project/blob/main/PRIVACY.md"
+
+/** The pages of Settings, each opened from the list on its first page. */
+enum class SettingsPage(val title: String) {
+    APPEARANCE("Appearance"),
+    PLAYBACK("Picture & playback"),
+    SOUND("Sound & subtitles"),
+    PLAYLISTS("Playlists & TV guide"),
+    FAMILY("Profiles & parental control"),
+    DEVICES("Devices & phone remote"),
+    ABOUT("About"),
+}
 
 @Composable
 fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
@@ -85,16 +107,41 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             action()
         }
     }
-    val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS }
+    val page = vm.settingsPage
+    // Back: from a page to the list of pages; from the list, out of Settings.
+    val back: () -> Unit = {
+        if (page != null) {
+            vm.settingsFocus = page.name
+            vm.settingsPage = null
+        } else if (!vm.leaveDetour()) {
+            vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS
+        }
+    }
+    val openPage: (SettingsPage) -> Unit = { vm.settingsFocus = it.name; vm.settingsPage = it }
+    // A page of its own (Profiles, Phone remote…): Back from there comes back to this row.
+    val go: (String, () -> Unit) -> Unit = { key, action -> vm.settingsFocus = key; action() }
     val index = vm.index
     LaunchedEffect(index, p?.extraEpg) { vm.refreshGuideSuggestions() }
     val lockedHere = if (p != null) s.lockedGroups[p.id].orEmpty() else emptyList()
 
     BackHandler { back() }
 
+    // The remote's focus: the row last opened when coming back to a page, otherwise its first row.
+    val focus = remember(page) { LinkedHashMap<String, FocusRequester>() }
+    fun focusAt(key: String): Modifier = Modifier.focusRequester(focus.getOrPut(key) { FocusRequester() })
+    LaunchedEffect(page) {
+        val want = vm.settingsFocus
+        repeat(10) {
+            delay(50)
+            val order = listOfNotNull(want?.let { focus[it] }) + focus.values
+            if (order.any { runCatching { it.requestFocus() }.isSuccess }) return@LaunchedEffect
+        }
+    }
+
     val tvLayout = isTv()
     // TV: a centred column of comfortable reading width; phone: the full width.
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    key(page) {
     LazyColumn(
         Modifier
             .fillMaxHeight()
@@ -103,9 +150,113 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             .padding(horizontal = if (tvLayout) 24.dp else 16.dp),
         contentPadding = PaddingValues(bottom = 32.dp),
     ) {
-        item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader("Settings", onBack = back) } }
+        item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader(page?.title ?: "Settings", onBack = back) } }
 
-        item { SectionTitle("Appearance") }
+        when (page) {
+        null -> {
+            item { Spacer(Modifier.height(6.dp)) }
+            item {
+                val theme = when (s.themeMode) {
+                    "light" -> "Light"
+                    "dark" -> "Dark"
+                    else -> "Automatic"
+                }
+                HubRow(
+                    { ThemeGlyph(Paper) },
+                    "Appearance",
+                    "$theme theme · ${if (s.look == "sidebar") "Sidebar" else "Classic"} look · Ambient screen ${if (s.ambient) "on" else "off"}",
+                    focusAt(SettingsPage.APPEARANCE.name),
+                ) { openPage(SettingsPage.APPEARANCE) }
+            }
+            item {
+                val engine = app.falak.player.player.Engine.of(s.player)?.short ?: "Automatic"
+                val picture = listOf("Fit", "Fill", "Zoom").getOrElse(s.aspect) { "Fit" }
+                HubRow(
+                    { HubIcon(painterResource(R.drawable.ic_pl_player)) },
+                    "Picture & playback",
+                    "Player: $engine · Picture: $picture · Next episode ${if (s.autoNextEpisode) "automatic" else "manual"}",
+                    focusAt(SettingsPage.PLAYBACK.name),
+                ) { openPage(SettingsPage.PLAYBACK) }
+            }
+            item {
+                val night = when (s.nightSound) {
+                    "on" -> "always"
+                    "off" -> "off"
+                    else -> "automatic"
+                }
+                val audio = LANGUAGES.firstOrNull { it.first == s.audioLang }?.second ?: "Default"
+                HubRow(
+                    { HubIcon(painterResource(R.drawable.ic_pl_audio)) },
+                    "Sound & subtitles",
+                    "Night sound $night · Audio: $audio · Subtitles ${if (s.subtitlesOn) "on" else "off"}",
+                    focusAt(SettingsPage.SOUND.name),
+                ) { openPage(SettingsPage.SOUND) }
+            }
+            item {
+                val refresh = when (s.autoRefreshHours) {
+                    0 -> "never"
+                    24 -> "daily"
+                    else -> "every ${s.autoRefreshHours} h"
+                }
+                HubRow(
+                    { HubIcon(painterResource(R.drawable.ic_nav_playlists)) },
+                    "Playlists & TV guide",
+                    "Refresh $refresh · What's new alerts ${if (s.notifyNew) "on" else "off"}" +
+                        if (p != null && p.epgShiftMinutes != 0) " · Guide ${formatShift(p.epgShiftMinutes)}" else "",
+                    focusAt(SettingsPage.PLAYLISTS.name),
+                ) { openPage(SettingsPage.PLAYLISTS) }
+            }
+            item { HubGap() }
+            item {
+                HubRow(
+                    { HubIcon(rememberVectorPainter(Icons.Outlined.Face)) },
+                    "Profiles & parental control",
+                    listOf(
+                        if (s.profilesOn) "Profiles on" else "Profiles off",
+                        if (pinSet) "PIN on" else "No PIN",
+                        if (s.kidsMode) "Kids mode on" else "Kids mode off",
+                    ).joinToString(" · "),
+                    focusAt(SettingsPage.FAMILY.name),
+                ) { openPage(SettingsPage.FAMILY) }
+            }
+            item {
+                val linked = state.sync.key.isNotEmpty()
+                HubRow(
+                    { PhoneGlyph(Paper) },
+                    "Devices & phone remote",
+                    (if (linked && s.syncOn) "Sync on" else "Sync off") + " · " + when (state.remotes.size) {
+                        0 -> "No phone paired"
+                        1 -> "1 phone paired"
+                        else -> "${state.remotes.size} phones paired"
+                    },
+                    focusAt(SettingsPage.DEVICES.name),
+                ) { openPage(SettingsPage.DEVICES) }
+            }
+            item {
+                HubRow(
+                    { CrescentIcon(Paper, 18.dp) },
+                    "Prayer times",
+                    when (s.prayerMode) {
+                        "remind" -> "On: a reminder at each prayer"
+                        "pause" -> "On: a reminder, and the player pauses"
+                        else -> "Off"
+                    },
+                    focusAt("PRAYER"),
+                ) { go("PRAYER") { vm.screen = Screen.PRAYER } }
+            }
+            item { HubGap() }
+            item {
+                HubRow(
+                    { HubIcon(rememberVectorPainter(Icons.Outlined.Info)) },
+                    "About",
+                    "The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})" +
+                        if (Updater.enabled) " · Check for updates" else "",
+                    focusAt(SettingsPage.ABOUT.name),
+                ) { openPage(SettingsPage.ABOUT) }
+            }
+        }
+
+        SettingsPage.APPEARANCE -> {
         item {
             val context = androidx.compose.ui.platform.LocalContext.current
             // Today's sunrise and sunset where this device is (from its time zone).
@@ -137,7 +288,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 )
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette), Modifier.weight(1f)) {
+                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette), Modifier.weight(1f).then(focusAt("first"))) {
                         vm.updateSettings { it.copy(themeMode = "auto") }
                     }
                     ThemeOption("Light", s.themeMode == "light", listOf(LightPalette), Modifier.weight(1f)) {
@@ -197,15 +348,18 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 s.ambient,
             ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
         }
+        }
 
-        item { SectionTitle("Player") }
-        item { PlayerChoice(vm, s.player) }
+        SettingsPage.PLAYBACK -> {
+        item { SectionTitle("Player", first = true) }
+        item { PlayerChoice(vm, s.player, focusAt("first")) }
 
-        item { SectionTitle("Playback") }
+        item { SectionTitle("Picture") }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Picture size", style = MaterialTheme.typography.bodyLarge, color = Paper)
-                Spacer(Modifier.height(6.dp))
+                Text("How the video fills the screen. The picture button in the player changes it while you watch", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Spacer(Modifier.height(8.dp))
                 ChipFlow {
                     listOf("Fit", "Fill", "Zoom").forEachIndexed { i, label ->
                         TagChip(label, s.aspect == i) { vm.updateSettings { it.copy(aspect = i) } }
@@ -213,23 +367,35 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
             }
         }
+
+        item { SectionTitle("Playback") }
+        item {
+            SwitchRow(
+                "Play the next episode automatically",
+                "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
+                s.autoNextEpisode,
+            ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
+        }
         item {
             SwitchRow("Larger buffer", "Fewer pauses on slow connections; channels start a little slower", s.bigBuffer) {
                 vm.updateSettings { it.copy(bigBuffer = !it.bigBuffer) }
             }
         }
         item {
-            SwitchRow(
-                "Software audio decoding",
-                "Turn on if some channels or movies play without sound (Dolby/DTS on TV boxes)",
-                s.softwareAudio,
-            ) { vm.updateSettings { it.copy(softwareAudio = !it.softwareAudio) } }
+            SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
+                vm.updateSettings { it.copy(preferHls = !it.preferHls) }
+            }
         }
+        }
+
+        SettingsPage.SOUND -> {
+        item { SectionTitle("Sound", first = true) }
         item {
             SwitchRow(
                 "Even out volume between channels",
                 "Turns quiet channels up and loud ones down to a similar level (not for Dolby sent to a receiver)",
                 s.levelVolume,
+                focusAt("first"),
             ) { vm.updateSettings { it.copy(levelVolume = !it.levelVolume) } }
         }
         item {
@@ -266,23 +432,19 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
-            SwitchRow(
-                "Play the next episode automatically",
-                "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
-                s.autoNextEpisode,
-            ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
-        }
-        item {
-            SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
-                vm.updateSettings { it.copy(preferHls = !it.preferHls) }
-            }
-        }
-
-        item {
             LanguageRow("Preferred audio language", "When a channel or video has several audio tracks", s.audioLang) { code ->
                 vm.updateSettings { it.copy(audioLang = code) }
             }
         }
+        item {
+            SwitchRow(
+                "Software audio decoding",
+                "Turn on if some channels or movies play without sound (Dolby/DTS on TV boxes)",
+                s.softwareAudio,
+            ) { vm.updateSettings { it.copy(softwareAudio = !it.softwareAudio) } }
+        }
+
+        item { SectionTitle("Subtitles") }
         item {
             SwitchRow("Show subtitles automatically", "When a stream includes subtitles or closed captions", s.subtitlesOn) {
                 vm.updateSettings { it.copy(subtitlesOn = !it.subtitlesOn) }
@@ -295,7 +457,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
             }
         }
-
         item {
             ClickRow(
                 title = "Online subtitles (OpenSubtitles.com)",
@@ -303,9 +464,75 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 else "On" + if (s.osUser.isNotBlank()) " · signed in as ${s.osUser}" else " · not signed in (fewer downloads per day)",
             ) { editSubs = true }
         }
+        }
 
+        SettingsPage.PLAYLISTS -> {
+        item { SectionTitle("When the app opens", first = true) }
+        item {
+            SwitchRow("Open last playlist on start", null, s.openLast, focusAt("first")) {
+                vm.updateSettings { it.copy(openLast = !it.openLast) }
+            }
+        }
+        item {
+            SwitchRow(
+                "Start with the last channel",
+                "When the app was fully closed, it opens playing the channel you watched last",
+                s.startLastChannel,
+            ) {
+                vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
+            }
+        }
+
+        item { SectionTitle("Your playlists") }
         if (p != null) {
-            item { SectionTitle("TV guide") }
+            item {
+                ClickRow("Show & hide groups", "Hide groups you never watch, or bring them back", focusAt("groups"), arrow = true) {
+                    go("groups") { vm.screen = Screen.GROUPS }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
+                        if (p != null && vm.loadedAt > 0) " · last updated ${ageText(vm.loadedAt)}" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    listOf(1 to "1 h", 3 to "3 h", 6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
+                        TagChip(label, s.autoRefreshHours == h) { vm.updateSettings { it.copy(autoRefreshHours = h) } }
+                    }
+                }
+            }
+        }
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+            ) { }
+            SwitchRow(
+                "Tell me what's new",
+                "A notification when a refresh finds new channels, films or series (What's new always lists them)",
+                s.notifyNew,
+            ) {
+                val on = !s.notifyNew
+                vm.updateSettings { it.copy(notifyNew = on, askedNotify = true) }
+                if (on && android.os.Build.VERSION.SDK_INT >= 33 &&
+                    androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
+
+        item { SectionTitle("TV guide") }
+        if (p == null) {
+            item { Note("Open a playlist to choose where its TV guide comes from.") }
+        } else {
             item {
                 val extra = p.extraEpg.distinct().size
                 ClickRow(
@@ -329,123 +556,17 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 ) { guideShift = true }
             }
         }
-
-        if (Updater.enabled) {
-            item { SectionTitle("Updates") }
-            item {
-                ClickRow(
-                    title = if (vm.updateChecking) "Checking…" else "Check for updates",
-                    subtitle = "The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
-                ) { vm.checkForUpdates(manual = true) }
-            }
         }
 
-        item { SectionTitle("General") }
-        item {
-            ClickRow("Your devices", "Copy your playlists to other TVs and phones, or manage them from a phone or computer") {
-                vm.screen = Screen.SYNC
-            }
-        }
-        item {
-            val linked = state.sync.key.isNotEmpty()
-            val names = state.sync.peers.values.joinToString(", ") { it.name }
-            SwitchRow(
-                "Sync with my devices",
-                when {
-                    !linked -> "Off. Link a TV or phone on the same Wi-Fi in Your devices"
-                    !s.syncOn -> "Off. Linked with ${names.ifBlank { "another device" }}"
-                    else -> "Playlists, favorites, hidden groups and Continue watching stay the same on " +
-                        names.ifBlank { "your linked devices" }
-                },
-                s.syncOn && linked,
-            ) {
-                if (!linked) vm.screen = Screen.SYNC else vm.updateSettings { it.copy(syncOn = !it.syncOn) }
-            }
-        }
-        item {
-            ClickRow(
-                "Phone remote",
-                when (state.remotes.size) {
-                    0 -> "Use your phone as a remote and keyboard for this device"
-                    1 -> "1 phone paired"
-                    else -> "${state.remotes.size} phones paired"
-                },
-            ) { vm.screen = Screen.REMOTE }
-        }
+        SettingsPage.FAMILY -> {
         item {
             ClickRow(
                 "Profiles",
                 if (!s.profilesOn) "Off. Give each person their own favorites and Continue watching"
                 else "On · " + (listOf(s.mainProfileName.ifBlank { "Me" }) + state.profiles.map { it.name }).joinToString(", "),
-            ) { guarded { vm.screen = Screen.PROFILES } }
-        }
-        if (p != null) {
-            item {
-                ClickRow("Show & hide groups", "Hide groups you never watch, or bring them back") { vm.screen = Screen.GROUPS }
-            }
-        }
-        item {
-            SwitchRow("Open last playlist on start", null, s.openLast) {
-                vm.updateSettings { it.copy(openLast = !it.openLast) }
-            }
-        }
-        item {
-            SwitchRow(
-                "Start with the last channel",
-                "When the app was fully closed, it opens playing the channel you watched last",
-                s.startLastChannel,
-            ) {
-                vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
-            }
-        }
-        item {
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
-                Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
-                Text(
-                    "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
-                        if (p != null && vm.loadedAt > 0) " · last updated ${ageText(vm.loadedAt)}" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-                ChipFlow {
-                    listOf(1 to "1 h", 3 to "3 h", 6 to "6 h", 12 to "12 h", 24 to "Daily", 0 to "Never").forEach { (h, label) ->
-                        TagChip(label, s.autoRefreshHours == h) { vm.updateSettings { it.copy(autoRefreshHours = h) } }
-                    }
-                }
-            }
-        }
-
-        item {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val ask = androidx.activity.compose.rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-            ) { }
-            SwitchRow(
-                "Tell me what's new",
-                "A notification when a refresh finds new channels, films or series (What's new always lists them)",
-                s.notifyNew,
-            ) {
-                val on = !s.notifyNew
-                vm.updateSettings { it.copy(notifyNew = on, askedNotify = true) }
-                if (on && android.os.Build.VERSION.SDK_INT >= 33 &&
-                    androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-                ) {
-                    ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }
-        }
-
-        item {
-            ClickRow(
-                "Prayer times",
-                when (s.prayerMode) {
-                    "remind" -> "On: a reminder at each prayer"
-                    "pause" -> "On: a reminder, and the player pauses"
-                    else -> "Off. A reminder at each prayer time where you are"
-                },
-            ) { vm.screen = Screen.PRAYER }
+                focusAt("profiles"),
+                arrow = true,
+            ) { guarded { go("profiles") { vm.screen = Screen.PROFILES } } }
         }
 
         item { SectionTitle("Parental control") }
@@ -469,13 +590,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 ClickRow(
                     "Locked groups",
                     if (parts.isEmpty()) "Nothing locked yet" else parts.joinToString(" and ") + " need the PIN",
-                ) { guarded { vm.screen = Screen.LOCKS } }
+                    focusAt("locks"),
+                    arrow = true,
+                ) { guarded { go("locks") { vm.screen = Screen.LOCKS } } }
             }
         }
 
         item { SectionTitle("Kids profile") }
         if (p == null) {
-            item { Text("Open a playlist to set up kids mode.", fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
+            item { Note("Open a playlist to set up kids mode.") }
         } else {
             val kidsHere = s.kidsGroups[p.id].orEmpty()
             item {
@@ -512,12 +635,55 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                             1 -> "1 group in ${p.name}"
                             else -> "${kidsHere.size} groups in ${p.name}"
                         },
-                    ) { guarded { vm.screen = Screen.KIDS } }
+                        focusAt("kids"),
+                        arrow = true,
+                    ) { guarded { go("kids") { vm.screen = Screen.KIDS } } }
                 }
             }
         }
+        }
 
-        item { SectionTitle("About") }
+        SettingsPage.DEVICES -> {
+        item {
+            ClickRow(
+                "Your devices",
+                "Copy your playlists to other TVs and phones, or manage them from a phone or computer",
+                focusAt("devices"),
+                arrow = true,
+            ) { go("devices") { vm.screen = Screen.SYNC } }
+        }
+        item {
+            val linked = state.sync.key.isNotEmpty()
+            val names = state.sync.peers.values.joinToString(", ") { it.name }
+            SwitchRow(
+                "Sync with my devices",
+                when {
+                    !linked -> "Off. Link a TV or phone on the same Wi-Fi in Your devices"
+                    !s.syncOn -> "Off. Linked with ${names.ifBlank { "another device" }}"
+                    else -> "Playlists, favorites, hidden groups and Continue watching stay the same on " +
+                        names.ifBlank { "your linked devices" }
+                },
+                s.syncOn && linked,
+                focusAt("sync"),
+            ) {
+                if (!linked) go("sync") { vm.screen = Screen.SYNC } else vm.updateSettings { it.copy(syncOn = !it.syncOn) }
+            }
+        }
+        item {
+            ClickRow(
+                "Phone remote",
+                when (state.remotes.size) {
+                    0 -> "Use your phone as a remote and keyboard for this device"
+                    1 -> "1 phone paired"
+                    else -> "${state.remotes.size} phones paired"
+                },
+                focusAt("remote"),
+                arrow = true,
+            ) { go("remote") { vm.screen = Screen.REMOTE } }
+        }
+        }
+
+        SettingsPage.ABOUT -> {
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
@@ -530,19 +696,26 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     fontSize = 13.sp, lineHeight = 19.sp,
                     color = Muted,
                 )
-                val uri = androidx.compose.ui.platform.LocalUriHandler.current
-                Text(
-                    "Privacy policy",
-                    fontSize = 13.sp,
-                    color = Signal,
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .focusRing(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                        .clickable { runCatching { uri.openUri(PRIVACY_URL) } }
-                        .padding(vertical = 6.dp, horizontal = 2.dp),
-                )
             }
         }
+        if (Updater.enabled) {
+            item {
+                ClickRow(
+                    title = if (vm.updateChecking) "Checking…" else "Check for updates",
+                    subtitle = "Looks for a newer version of The Player",
+                    modifier = focusAt("first"),
+                ) { vm.checkForUpdates(manual = true) }
+            }
+        }
+        item {
+            val uri = androidx.compose.ui.platform.LocalUriHandler.current
+            ClickRow("Privacy policy", "What the app keeps, and what it never sends", focusAt("privacy")) {
+                runCatching { uri.openUri(PRIVACY_URL) }
+            }
+        }
+        }
+        }
+    }
     }
     }
 
@@ -654,8 +827,98 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Box(Modifier.padding(start = 4.dp, top = 26.dp, bottom = 6.dp)) { Kicker(text) }
+private fun SectionTitle(text: String, first: Boolean = false) {
+    Box(Modifier.padding(start = 4.dp, top = if (first) 10.dp else 26.dp, bottom = 6.dp)) { Kicker(text) }
+}
+
+/** A short line in place of settings that need a playlist open. */
+@Composable
+private fun Note(text: String) {
+    Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
+}
+
+/** Space and a hairline between the groups of the Settings list. */
+@Composable
+private fun HubGap() {
+    Column {
+        Spacer(Modifier.height(8.dp))
+        Rule(Modifier.padding(horizontal = 4.dp))
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** One page of Settings in its list: an icon, the name, what's set now, and an arrow. */
+@Composable
+private fun HubRow(icon: @Composable () -> Unit, title: String, summary: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .focusRing(shape)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Ink3), contentAlignment = Alignment.Center) { icon() }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Faint)
+    }
+}
+
+@Composable
+private fun HubIcon(painter: Painter) {
+    Icon(painter, contentDescription = null, tint = Paper, modifier = Modifier.size(21.dp))
+}
+
+/** Appearance: a circle half light, half dark. */
+@Composable
+private fun ThemeGlyph(color: androidx.compose.ui.graphics.Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val stroke = 1.6.dp.toPx()
+        val r = size.minDimension / 2 - stroke / 2
+        drawCircle(color, r, center, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+        drawArc(
+            color,
+            startAngle = 90f,
+            sweepAngle = 180f,
+            useCenter = true,
+            topLeft = androidx.compose.ui.geometry.Offset(center.x - r, center.y - r),
+            size = androidx.compose.ui.geometry.Size(2 * r, 2 * r),
+        )
+    }
+}
+
+/** Devices: the outline of a phone. */
+@Composable
+private fun PhoneGlyph(color: androidx.compose.ui.graphics.Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val stroke = 1.6.dp.toPx()
+        val w = size.width * 0.58f
+        val h = size.height * 0.94f
+        val left = (size.width - w) / 2
+        val top = (size.height - h) / 2
+        drawRoundRect(
+            color,
+            topLeft = androidx.compose.ui.geometry.Offset(left + stroke / 2, top + stroke / 2),
+            size = androidx.compose.ui.geometry.Size(w - stroke, h - stroke),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+        )
+        val y = top + h - 3.6.dp.toPx()
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(center.x - 2.dp.toPx(), y),
+            androidx.compose.ui.geometry.Offset(center.x + 2.dp.toPx(), y),
+            strokeWidth = stroke,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+    }
 }
 
 /** A theme to pick: a small preview (both halves for Automatic) and its name. */
@@ -784,7 +1047,7 @@ private fun minuteLabel(context: android.content.Context, minutes: Int): String 
 
 /** Which video player to use; Automatic shows what it picked for this TV and why. */
 @Composable
-private fun PlayerChoice(vm: LibraryViewModel, current: String) {
+private fun PlayerChoice(vm: LibraryViewModel, current: String, firstChip: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val advice by androidx.compose.runtime.produceState<app.falak.player.player.EngineAdvice?>(null) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
@@ -807,7 +1070,7 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String) {
         )
         Spacer(Modifier.height(8.dp))
         ChipFlow {
-            TagChip("Automatic", selected == null) { vm.updateSettings { it.copy(player = "auto") } }
+            TagChip("Automatic", selected == null, modifier = firstChip) { vm.updateSettings { it.copy(player = "auto") } }
             listOf(
                 app.falak.player.player.Engine.EXO,
                 app.falak.player.player.Engine.EXO_SOFT,
@@ -991,10 +1254,10 @@ private fun LanguageRow(title: String, subtitle: String?, selected: String, onSe
 }
 
 @Composable
-private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onToggle: () -> Unit) {
+private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Row(
-        Modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onToggle).padding(vertical = 10.dp, horizontal = 4.dp),
+        modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onToggle).padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -1020,13 +1283,21 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onTogg
 }
 
 @Composable
-private fun ClickRow(title: String, subtitle: String, onClick: () -> Unit) {
+private fun ClickRow(title: String, subtitle: String, modifier: Modifier = Modifier, arrow: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
-    Column(
-        Modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+    Row(
+        modifier.fillMaxWidth().focusRing(shape).clip(shape).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        // Opens a page of its own.
+        if (arrow) {
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Faint)
+        }
     }
 }
 

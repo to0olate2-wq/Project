@@ -41,6 +41,9 @@ import java.util.UUID
 
 enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER }
 
+/** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
+val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
+
 /** Pages that need the PIN while kids mode is on. */
 val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER)
 
@@ -67,7 +70,24 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** What each guide source covered and added on the last download. */
     val guideStats = repo.guideStats
 
-    var screen by mutableStateOf(Screen.PLAYLISTS)
+    /** The Settings page open (null: the list of them); kept while a page opened from it is on screen. */
+    var settingsPage by mutableStateOf<SettingsPage?>(null)
+
+    /** The Settings row last opened, so the remote's focus comes back to it. */
+    var settingsFocus: String? = null
+
+    private val screenState = mutableStateOf(Screen.PLAYLISTS)
+
+    /** The page on show. Leaving Settings (and the pages it opens) starts it at its list next time. */
+    var screen: Screen
+        get() = screenState.value
+        set(value) {
+            if (value !in SETTINGS_SCREENS) {
+                settingsPage = null
+                settingsFocus = null
+            }
+            screenState.value = value
+        }
     var playlist by mutableStateOf<Playlist?>(null)
         private set
     var channels by mutableStateOf<List<Channel>>(emptyList())

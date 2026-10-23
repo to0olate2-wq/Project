@@ -39,6 +39,7 @@ import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
 import app.falak.player.ui.Section
+import app.falak.player.ui.SettingsPage
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import org.junit.Test
@@ -412,7 +413,12 @@ class TvSettingsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = TV_TALL)
     fun tvSettings() = mainScreens("tv") { vm, shoot ->
         vm.screen = Screen.SETTINGS
-        shoot("tv-06-settings-full")
+        shoot("tv-06-settings")
+        // Each page of Settings.
+        SettingsPage.entries.forEachIndexed { i, page ->
+            vm.settingsPage = page
+            shoot("tv-06" + ('a' + i) + "-settings-" + page.name.lowercase())
+        }
     }
 }
 
@@ -688,7 +694,12 @@ class PhoneSettingsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_TALL)
     fun phoneSettings() = mainScreens("phone") { vm, shoot ->
         vm.screen = Screen.SETTINGS
-        shoot("phone-06-settings-full")
+        shoot("phone-06-settings")
+        // Each page of Settings.
+        SettingsPage.entries.forEachIndexed { i, page ->
+            vm.settingsPage = page
+            shoot("phone-06" + ('a' + i) + "-settings-" + page.name.lowercase())
+        }
     }
 }
 

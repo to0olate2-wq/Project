@@ -249,7 +249,7 @@ fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
 /** Filter chip: outline, or filled paper when selected. Long-press for options. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val bg by animateColorAsState(if (selected) Paper else Color.Transparent, tween(220), label = "chipBg")
     val fg by animateColorAsState(if (selected) Ink else Paper, tween(220), label = "chipFg")
@@ -260,7 +260,7 @@ fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, 
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
         maxLines = 1,
-        modifier = Modifier
+        modifier = modifier
             .focusRing(shape)
             .clip(shape)
             .background(bg)

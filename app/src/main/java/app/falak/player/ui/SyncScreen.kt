@@ -86,7 +86,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
     val scope = rememberCoroutineScope()
     val tv = isTv()
     val me = remember { deviceName(context) }
-    val back: () -> Unit = { vm.screen = if (vm.playlist != null) Screen.SETTINGS else Screen.PLAYLISTS }
+    val back: () -> Unit = { vm.screen = if (vm.playlist != null || vm.settingsPage != null) Screen.SETTINGS else Screen.PLAYLISTS }
     BackHandler { back() }
 
     // ---- sharing (this device serves the page) ----
