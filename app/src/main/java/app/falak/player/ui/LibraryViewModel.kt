@@ -167,8 +167,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var group by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
 
-    /** Crash details from the previous run, shown once so the user can copy them. */
-    var crashReport by mutableStateOf<String?>(null)
+    /**
+     * The app stopped unexpectedly last time. Nothing is shown about it; this once the last
+     * playlist and channel don't reopen by themselves, so a crash can't repeat at every start.
+     */
+    private var crashedLastTime = false
 
     /** Kept here so the list keeps its position when coming back from a series or the guide. */
     var listState by mutableStateOf(LazyListState())
@@ -689,7 +692,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun startLastChannel(p: Playlist) {
         val s = state.value
-        if (!s.settings.startLastChannel || crashReport != null) return
+        if (!s.settings.startLastChannel || crashedLastTime) return
         val ch = s.lastLive[s.mine(p.id)]?.let { index.byId[it] } ?: return
         if (ch.kind != Kind.LIVE || ch.group in currentExclusions()) return
         autoPlay = (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
@@ -1125,14 +1128,15 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         followOutsideChanges()
         forgetDetourOnLeave()
         renameAddressNamedPlaylists()
-        crashReport = repo.takeCrashReport()
+        // Read and cleared (the saved details are no longer shown).
+        crashedLastTime = repo.takeCrashReport() != null
         val s = state.value
         // Kids mode or extra profiles: ask who's watching each time the app opens.
         choosingProfile = profilesWanted(s)
         repo.kidsActive = false
         if (!choosingProfile) repo.setActiveProfile("")
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
-        if (crashReport == null && s.settings.openLast) {
+        if (!crashedLastTime && s.settings.openLast) {
             s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
         }
     }
