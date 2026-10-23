@@ -73,6 +73,9 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import app.falak.player.R
 import kotlinx.coroutines.delay
+import app.falak.player.player.FrameRateMatch
+import app.falak.player.player.SubtitleStyle
+import androidx.compose.foundation.layout.aspectRatio
 
 /** Public privacy policy (also linked from the Google Play listing). */
 const val PRIVACY_URL = "https://github.com/to0olate2-wq/Project/blob/main/PRIVACY.md"
@@ -86,6 +89,12 @@ enum class SettingsPage(val title: String) {
     FAMILY("Profiles & parental control"),
     DEVICES("Devices & phone remote"),
     ABOUT("About"),
+    SUBTITLE_STYLE("Subtitle style"),
+    ;
+
+    /** A page opened from another page (Back goes there), not from the list. */
+    val parent: SettingsPage?
+        get() = if (this == SUBTITLE_STYLE) SOUND else null
 }
 
 @Composable
@@ -113,7 +122,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val back: () -> Unit = {
         if (page != null) {
             vm.settingsFocus = page.name
-            vm.settingsPage = null
+            vm.settingsPage = page.parent
         } else if (!vm.leaveDetour()) {
             vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS
         }
@@ -369,6 +378,35 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val view = androidx.compose.ui.platform.LocalView.current
+            if (remember(context) { detectTv(context) }) {
+                val rates = remember(view) { FrameRateMatch.offeredRates(view.display) }
+                Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                    Text("Match frame rate", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                    Text(
+                        "Switches the TV to the video's own rate (24, 25, 50 or 60 Hz) so motion is smooth, with no judder. " +
+                            "The screen goes dark for a moment when it switches. " +
+                            if (rates.size > 1) {
+                                "This TV offers ${rates.joinToString(", ") { FrameRateMatch.label(it) }} Hz." +
+                                    if (android.os.Build.VERSION.SDK_INT >= 31) " If it never switches, set the box's “Match content frame rate” to Always." else ""
+                            } else {
+                                "This screen runs at one rate only" + (rates.firstOrNull()?.let { " (${FrameRateMatch.label(it)} Hz)" } ?: "") + ", so there's nothing to switch."
+                            },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ChipFlow {
+                        listOf("off" to "Off", "vod" to "Films & series", "all" to "Always").forEach { (key, label) ->
+                            TagChip(label, s.frameRate == key) { vm.updateSettings { it.copy(frameRate = key) } }
+                        }
+                    }
+                }
+            }
+        }
+
         item { SectionTitle("Playback") }
         item {
             SwitchRow(
@@ -457,6 +495,18 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     vm.updateSettings { it.copy(subtitleLang = code) }
                 }
             }
+        }
+        item {
+            ClickRow(
+                "Subtitle style",
+                listOf(
+                    SubtitleStyle.SIZES[s.subSize.coerceIn(0, 3)],
+                    if (s.subColor == "yellow") "Yellow" else "White",
+                    if (s.subEdge == "outline") "Outline" else "Dark box",
+                ).joinToString(" · "),
+                focusAt(SettingsPage.SUBTITLE_STYLE.name),
+                arrow = true,
+            ) { openPage(SettingsPage.SUBTITLE_STYLE) }
         }
         item {
             ClickRow(
@@ -684,6 +734,47 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
         }
 
+        SettingsPage.SUBTITLE_STYLE -> {
+        item { SubtitlePreview(s.subSize, s.subColor, s.subEdge) }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Size", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    SubtitleStyle.SIZES.forEachIndexed { i, label ->
+                        TagChip(label, s.subSize == i, modifier = if (s.subSize == i) focusAt("first") else Modifier) {
+                            vm.updateSettings { it.copy(subSize = i) }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Text color", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    listOf("white" to "White", "yellow" to "Yellow").forEach { (key, label) ->
+                        TagChip(label, s.subColor == key) { vm.updateSettings { it.copy(subColor = key) } }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Background", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text("A dark box reads best on bright scenes; an outline hides less of the picture", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    listOf("box" to "Dark box", "outline" to "Outline").forEach { (key, label) ->
+                        TagChip(label, s.subEdge == key) { vm.updateSettings { it.copy(subEdge = key) } }
+                    }
+                }
+            }
+        }
+        item { Note("Used by both video players, from the next video you open.") }
+        }
+
         SettingsPage.ABOUT -> {
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
@@ -836,6 +927,64 @@ private fun SectionTitle(text: String, first: Boolean = false) {
 @Composable
 private fun Note(text: String) {
     Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
+}
+
+/** A still "video" with a line of subtitles in the chosen look, sized as the player would. */
+@Composable
+private fun SubtitlePreview(step: Int, color: String, edge: String) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .padding(horizontal = 4.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .widthIn(max = 560.dp)
+            .aspectRatio(16f / 9f)
+            .clip(shape)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(
+                        androidx.compose.ui.graphics.Color(0xFF1D3B5C),
+                        androidx.compose.ui.graphics.Color(0xFF7C5A6E),
+                        androidx.compose.ui.graphics.Color(0xFFE2A66B),
+                    ),
+                ),
+            ),
+    ) {
+        // A low sun and a horizon, so the text is seen against light and dark.
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            drawCircle(androidx.compose.ui.graphics.Color(0xFFFFE3B0), radius = size.minDimension * 0.16f, center = androidx.compose.ui.geometry.Offset(size.width * 0.68f, size.height * 0.62f))
+            drawRect(
+                androidx.compose.ui.graphics.Color(0xFF241A22),
+                topLeft = androidx.compose.ui.geometry.Offset(0f, size.height * 0.7f),
+                size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.3f),
+            )
+        }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            // The players draw subtitles at about 1/19 of the picture height.
+            val textSize = (maxHeight.value * 0.0533f * SubtitleStyle.scale(step)).coerceAtLeast(9f).sp
+            val fg = androidx.compose.ui.graphics.Color(SubtitleStyle.textColor(color))
+            val sample = "Subtitles will look like this"
+            val base = androidx.compose.ui.text.TextStyle(fontSize = textSize, lineHeight = textSize * 1.25f, fontWeight = FontWeight.Medium)
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = maxHeight * 0.08f)) {
+                if (edge == "outline") {
+                    Text(
+                        sample,
+                        style = base.copy(
+                            color = androidx.compose.ui.graphics.Color.Black,
+                            drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = textSize.value * 0.35f, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+                        ),
+                    )
+                    Text(sample, style = base.copy(color = fg))
+                } else {
+                    Text(
+                        sample,
+                        style = base.copy(color = fg),
+                        modifier = Modifier.background(androidx.compose.ui.graphics.Color(SubtitleStyle.BOX)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
+        }
+    }
 }
 
 /** Space and a hairline between the groups of the Settings list. */

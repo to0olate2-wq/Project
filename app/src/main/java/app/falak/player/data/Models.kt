@@ -300,6 +300,14 @@ data class Settings(
     /** Show subtitles/closed captions automatically when a stream has them. */
     val subtitlesOn: Boolean = false,
     val subtitleLang: String = "en",
+    /** Subtitle size: 0 small, 1 normal, 2 large, 3 extra large. */
+    val subSize: Int = 1,
+    /** Subtitle text colour: "white" or "yellow". */
+    val subColor: String = "white",
+    /** Behind the subtitle text: "box" (dark band) or "outline" (dark edge round the letters). */
+    val subEdge: String = "box",
+    /** TVs: switch the screen's refresh rate to the video's frame rate: "off", "vod" (films and series) or "all". */
+    val frameRate: String = "vod",
     /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */
     val osApiKey: String = "",
     val osUser: String = "",

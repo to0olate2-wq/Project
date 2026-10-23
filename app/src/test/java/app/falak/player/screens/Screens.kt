@@ -27,6 +27,8 @@ import app.falak.player.data.LibraryIndex
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SourceType
+import app.falak.player.data.Store
+import app.falak.player.data.PlaylistCache
 import app.falak.player.data.SyncMeta
 import app.falak.player.data.KIDS_PROFILE
 import app.falak.player.data.Profile
@@ -82,9 +84,10 @@ abstract class ScreenshotBase {
         linked: Boolean = false,
         profiles: List<String> = emptyList(),
         prayerMode: String = "off",
+        liveOnly: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -132,11 +135,13 @@ abstract class ScreenshotBase {
         linked: Boolean = false,
         profiles: List<String> = emptyList(),
         prayerMode: String = "off",
+        liveOnly: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
-        m3u.writeText(buildM3u(dir))
+        m3u.writeText(buildM3u(dir, liveOnly))
         val p = Playlist("sample", "Home", SourceType.M3U_FILE, m3u.path)
+        writeCache(dir, liveOnly)
         app.repo.update { s ->
             s.copy(
                 playlists = listOf(p),
@@ -237,7 +242,51 @@ abstract class ScreenshotBase {
         0xFFB07A2A.toInt(), 0xFF3A6E7A.toInt(), 0xFF7A2F5D.toInt(), 0xFF4D6B2F.toInt(),
     )
 
-    private fun buildM3u(dir: File): String = buildString {
+    private val seriesTitles = listOf("Harbour Lights", "The Orchard Years", "Signal Point", "Winter Court")
+
+    /**
+     * The same library as the M3U, plus what an Xtream provider sends (when each film and series
+     * was added, ratings, series), saved as the app's playlist cache: the app opens that copy.
+     */
+    private fun writeCache(dir: File, liveOnly: Boolean) {
+        val now = System.currentTimeMillis() / 1000
+        val out = ArrayList<Channel>()
+        for ((group, names) in liveGroups) for (name in names) {
+            val id = slug(name)
+            val url = "http://127.0.0.1:1/live/$id.m3u8"
+            out += Channel(
+                id = stableId("$name|$url"), name = name, group = group, url = url,
+                logo = "file://" + File(dir, "logo-$id.png").path, tvgId = id,
+            )
+        }
+        if (!liveOnly) {
+            val ratings = listOf("7.8", "8.4", "6.9", "7.2", "8.1", "5.9", "7.5", "6.4")
+            for ((i, title) in films.withIndex()) {
+                val url = "http://127.0.0.1:1/movie/u/p/$i.mp4"
+                out += Channel(
+                    id = stableId("$title|$url"), name = title, group = filmGroup(i), url = url,
+                    logo = "file://" + File(dir, "poster-$i.png").path, kind = Kind.MOVIE,
+                    added = now - (2 + i * 6) * 86_400L, rating = ratings[i],
+                )
+            }
+            val seriesRatings = listOf("8.2", "7.4", "7.9", "6.8")
+            for ((i, title) in seriesTitles.withIndex()) {
+                val poster = image(dir, "series-$i.png", 300, 450, palette[(i + 5) % palette.size], title, round = false)
+                out += Channel(
+                    id = "series-$i", name = title, group = if (i % 2 == 0) "Drama Series" else "Family", url = "",
+                    logo = "file://${poster.path}", kind = Kind.SERIES, seriesId = "${100 + i}",
+                    added = now - (1 + i * 5) * 86_400L, rating = seriesRatings[i],
+                )
+            }
+        }
+        val cache = File(app.filesDir, "cache").apply { mkdirs() }
+        Store.writePlaylist(File(cache, "sample.bin"), PlaylistCache(out, savedAt = System.currentTimeMillis()))
+    }
+
+    // A long provider-style group name: shelf and chip titles must stay on one line.
+    private fun filmGroup(i: Int) = if (i % 2 == 0) "Drama" else "TOP MOVIES 4K 3840P DOLBY AUDIO (MULTI-SUBS)"
+
+    private fun buildM3u(dir: File, liveOnly: Boolean = false): String = buildString {
         append("#EXTM3U\n")
         var n = 0
         for ((group, names) in liveGroups) {
@@ -249,10 +298,9 @@ abstract class ScreenshotBase {
                 n++
             }
         }
-        for ((i, title) in films.withIndex()) {
+        if (!liveOnly) for ((i, title) in films.withIndex()) {
             val poster = image(dir, "poster-$i.png", 300, 450, palette[(i + 3) % palette.size], title, round = false)
-            // A long provider-style group name: the shelf title must stay on one line.
-            val group = if (i % 2 == 0) "Drama" else "TOP MOVIES 4K 3840P DOLBY AUDIO (MULTI-SUBS)"
+            val group = filmGroup(i)
             append("#EXTINF:-1 tvg-logo=\"file://${poster.path}\" group-title=\"$group\",$title\n")
             append("http://127.0.0.1:1/movie/u/p/$i.mp4\n")
         }
@@ -398,6 +446,14 @@ class TvHomeScreens : ScreenshotBase() {
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvHomeLiveOnlyScreens : ScreenshotBase() {
+    // Live channels only and nothing watched yet: Home says what will appear there.
+    @Test @Config(qualifiers = TV)
+    fun tvHomeLiveOnly() = mainScreens("tv", liveOnly = true) { _, shoot -> shoot("tv-28-home-live-only") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TvLightScreens : ScreenshotBase() {
     @Test @Config(qualifiers = TV)
     fun tvLight() = mainScreens("tv", theme = "light") { vm, shoot ->
@@ -410,7 +466,8 @@ class TvLightScreens : ScreenshotBase() {
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TvSettingsScreens : ScreenshotBase() {
-    @Test @Config(qualifiers = TV_TALL)
+    // A TV device (not only the TV layout): Settings shows Match frame rate.
+    @Test @Config(qualifiers = "w960dp-h2400dp-port-television-xhdpi")
     fun tvSettings() = mainScreens("tv") { vm, shoot ->
         vm.screen = Screen.SETTINGS
         shoot("tv-06-settings")
@@ -528,10 +585,10 @@ class PhoneLightScreens : ScreenshotBase() {
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhoneShelfScreens : ScreenshotBase() {
-    // A very tall phone shows every Home shelf, including the films group with a long
-    // provider-style name: its title must stay on one line.
+    // A very tall phone shows every Home row: Recently watched, Continue watching, Trending now,
+    // New films, New series, then favorites.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneShelves() = mainScreens("phone") { _, shoot -> shoot("phone-11-home-all-shelves") }
+    fun phoneShelves() = mainScreens("phone", watching = true) { _, shoot -> shoot("phone-11-home-all-shelves") }
 }
 
 @RunWith(RobolectricTestRunner::class)

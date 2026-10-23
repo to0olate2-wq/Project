@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -71,7 +72,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 
-/** The start page: feature carousel, then shelves for live, films and series. */
+/**
+ * The start page: the slideshow, then what you watch (Recently watched channels, Continue
+ * watching), what's popular and new (Trending now, New films, New series), then your own
+ * favorites and lists. The provider's groups are on the Live, Films and Series pages.
+ */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun HomeContent(
@@ -121,15 +126,7 @@ fun HomeContent(
     }
     val newMovies = remember(index, locked) { index.newMovies.filter(::ok) }
     val newSeries = remember(index, locked) { index.newSeries.filter(::ok) }
-    val liveGroups = remember(index, locked) {
-        index.groupsOf(Kind.LIVE).entries.filter { it.key !in locked }.take(6).map { it.key to it.value }
-    }
-    val movieGroups = remember(index, locked) {
-        index.groupsOf(Kind.MOVIE).entries.filter { it.key !in locked && it.value.size >= 3 }.take(5).map { it.key to it.value }
-    }
-    val seriesGroups = remember(index, locked) {
-        index.groupsOf(Kind.SERIES).entries.filter { it.key !in locked && it.value.size >= 3 }.take(4).map { it.key to it.value }
-    }
+    val trending = remember(index, locked) { index.trending.filter(::ok) }
     // The slideshow features only what you can see: never hidden or locked groups (keyed on them
     // too, so hiding a group takes its films out at once), and never adult groups.
     val hero = remember(newMovies, newSeries, index, locked) {
@@ -188,6 +185,12 @@ fun HomeContent(
                 )
             }
         }
+        // What you watch.
+        if (recentLive.isNotEmpty()) {
+            item(key = "recentLive") {
+                LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
+            }
+        }
         if (continueWatching.isNotEmpty() && !bigContinue) {
             item(key = "continue") {
                 Shelf("Continue watching") {
@@ -195,17 +198,12 @@ fun HomeContent(
                 }
             }
         }
-        if (favLive.isNotEmpty()) {
-            item(key = "favLive") {
-                LiveShelf("Favorite channels", favLive, epg, now, onPlay, onLongPress = sheet) {
-                    vm.savedList = app.falak.player.data.DEFAULT_LIST
-                    seeAll(Section.FAVORITES, null, Sort.DEFAULT)
+        // What's popular and new.
+        if (trending.isNotEmpty()) {
+            item(key = "trending") {
+                Shelf("Trending now") {
+                    items(trending, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(trending, ch) }, onLongClick = { sheet(ch) }) }
                 }
-            }
-        }
-        if (recentLive.isNotEmpty()) {
-            item(key = "recentLive") {
-                LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
             }
         }
         if (newMovies.isNotEmpty()) {
@@ -219,6 +217,15 @@ fun HomeContent(
             item(key = "newSeries") {
                 Shelf("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
                     items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        // Your own picks.
+        if (favLive.isNotEmpty()) {
+            item(key = "favLive") {
+                LiveShelf("Favorite channels", favLive, epg, now, onPlay, onLongPress = sheet) {
+                    vm.savedList = app.falak.player.data.DEFAULT_LIST
+                    seeAll(Section.FAVORITES, null, Sort.DEFAULT)
                 }
             }
         }
@@ -242,23 +249,48 @@ fun HomeContent(
                 }
             }
         }
-        items(liveGroups, key = { "live:" + it.first }) { (group, list) ->
-            LiveShelf(group, list.take(20), epg, now, { _, ch -> onPlay(list, ch) }, onLongPress = sheet) {
-                seeAll(Section.LIVE, group, Sort.DEFAULT)
-            }
-        }
-        items(movieGroups, key = { "movies:" + it.first }) { (group, list) ->
-            Shelf(group, onSeeAll = { seeAll(Section.MOVIES, group, Sort.DEFAULT) }) {
-                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
-            }
-        }
-        items(seriesGroups, key = { "series:" + it.first }) { (group, list) ->
-            Shelf(group, onSeeAll = { seeAll(Section.SERIES, group, Sort.DEFAULT) }) {
-                items(list.take(20), key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
+        // A new playlist with no films and nothing watched yet: say what will appear here.
+        val empty = !bigContinue && hero.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+            trending.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
+        if (empty) {
+            item(key = "empty") {
+                EmptyHome(if (index.live.isNotEmpty()) ({ seeAll(Section.LIVE, null, Sort.DEFAULT) }) else null)
             }
         }
     }
     }
+    }
+}
+
+/** Home before there's anything to show on it. */
+@Composable
+private fun EmptyHome(onBrowse: (() -> Unit)?) {
+    Column(
+        Modifier.fillMaxWidth().pinToTop().padding(horizontal = 24.dp, vertical = 56.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Your Home fills up as you watch",
+            fontFamily = Serif,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 22.sp,
+            color = Paper,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Channels you've watched, films and series to continue, and what's trending and new will show up here.",
+            fontFamily = Sans,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = Muted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.widthIn(max = 460.dp),
+        )
+        if (onBrowse != null) {
+            Spacer(Modifier.height(18.dp))
+            PaperButton("Browse channels", Icons.Filled.PlayArrow, onClick = onBrowse)
+        }
     }
 }
 

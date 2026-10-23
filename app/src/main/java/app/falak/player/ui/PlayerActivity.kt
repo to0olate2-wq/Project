@@ -73,8 +73,12 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
+import app.falak.player.player.FrameRateMatch
+import app.falak.player.player.SubtitleStyle
 import app.falak.player.R
 import app.falak.player.player.CaptionSniffer
 import app.falak.player.player.Captions
@@ -167,6 +171,10 @@ class PlayerActivity : ComponentActivity() {
     // Two engines behind the same Player interface: ExoPlayer, or VLC through VlcPlayer.
     private var exo: ExoPlayer? = null
     private var vlc: VlcPlayer? = null
+
+    /** Auto frame rate: TVs only (Settings → Picture & playback → Match frame rate). */
+    private val frameMatch by lazy { FrameRateMatch(this) }
+    private val isTvDevice by lazy { detectTv(this) }
     private val player: Player? get() = exo ?: vlc
     private var engine = Engine.EXO
     private var vlcLayout: VLCVideoLayout? = null
@@ -519,12 +527,15 @@ class PlayerActivity : ComponentActivity() {
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
+        // The screen goes back to its own refresh rate while the player isn't showing.
+        if (isTvDevice) frameMatch.start(false)
         // Closing the picture-in-picture window stops the activity: finish so it doesn't linger.
         if (inPip) finish()
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (isTvDevice) frameMatch.release()
         super.onDestroy()
     }
 
@@ -630,9 +641,11 @@ class PlayerActivity : ComponentActivity() {
             }
         }.build()
         p.addListener(listener)
+        if (isTvDevice) p.setVideoFrameMetadataListener(frameMatch.frames)
         p.playWhenReady = true
         playerView.videoSurfaceView?.visibility = View.VISIBLE
         playerView.player = ZapPlayer(p)
+        applySubtitleStyle()
         exo = p
     }
 
@@ -645,6 +658,7 @@ class PlayerActivity : ComponentActivity() {
             nightSound = nightNow(),
             audioLang = st.audioLang,
             subtitleLang = if (st.subtitlesOn) st.subtitleLang.ifBlank { "en" } else "",
+            subtitleLook = SubtitleStyle.vlcOptions(st.subSize, st.subColor, st.subEdge),
         )
         val layout = VLCVideoLayout(this)
         // Underneath the controls; ExoPlayer's own picture surface steps aside.
@@ -654,6 +668,7 @@ class PlayerActivity : ComponentActivity() {
         v.setScale(if (browserOpen) 0 else aspect)
         v.addListener(listener)
         v.onTracksChanged = {
+            if (isTvDevice) frameMatch.declared(v.frameRate())
             updateTrackButtons()
             pickVlcSubtitle()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
@@ -669,6 +684,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.player = null
         exo?.let {
             it.removeListener(listener)
+            if (isTvDevice) it.clearVideoFrameMetadataListener(frameMatch.frames)
             it.release()
         }
         exo = null
@@ -748,6 +764,16 @@ class PlayerActivity : ComponentActivity() {
             ch.info.ifBlank { ch.group }
         }
         currentChannelId = ch.id
+        // Auto frame rate for this video (or the screen's own rate back).
+        if (isTvDevice) {
+            frameMatch.start(
+                when (settingsFrameRate()) {
+                    "all" -> true
+                    "vod" -> ch.kind != Kind.LIVE
+                    else -> false
+                },
+            )
+        }
         FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
         // Remembered so the list can put the selection back on this item after the player closes.
@@ -927,6 +953,11 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
+            // The picture is known: its frame rate too, when the stream declares one.
+            if (isTvDevice) {
+                exo?.videoFormat?.frameRate?.let { frameMatch.declared(it) }
+                vlc?.let { frameMatch.declared(it.frameRate()) }
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 runCatching { setPictureInPictureParams(pipParams()) }
             }
@@ -2233,6 +2264,31 @@ class PlayerActivity : ComponentActivity() {
             if (queue.getOrNull(index)?.kind == Kind.LIVE) p.seekToDefaultPosition()
             p.play()
         }
+    }
+
+    // ---- subtitles look, frame rate ----
+
+    private fun settingsFrameRate(): String = repo.state.value.settings.frameRate
+
+    /** ExoPlayer's subtitles in the size, colour and background chosen in Settings. */
+    private fun applySubtitleStyle() {
+        val sv = playerView.subtitleView ?: return
+        val s = repo.state.value.settings
+        val box = s.subEdge != "outline"
+        sv.setStyle(
+            CaptionStyleCompat(
+                SubtitleStyle.textColor(s.subColor),
+                if (box) SubtitleStyle.BOX else Color.TRANSPARENT,
+                Color.TRANSPARENT,
+                if (box) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                Color.BLACK,
+                Typeface.DEFAULT,
+            ),
+        )
+        sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * SubtitleStyle.scale(s.subSize))
+        // The chosen look wins over sizes and colours written into the subtitle file.
+        sv.setApplyEmbeddedStyles(false)
+        sv.setApplyEmbeddedFontSizes(false)
     }
 
     // ---- night sound ----

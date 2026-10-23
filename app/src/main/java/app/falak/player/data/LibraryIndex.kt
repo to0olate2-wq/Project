@@ -15,6 +15,8 @@ class LibraryIndex(
     private val seriesGroups: Map<String, List<Channel>>,
     val newMovies: List<Channel>,
     val newSeries: List<Channel>,
+    /** Home's "Trending now": films and series (see [Trending]). */
+    val trending: List<Channel>,
 ) {
     fun ofKind(kind: Kind): List<Channel> = when (kind) {
         Kind.LIVE -> live
@@ -42,6 +44,8 @@ class LibraryIndex(
                     Kind.SERIES -> series += ch
                 }
             }
+            val movieGroups = movies.groupByTo(LinkedHashMap()) { it.group }
+            val seriesGroups = series.groupByTo(LinkedHashMap()) { it.group }
             return LibraryIndex(
                 all = list,
                 byId = list.associateBy { it.id },
@@ -49,10 +53,11 @@ class LibraryIndex(
                 movies = movies,
                 series = series,
                 liveGroups = live.groupByTo(LinkedHashMap()) { it.group },
-                movieGroups = movies.groupByTo(LinkedHashMap()) { it.group },
-                seriesGroups = series.groupByTo(LinkedHashMap()) { it.group },
+                movieGroups = movieGroups,
+                seriesGroups = seriesGroups,
                 newMovies = movies.filter { it.added > 0 }.sortedByDescending { it.added }.take(40),
                 newSeries = series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }.take(40),
+                trending = Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000),
             )
         }
     }

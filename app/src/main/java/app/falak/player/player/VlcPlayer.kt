@@ -34,10 +34,13 @@ class VlcPlayer(
     audioLang: String = "",
     /** Subtitle language to switch on by itself ("" = no subtitles unless chosen). */
     subtitleLang: String = "",
+    /** The subtitle look from Settings ([SubtitleStyle.vlcOptions]). */
+    subtitleLook: List<String> = emptyList(),
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
-    private val libVlc = LibVLC(
-        context.applicationContext,
+    private val libVlc = createLibVlc(
+        context,
+        subtitleLook,
         arrayListOf(
             "--http-reconnect",
             // Never look up cover art or other metadata online (VLC's default, made explicit):
@@ -66,6 +69,19 @@ class VlcPlayer(
             if (subtitleLang.isNotBlank()) add("--sub-language=$subtitleLang")
         },
     )
+
+    /** libVLC with the subtitle look; should this VLC refuse one of those options, without it. */
+    private fun createLibVlc(context: Context, look: List<String>, base: ArrayList<String>): LibVLC {
+        if (look.isNotEmpty()) {
+            try {
+                return LibVLC(context.applicationContext, ArrayList(base + look))
+            } catch (e: Exception) {
+                // falls back to VLC's own subtitle look below
+            }
+        }
+        return LibVLC(context.applicationContext, base)
+    }
+
     private val vlc = MediaPlayer(libVlc)
     private val main = Handler(Looper.getMainLooper())
 
@@ -118,6 +134,13 @@ class VlcPlayer(
         if (playWhenReady) vlc.play()
         if (speed != 1f) vlc.rate = speed
         invalidateState()
+    }
+
+    /** The video's frame rate as VLC reads it from the stream (for auto frame rate), or 0 while unknown. */
+    fun frameRate(): Float {
+        if (released) return 0f
+        val track = runCatching { vlc.currentVideoTrack }.getOrNull() ?: return 0f
+        return if (track.frameRateDen > 0) track.frameRateNum.toFloat() / track.frameRateDen else 0f
     }
 
     /** Bytes read from the network so far for the current stream (for the data rate), or null. */
