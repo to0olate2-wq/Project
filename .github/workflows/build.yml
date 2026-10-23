@@ -98,7 +98,8 @@ jobs:
 
       - name: Draw the screens
         continue-on-error: true
-        timeout-minutes: 14
+        # Room for every screen (a cut-off run publishes only some of them).
+        timeout-minutes: 25
         run: |
           chmod +x gradlew
           ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
