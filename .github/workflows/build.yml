@@ -98,8 +98,8 @@ jobs:
 
       - name: Draw the screens
         continue-on-error: true
-        # Room for every screen (a cut-off run publishes only some of them).
-        timeout-minutes: 25
+        # A full run takes about 10 minutes; a stuck test is cut off here (the log's tail says which).
+        timeout-minutes: 18
         run: |
           chmod +x gradlew
           ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
@@ -109,7 +109,8 @@ jobs:
         run: |
           mkdir -p /tmp/screens
           cp app/build/screens/*.png /tmp/screens/ 2>/dev/null || true
-          grep -E "^e: |^w: .*screens|STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | head -80 > /tmp/screens/log.txt || true
+          # Compile errors first, then the end of the run (the last test started is the one that stuck).
+          { grep -E "^e: |^w: .*screens" screens.log | head -40; echo "----- last lines -----"; grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | tail -120; } > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
           cd /tmp/screens
           git init -q
