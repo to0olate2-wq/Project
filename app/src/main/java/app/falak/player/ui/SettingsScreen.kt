@@ -397,10 +397,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    ChipFlow {
-                        listOf("off" to "Off", "vod" to "Films & series", "all" to "Always").forEach { (key, label) ->
-                            TagChip(label, s.frameRate == key) { vm.updateSettings { it.copy(frameRate = key) } }
+                    // One rate only: nothing to choose.
+                    if (rates.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        ChipFlow {
+                            listOf("off" to "Off", "vod" to "Films & series", "all" to "Always").forEach { (key, label) ->
+                                TagChip(label, s.frameRate == key) { vm.updateSettings { it.copy(frameRate = key) } }
+                            }
                         }
                     }
                 }
