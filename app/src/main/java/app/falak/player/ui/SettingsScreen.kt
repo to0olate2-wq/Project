@@ -62,6 +62,7 @@ import app.falak.player.BuildConfig
 import app.falak.player.data.AppState
 import app.falak.player.data.guideSourceName
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.key
@@ -169,12 +170,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 ) { openPage(SettingsPage.APPEARANCE) }
             }
             item {
-                val engine = app.falak.player.player.Engine.of(s.player)?.short ?: "Automatic"
+                val engine = app.falak.player.player.Engine.of(s.player)?.short ?: "Automatic player"
                 val picture = listOf("Fit", "Fill", "Zoom").getOrElse(s.aspect) { "Fit" }
                 HubRow(
                     { HubIcon(painterResource(R.drawable.ic_pl_player)) },
                     "Picture & playback",
-                    "Player: $engine · Picture: $picture · Next episode ${if (s.autoNextEpisode) "automatic" else "manual"}",
+                    "$engine · Picture: $picture · ${if (s.autoNextEpisode) "Auto next episode" else "Next episode by hand"}",
                     focusAt(SettingsPage.PLAYBACK.name),
                 ) { openPage(SettingsPage.PLAYBACK) }
             }
@@ -495,8 +496,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Refresh playlist automatically", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
-                    "The saved copy opens instantly; a fresh one downloads in the background when it gets older than this" +
-                        if (p != null && vm.loadedAt > 0) " · last updated ${ageText(vm.loadedAt)}" else "",
+                    "A fresh copy downloads in the background after this long" +
+                        if (p != null && vm.loadedAt > 0) " · updated ${ageText(vm.loadedAt)}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1237,19 +1238,55 @@ private val LANGUAGES = listOf(
     "pt" to "Portuguese", "ru" to "Russian", "fa" to "Persian", "ml" to "Malayalam", "ta" to "Tamil",
 )
 
+/** A language setting: one row with the language chosen; the list opens in a picker. */
 @Composable
 private fun LanguageRow(title: String, subtitle: String?, selected: String, onSelect: (String) -> Unit) {
-    Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = Paper)
-        if (subtitle != null) {
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.height(6.dp))
-        ChipFlow {
-            LANGUAGES.forEach { (code, name) ->
-                TagChip(name, selected == code) { onSelect(code) }
+    var picking by remember { mutableStateOf(false) }
+    val name = LANGUAGES.firstOrNull { it.first == selected }?.second ?: "Default"
+    ClickRow(title, listOfNotNull(name, subtitle).joinToString(" · ")) { picking = true }
+    if (picking) {
+        val current = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            repeat(8) {
+                delay(50)
+                if (runCatching { current.requestFocus() }.isSuccess) return@LaunchedEffect
             }
         }
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text(title) },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(LANGUAGES) { (code, label) ->
+                        val chosen = code == selected
+                        val shape = RoundedCornerShape(10.dp)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .then(if (chosen) Modifier.focusRequester(current) else Modifier)
+                                .focusRing(shape)
+                                .clip(shape)
+                                .clickable {
+                                    onSelect(code)
+                                    picking = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (chosen) Signal else Paper,
+                                fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (chosen) Icon(Icons.Filled.Check, contentDescription = "Chosen", tint = Signal, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = false }) { Text("Close") } },
+        )
     }
 }
 
