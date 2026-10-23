@@ -59,6 +59,28 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### User counter is live: $url (sign in with any name and your STATS_PASSWORD)" >> "$GITHUB_STEP_SUMMARY"
 
+      # From outside, without adding a user: the page wants the password, the password opens it,
+      # and a bad count is refused. (A new workers.dev address can take a minute to answer.)
+      - name: Check the user counter
+        if: steps.deploy.outputs.url != ''
+        continue-on-error: true
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          STATS_PASSWORD: ${{ secrets.STATS_PASSWORD }}
+        run: |
+          for i in $(seq 1 18); do
+            locked=$(curl -s -o /dev/null -w '%{http_code}' "$URL/")
+            [ "$locked" = 401 ] && break
+            sleep 10
+          done
+          opened=$(curl -s -o /dev/null -w '%{http_code}' -u "owner:$STATS_PASSWORD" "$URL/stats.json")
+          refused=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/ping" -d '{"id":"x"}')
+          if [ "$locked" = 401 ] && [ "$opened" = 200 ] && [ "$refused" = 400 ]; then
+            echo "::notice::User counter OK at $URL: locked without the password, opens with it, refuses bad counts."
+          else
+            echo "::error::User counter check: without password $locked (want 401), with password $opened (want 200), bad count $refused (want 400)."
+          fi
+
   build:
     needs: stats
     # Builds even when the counter is skipped (other branches) or couldn't deploy.
