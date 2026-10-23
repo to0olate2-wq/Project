@@ -107,12 +107,6 @@ class FalakApp : Application(), ImageLoaderFactory {
         MainScope().launch {
             repo.state.map { it.remotes.isNotEmpty() }.distinctUntilChanged().collect { refreshRemote() }
         }
-        // The user count switched off (its number is deleted) or back on.
-        MainScope().launch {
-            repo.state.map { it.settings.countMe }.distinctUntilChanged().collect { on ->
-                if (!on) Stats.forget(this@FalakApp, repo) else if (visible > 0) Stats.start(this@FalakApp, repo)
-            }
-        }
         // Prayer reminders switched on or off, or another method chosen.
         MainScope().launch {
             repo.state.map { Triple(it.settings.prayerMode, it.settings.prayerMethod, it.settings.prayerAsr) }.distinctUntilChanged()

@@ -308,8 +308,6 @@ data class Settings(
     val subEdge: String = "box",
     /** TVs: switch the screen's refresh rate to the video's frame rate: "off", "vod" (films and series) or "all". */
     val frameRate: String = "vod",
-    /** Anonymous user count (see Stats): a random number, the app version and TV or phone. */
-    val countMe: Boolean = true,
     /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */
     val osApiKey: String = "",
     val osUser: String = "",

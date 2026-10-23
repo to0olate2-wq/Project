@@ -793,27 +793,10 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "The Player doesn't include any channels or content: it plays the playlists you add. " +
-                        if (BuildConfig.STATS_URL.isNotBlank()) {
-                            "Your playlists and settings stay on your devices. The only thing sent to the developer is the " +
-                                "anonymous user count below, which you can turn off."
-                        } else {
-                            "Your playlists and settings stay on this device; nothing is sent to the developer."
-                        },
+                        "Your playlists and settings stay on your devices.",
                     fontSize = 13.sp, lineHeight = 19.sp,
                     color = Muted,
                 )
-            }
-        }
-        if (BuildConfig.STATS_URL.isNotBlank()) {
-            item {
-                SwitchRow(
-                    "Count me in the user numbers",
-                    "Sends only a random number made up on this device, the app version and whether it's a TV or phone, " +
-                        "so the developer knows how many people use The Player. No name, email, playlists or what you watch. " +
-                        "Turning it off deletes that number.",
-                    s.countMe,
-                    focusAt("count"),
-                ) { vm.updateSettings { it.copy(countMe = !it.countMe) } }
             }
         }
         if (Updater.enabled) {

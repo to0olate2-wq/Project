@@ -10,8 +10,8 @@ playlists that you add yourself. It does not come with any channels, films or ot
 - The Player has **no account, no ads and no tracking**.
 - Everything you enter stays **on your devices**. The developer never receives it.
 - The only thing sent to the developer is an **anonymous user count**: a random number made up
-  on your device, the app version, and whether it's a TV or a phone. You can turn it off, which
-  deletes that number (see *Anonymous user count* below).
+  on your device, the app version, and whether it's a TV or a phone (see *Anonymous user count*
+  below).
 - The app only connects to the servers **you** choose (your playlist provider, the TV guide
   sources you add) and, if you turn it on, to OpenSubtitles.
 
@@ -27,7 +27,7 @@ The app keeps these in its private storage on your device:
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
   was playing; it is never shown or sent anywhere;
-- the random number used for the anonymous user count, while that count is on.
+- the random number used for the anonymous user count.
 
 None of this is sent to the developer or to anyone else. Removing a playlist removes it from the
 app; clearing the app's data or uninstalling the app deletes everything.
@@ -91,8 +91,9 @@ doesn't store it. The developer sees totals only: how many devices use the app n
 week, this month and ever, by TV or phone and by version. A number not seen for 400 days is
 deleted.
 
-To stop it, turn off **Settings → About → Count me in the user numbers**. The app then asks the
-counter to delete your number and sends nothing more.
+The count is part of how the app works and has no setting. It stops when the app is uninstalled.
+Because the number isn't linked to you, the developer can't pick out one person's number; numbers
+not seen for 400 days are deleted.
 
 ## Children
 
