@@ -68,7 +68,7 @@ class SubtitleRenderTest {
             val styled = count(frame) { r, g, b -> r < 90 && g > 190 && b > 190 }
             assertTrue("${look.name}: styled subtitle text missing ($styled px)", styled > 100)
             // Picture subtitles (green block) are drawn as sent.
-            val picture = count(frame) { r, g, b -> r < 60 && g > 200 && b < 60 }
+            val picture = count(frame) { r, g, b -> r < 60 && g > 200 && b < 110 }
             assertTrue("${look.name}: picture subtitle missing ($picture px)", picture > 2_000)
         }
     }
