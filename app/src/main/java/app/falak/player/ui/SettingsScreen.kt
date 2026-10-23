@@ -198,7 +198,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 HubRow(
                     { HubIcon(painterResource(R.drawable.ic_pl_audio)) },
                     "Sound & subtitles",
-                    "Night sound $night · Audio: $audio · Subtitles ${if (s.subtitlesOn) "on" else "off"}",
+                    "Night sound $night · Audio: $audio · " +
+                        if (s.subtitlesOn) "Subtitles shown automatically" else "Subtitles when you choose them",
                     focusAt(SettingsPage.SOUND.name),
                 ) { openPage(SettingsPage.SOUND) }
             }
@@ -488,7 +489,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         item { SectionTitle("Subtitles") }
         item {
-            SwitchRow("Show subtitles automatically", "When a stream includes subtitles or closed captions", s.subtitlesOn) {
+            SwitchRow(
+                "Show subtitles automatically",
+                if (s.subtitlesOn) "On: whenever a film, episode or channel has subtitles or closed captions"
+                else "Off: subtitles are still there, turn them on with the Subtitles button in the player",
+                s.subtitlesOn,
+            ) {
                 vm.updateSettings { it.copy(subtitlesOn = !it.subtitlesOn) }
             }
         }
@@ -982,7 +988,10 @@ private fun SubtitlePreview(step: Int, color: String, edge: String) {
                     Text(
                         sample,
                         style = base.copy(color = fg),
-                        modifier = Modifier.background(androidx.compose.ui.graphics.Color(SubtitleStyle.BOX)).padding(horizontal = 6.dp, vertical = 1.dp),
+                        // As it comes, the player's own solid band; a chosen look, the 70 % band.
+                        modifier = Modifier
+                            .background(if (SubtitleStyle.isDefault(step, color, edge)) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color(SubtitleStyle.BOX))
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
             }

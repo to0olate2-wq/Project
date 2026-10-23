@@ -73,10 +73,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.SubtitleView
 import app.falak.player.player.FrameRateMatch
 import app.falak.player.player.SubtitleStyle
 import app.falak.player.R
@@ -2270,25 +2268,11 @@ class PlayerActivity : ComponentActivity() {
 
     private fun settingsFrameRate(): String = repo.state.value.settings.frameRate
 
-    /** ExoPlayer's subtitles in the size, colour and background chosen in Settings. */
+    /** ExoPlayer's subtitles in the look chosen in Settings (unchanged when nothing was chosen). */
     private fun applySubtitleStyle() {
         val sv = playerView.subtitleView ?: return
         val s = repo.state.value.settings
-        val box = s.subEdge != "outline"
-        sv.setStyle(
-            CaptionStyleCompat(
-                SubtitleStyle.textColor(s.subColor),
-                if (box) SubtitleStyle.BOX else Color.TRANSPARENT,
-                Color.TRANSPARENT,
-                if (box) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                Color.BLACK,
-                Typeface.DEFAULT,
-            ),
-        )
-        sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * SubtitleStyle.scale(s.subSize))
-        // The chosen look wins over sizes and colours written into the subtitle file.
-        sv.setApplyEmbeddedStyles(false)
-        sv.setApplyEmbeddedFontSizes(false)
+        SubtitleStyle.applyTo(sv, s.subSize, s.subColor, s.subEdge)
     }
 
     // ---- night sound ----
