@@ -926,6 +926,7 @@ class PlayerActivity : ComponentActivity() {
         textMemoryDone = false
         wasReady = false
         stalls.clear()
+        failedUrl = null
         twoButton.visibility = if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null) View.VISIBLE else View.GONE
         // A replay of our own "From the start" keeps the way back to live; anything else forgets it.
         if (!ch.id.startsWith("cu:")) liveBeforeStartOver = null
@@ -1046,6 +1047,7 @@ class PlayerActivity : ComponentActivity() {
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
             val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
+            explainRefusal()
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1053,6 +1055,7 @@ class PlayerActivity : ComponentActivity() {
                 retried = false
                 hideMessage()
                 wasReady = true
+                failedUrl = null
             }
             // Stopping to load again and again: a lighter version, if Tidy channel list merged one.
             if (playbackState == Player.STATE_BUFFERING && wasReady) onStall()
@@ -3317,6 +3320,31 @@ class PlayerActivity : ComponentActivity() {
         retried = false
         resumePositionMs = C.TIME_UNSET
         playCurrent(showInfo = true)
+    }
+
+    // ---- Subscription watch: why a channel was refused ----
+
+    /** The stream that failed for good, while its explanation is being looked up. */
+    private var failedUrl: String? = null
+
+    /**
+     * Xtream logins: asks the provider about the account, and when it explains the refusal (every
+     * connection in use, the subscription ended or suspended) says so instead of a bare error.
+     */
+    private fun explainRefusal() {
+        val pl = repo.currentPlaylist ?: return
+        val api = repo.xtreamFor(pl) ?: return
+        val url = currentUrl
+        failedUrl = url
+        lifecycleScope.launch {
+            val read = withContext(Dispatchers.IO) { runCatching { api.account() }.getOrNull() } ?: return@launch
+            val a = read.copy(who = app.falak.player.data.Accounts.owner(pl))
+            app.falak.player.data.AccountStore.put(applicationContext, pl.id, a)
+            val format = android.text.format.DateFormat.getMediumDateFormat(this@PlayerActivity)
+            val why = app.falak.player.data.Accounts.refusal(a, System.currentTimeMillis()) { format.format(java.util.Date(it)) }
+                ?: return@launch
+            if (failedUrl == url && !isFinishing) showMessage(why)
+        }
     }
 
     // ---- Home's "For this hour" ----

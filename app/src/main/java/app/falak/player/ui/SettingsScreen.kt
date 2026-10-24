@@ -615,6 +615,29 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     go("groups") { vm.screen = Screen.GROUPS }
                 }
             }
+            // Subscription watch (Xtream logins): status, end date and connections, read from the provider.
+            if (vm.accountReadable || vm.account != null) {
+                item {
+                    LaunchedEffect(p.id) { vm.checkAccount(force = true) }
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val format = remember(context) { android.text.format.DateFormat.getMediumDateFormat(context) }
+                    val a = vm.account
+                    val now = System.currentTimeMillis()
+                    val line = when {
+                        a != null -> {
+                            val ago = (now - a.checkedAt) / 60_000L
+                            app.falak.player.data.Accounts.summary(a, now, { format.format(java.util.Date(it)) }) + when {
+                                a.checkedAt <= 0 || ago < 30 -> ""
+                                ago < 120 -> " · checked $ago min ago"
+                                else -> " · checked ${ago / 60} h ago"
+                            }
+                        }
+                        vm.accountFailed -> "Couldn't reach your provider to check. Select to try again."
+                        else -> "Checking with your provider…"
+                    }
+                    ClickRow("Subscription", line) { vm.checkAccount(force = true) }
+                }
+            }
         }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {

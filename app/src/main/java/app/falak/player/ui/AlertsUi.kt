@@ -149,3 +149,59 @@ fun BoxScope.ProgramAlertCard(
         }
     }
 }
+
+/**
+ * Subscription watch: the reminder that the playlist's subscription ends within a week (or has
+ * ended), over the lists. "OK" puts it away until tomorrow.
+ */
+@Composable
+fun BoxScope.SubscriptionCard(text: String?, onDismiss: () -> Unit) {
+    val tv = isTv()
+    if (text != null) BackHandler { onDismiss() }
+    AnimatedVisibility(
+        visible = text != null,
+        enter = slideInVertically(tween(320)) { -it } + fadeIn(tween(220)),
+        exit = slideOutVertically(tween(240)) { -it } + fadeOut(tween(180)),
+        modifier = Modifier
+            .align(if (tv) Alignment.TopEnd else Alignment.TopCenter)
+            .padding(top = if (tv) 24.dp else 12.dp, end = if (tv) 28.dp else 12.dp, start = if (tv) 0.dp else 12.dp),
+    ) {
+        val message = text ?: return@AnimatedVisibility
+        val shape = RoundedCornerShape(16.dp)
+        val ok = remember { FocusRequester() }
+        // On a TV the remote lands on "OK", so one press puts it away.
+        if (tv) LaunchedEffect(message) {
+            delay(150)
+            runCatching { ok.requestFocus() }
+        }
+        Column(
+            Modifier
+                .widthIn(max = if (tv) 420.dp else 520.dp)
+                .clip(shape)
+                .background(Color(0xF5141210))
+                .border(1.dp, Color.White.copy(alpha = 0.14f), shape)
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Text(
+                "SUBSCRIPTION",
+                fontFamily = Sans,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 1.2.sp,
+                color = Color(0xFFF2C14E),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                message,
+                fontFamily = Sans,
+                fontSize = if (tv) 16.sp else 15.sp,
+                lineHeight = if (tv) 22.sp else 21.sp,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(12.dp))
+            FalakTheme(dark = true, layout = if (tv) "tv" else "phone") {
+                PaperButton("OK", modifier = Modifier.focusRequester(ok)) { onDismiss() }
+            }
+        }
+    }
+}

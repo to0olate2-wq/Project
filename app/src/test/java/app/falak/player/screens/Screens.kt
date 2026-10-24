@@ -22,6 +22,7 @@ import app.falak.player.FalakApp
 import app.falak.player.ProgramAlerts
 import app.falak.player.data.ProgramAlert
 import app.falak.player.data.Habits
+import app.falak.player.data.Account
 import app.falak.player.ui.MiniPlayerState
 import app.falak.player.data.Reminder
 import app.falak.player.data.Channel
@@ -95,6 +96,8 @@ abstract class ScreenshotBase {
         habits: Boolean = false,
         /** Provider-style names and duplicates, with Tidy channel list on. */
         messy: Boolean = false,
+        /** An Xtream account as the provider would report it (Subscription watch). */
+        account: Account? = null,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
         seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder, habits, messy)
@@ -102,6 +105,7 @@ abstract class ScreenshotBase {
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
         app.repo.showGuideForTest(sampleGuide(vm.index.live))
+        if (account != null) vm.showAccountForTest(account)
         block(vm) { name -> capture(activity, name) }
     }
 
@@ -1004,5 +1008,35 @@ class PhoneTidyScreens : ScreenshotBase() {
     fun phoneTidy() = mainScreens("phone", messy = true) { vm, shoot ->
         vm.section = Section.LIVE
         shoot("phone-30-tidy-live")
+    }
+}
+
+// ---- 7.2: Subscription watch ----
+
+/** Ends in 5 days, both connections in use (another device watching). */
+private fun endingSoon(): Account {
+    val now = System.currentTimeMillis()
+    return Account(status = "Active", expires = now + 5 * 86_400_000L + 3_600_000L, active = 2, max = 2, checkedAt = now)
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSubscriptionScreens : ScreenshotBase() {
+    // The reminder over the lists, then the account in Settings.
+    @Test @Config(qualifiers = TV)
+    fun tvSubscription() = mainScreens("tv", account = endingSoon()) { vm, shoot ->
+        shoot("tv-44-subscription-ending")
+        vm.screen = Screen.SETTINGS
+        vm.settingsPage = SettingsPage.PLAYLISTS
+        shoot("tv-45-settings-subscription")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSubscriptionScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneSubscription() = mainScreens("phone", account = endingSoon()) { _, shoot ->
+        shoot("phone-31-subscription-ending")
     }
 }

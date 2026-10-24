@@ -215,13 +215,18 @@ internal object AlertAlarm {
     }
 }
 
-/** Wakes up for [AlertAlarm]. */
+/** Wakes up for [AlertAlarm] and [SubscriptionAlarm]. */
 class AlertReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val done = goAsync()
         Thread({
             try {
-                AlertAlarm.onAlarm(context.applicationContext)
+                // The same receiver rings for Subscription watch (an action of its own).
+                if (intent.action == SubscriptionAlarm.ACTION) {
+                    SubscriptionAlarm.onAlarm(context.applicationContext, intent)
+                } else {
+                    AlertAlarm.onAlarm(context.applicationContext)
+                }
             } catch (e: Exception) {
                 // nothing to do
             } finally {

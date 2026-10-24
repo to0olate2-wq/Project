@@ -210,6 +210,15 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismiss = { app.falak.player.ProgramAlerts.dismiss() },
                         )
+                        // Subscription watch: ending within a week, once a day on the lists (a reminder comes first).
+                        val subscriptionNote = vm.account
+                            ?.takeIf { vm.screen == Screen.LIBRARY && !vm.accountNoteHidden && alert == null && !vm.kidsActive && !vm.choosingProfile }
+                            ?.let { a ->
+                                val format = android.text.format.DateFormat.getMediumDateFormat(this@MainActivity)
+                                app.falak.player.data.Accounts.warning(a, System.currentTimeMillis(), { format.format(java.util.Date(it)) })
+                                    ?.let { w -> if (state.playlists.size > 1) "${vm.playlist?.name.orEmpty()}: $w" else w }
+                            }
+                        SubscriptionCard(subscriptionNote) { vm.hideAccountNote() }
                         // Back from a live channel: it carries on small in a corner (Settings → Mini player).
                         val mini by MiniPlayerState.request.collectAsStateWithLifecycle()
                         mini?.let { m ->

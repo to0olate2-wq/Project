@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 25 October 2026 (version 7.1)_
+_Last updated: 25 October 2026 (version 7.2)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -28,6 +28,10 @@ The app keeps these in its private storage on your device:
 - which live channels you watched for at least two minutes, and when (the last 600, from the past
   two months at most), so Home can show *For this hour*: the channels you usually watch around
   this time of day;
+- for Xtream logins, your subscription's status, end date and connections as your provider
+  reports them (read from the same provider, with the same login), so Settings can show them, the
+  app can remind you before the subscription ends, and a channel refused because every connection
+  is in use can be explained;
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
@@ -133,8 +137,8 @@ anyone.
 The app uses the Internet permission to load your playlists, guides and streams, and the network
 state permission, which the video engine uses to adapt playback to your connection. On Android 13
 and later it may ask to show notifications: they only tell you, on your device, when a playlist
-refresh finds new channels, films or series, or that a programme you asked to be reminded of is
-about to start. Nothing is sent anywhere to do this; reminders are worked out on the device from
+refresh finds new channels, films or series, that a programme you asked to be reminded of is
+about to start, or (phones and tablets) that your subscription ends in a week or tomorrow. Nothing is sent anywhere to do this; reminders are worked out on the device from
 your TV guide. On Android TV it
 uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
 row. On phones and tablets with *Listen mode* turned on (it's off unless you choose it), it uses the

@@ -11,6 +11,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.falak.player.CrashReports
 import app.falak.player.data.mine
+import app.falak.player.data.Account
+import app.falak.player.data.AccountStore
+import app.falak.player.data.Accounts
 import app.falak.player.data.AppState
 import app.falak.player.data.KIDS_PROFILE
 import app.falak.player.data.Catchup
@@ -200,6 +203,86 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun clearRecentSearches() {
         recentSearches = emptyList()
         searchPrefs.edit().remove("recent").apply()
+    }
+
+    // ---- Subscription watch ----
+
+    /** The open playlist's Xtream account as last read (null: not read yet, or no Xtream login). */
+    var account by mutableStateOf<Account?>(null)
+        private set
+
+    /** The open playlist has an Xtream login, so its account can be read. */
+    var accountReadable by mutableStateOf(false)
+        private set
+
+    /** The last read failed and there's nothing older to show. */
+    var accountFailed by mutableStateOf(false)
+        private set
+
+    /** The subscription reminder was put away today. */
+    var accountNoteHidden by mutableStateOf(false)
+        private set
+    private var accountJob: Job? = null
+    private var accountForTest = false
+    private val accountPrefs = app.getSharedPreferences("account_note", 0)
+
+    /** Reads the account from the provider: at most every 6 hours, or every minute with [force]. */
+    fun checkAccount(force: Boolean = false) {
+        if (accountForTest) return
+        val p = playlist ?: return
+        val ctx = getApplication<Application>()
+        val api = repo.xtreamFor(p)
+        accountReadable = api != null
+        if (api == null) {
+            account = null
+            return
+        }
+        val who = Accounts.owner(p)
+        val saved = AccountStore.get(ctx, p.id)?.takeIf { it.who == who }
+        account = saved
+        accountNoteHidden = accountPrefs.getString(p.id, null) == today()
+        val age = System.currentTimeMillis() - (saved?.checkedAt ?: 0L)
+        if (age < (if (force) 60_000L else 6 * 3_600_000L)) return
+        if (accountJob?.isActive == true) return
+        accountJob = viewModelScope.launch {
+            val read = withContext(Dispatchers.IO) {
+                try {
+                    api.account()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (playlist?.id != p.id) return@launch
+            if (read == null) {
+                accountFailed = account == null
+                return@launch
+            }
+            val a = read.copy(who = who)
+            AccountStore.put(ctx, p.id, a)
+            app.falak.player.SubscriptionAlarm.plan(ctx, p.id, p.name, a)
+            account = a
+            accountFailed = false
+        }
+    }
+
+    /** "OK" on the subscription reminder: not again today. */
+    fun hideAccountNote() {
+        val p = playlist ?: return
+        accountPrefs.edit().putString(p.id, today()).apply()
+        accountNoteHidden = true
+    }
+
+    private fun today(): String = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+
+    /** Screenshot tests: a made-up account, and nothing read. */
+    @androidx.annotation.VisibleForTesting
+    internal fun showAccountForTest(a: Account) {
+        accountForTest = true
+        accountReadable = true
+        account = a
+        accountNoteHidden = false
     }
 
     // ---- programme reminders and alert words ----
@@ -459,6 +542,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     loadedAt = kept.savedAt
                     if (loadToken === token) loading = false
                     maybeStartLastChannel(p)
+                    checkAccount()
                     scheduleFollowCheck(p, token)
                     loadGuide(force = false)
                     if (isStale(kept.savedAt)) {
@@ -473,6 +557,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 show(data, announce = refresh)
                 if (loadToken === token) loading = false
                 maybeStartLastChannel(p)
+                checkAccount()
                 scheduleFollowCheck(p, token)
                 loadGuide(force = refresh)
                 if (cached != null && isStale(cached.savedAt)) {
@@ -735,6 +820,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun remove(p: Playlist) {
         repo.removePlaylist(p.id)
+        AccountStore.remove(getApplication(), p.id)
+        app.falak.player.SubscriptionAlarm.cancel(getApplication(), p.id)
         app.falak.player.data.WatchNext.clear(getApplication(), p.id)
         if (playlist?.id == p.id) {
             loadJob?.cancel()

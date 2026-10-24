@@ -46,6 +46,15 @@ class XtreamApi(
         }
     }
 
+    /** The account as the provider reports it ("user_info"): status, end date, connections. */
+    fun account(now: Long = System.currentTimeMillis()): Account {
+        val root = Json.parseToJsonElement(call(null) { it }) as? JsonObject
+            ?: throw IOException("Not an Xtream server, or the server URL is wrong")
+        val info = root["user_info"] as? JsonObject
+            ?: throw IOException("Not an Xtream server, or the server URL is wrong")
+        return Accounts.parse({ info.str(it) }, now)
+    }
+
     /** IANA time zone of the server (replay times are given in it), or "" if unknown. */
     fun serverTimezone(): String = try {
         val root = Json.parseToJsonElement(call(null) { it }) as? JsonObject
