@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.BackupTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-24T10:52:47" hostname="runnervm8k3b6" time="0.064">
+  <properties/>
+  <testcase name="sameChannelIgnoresQualityAndGroup" classname="app.falak.player.data.BackupTest" time="0.062"/>
+  <testcase name="qualityOrder" classname="app.falak.player.data.BackupTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

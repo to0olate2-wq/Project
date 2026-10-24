@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.sync.SyncTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-24T11:01:58" hostname="runnervm8k3b6" time="4.249">
+  <properties/>
+  <testcase name="shareCopyAndMerge" classname="app.falak.player.sync.SyncTest" time="4.249"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

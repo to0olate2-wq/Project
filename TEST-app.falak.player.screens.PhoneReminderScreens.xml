@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.PhoneReminderScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-24T10:54:59" hostname="runnervm8k3b6" time="10.139">
+  <properties/>
+  <testcase name="phoneReminder" classname="app.falak.player.screens.PhoneReminderScreens" time="10.139"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
