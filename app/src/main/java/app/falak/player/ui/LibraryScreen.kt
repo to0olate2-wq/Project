@@ -74,7 +74,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,7 +81,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.falak.player.R
 import app.falak.player.data.mine
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
@@ -473,9 +471,6 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         if (index.live.isNotEmpty()) {
                             IconButton(onClick = { vm.screen = Screen.GUIDE }) {
                                 Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
-                            }
-                            IconButton(onClick = { vm.screen = Screen.MATCHES }) {
-                                Icon(painterResource(R.drawable.ic_nav_matches), contentDescription = "Match centre", tint = Paper)
                             }
                         }
                     }

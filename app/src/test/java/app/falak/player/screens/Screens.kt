@@ -21,12 +21,7 @@ import androidx.test.core.app.ApplicationProvider
 import app.falak.player.FalakApp
 import app.falak.player.ProgramAlerts
 import app.falak.player.data.ProgramAlert
-import app.falak.player.data.FootballFeed
-import app.falak.player.data.FootballMatch
-import app.falak.player.data.FootballTeam
 import app.falak.player.data.Habits
-import app.falak.player.data.LeagueRound
-import app.falak.player.data.TableRow
 import app.falak.player.ui.MiniPlayerState
 import app.falak.player.data.Reminder
 import app.falak.player.data.Channel
@@ -63,7 +58,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.Duration
-import java.util.Calendar
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE_LAND
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE_TALL
@@ -97,8 +91,6 @@ abstract class ScreenshotBase {
         prayerMode: String = "off",
         liveOnly: Boolean = false,
         reminder: Boolean = false,
-        /** Football in the guide (and made-up scores) for the Match centre. */
-        matches: Boolean = false,
         /** Channels watched around this time on earlier days, for Home's "For this hour". */
         habits: Boolean = false,
         /** Provider-style names and duplicates, with Tidy channel list on. */
@@ -109,9 +101,7 @@ abstract class ScreenshotBase {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
-        val guide = sampleGuide(vm.index.live)
-        app.repo.showGuideForTest(if (matches) guide + matchGuide(vm.index.live) else guide)
-        if (matches) vm.showFootballForTest(sampleFeed())
+        app.repo.showGuideForTest(sampleGuide(vm.index.live))
         block(vm) { name -> capture(activity, name) }
     }
 
@@ -420,87 +410,6 @@ abstract class ScreenshotBase {
             }
             ch.epgKey to list
         }
-    }
-
-    /**
-     * Football on the sports channels: one match on two channels now (with a score in the made-up
-     * feed), two later today (one in Arabic) and one tomorrow. All names invented.
-     */
-    private fun matchGuide(live: List<Channel>): Map<String, List<Program>> {
-        val now = System.currentTimeMillis()
-        val min = 60_000L
-        val kick = now - 80 * min
-        val tomorrow = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val d = "A made-up programme for screenshots."
-        fun key(name: String) = live.first { it.name == name }.epgKey
-        val big = listOf(
-            Program(kick - 120 * min, kick, "Matchday Live", d),
-            Program(kick, kick + 120 * min, "Premier League: Harbor City v Northport", d),
-            Program(kick + 120 * min, now + 10 * 60 * min, "Highlights", d),
-        )
-        return mapOf(
-            key("Pulse Sports 1") to big,
-            key("Arena Live") to big,
-            key("Pulse Sports 2") to listOf(
-                Program(now - 60 * min, now + 100 * min, "Highlights", d),
-                Program(now + 100 * min, now + 220 * min, "Premier League: Riverside v Kingsbridge", d),
-                Program(now + 220 * min, now + 10 * 60 * min, "Weekend Live", d),
-            ),
-            key("Fairway Golf") to listOf(
-                Program(now - 30 * min, now + 150 * min, "Studio Session", d),
-                Program(now + 150 * min, now + 270 * min, "النخيل × الصقور", d),
-                Program(now + 270 * min, now + 10 * 60 * min, "Late Review", d),
-            ),
-            key("Racing Line") to listOf(
-                Program(now - 60 * min, tomorrow + 15 * 60 * min, "Racing Today", d),
-                Program(tomorrow + 15 * 60 * min, tomorrow + 17 * 60 * min, "Premier League: Eastfield v Harbor City", d),
-            ),
-        )
-    }
-
-    /** A made-up league: this round's matches (one live) and a table of twenty invented clubs. */
-    private fun sampleFeed(): FootballFeed {
-        val now = System.currentTimeMillis()
-        val min = 60_000L
-        val clubs = listOf(
-            "Harbor City" to "HAR", "Northport" to "NOR", "Riverside" to "RIV", "Kingsbridge" to "KIN", "Eastfield" to "EAS",
-            "Westmoor" to "WES", "Oakham Rovers" to "OAK", "Millbrook" to "MIL", "Stonegate" to "STO", "Ashford Town" to "ASH",
-            "Larkhill" to "LAR", "Brackenridge" to "BRA", "Fenwick" to "FEN", "Highcliffe" to "HIG", "Marston" to "MAR",
-            "Redwater" to "RED", "Thornbury" to "THO", "Wexley" to "WEX", "Coldharbour" to "COL", "Pinewood" to "PIN",
-        )
-        val team = clubs.associate { (name, tla) -> name to FootballTeam("$name FC", name, tla) }
-        fun match(id: Long, time: Long, status: String, home: String, away: String, h: Int? = null, a: Int? = null, minute: Int? = null) =
-            FootballMatch(
-                id = id, competition = "Premier League", code = "PL", time = time, status = status, minute = minute, matchday = 9,
-                home = team.getValue(home), away = team.getValue(away), homeScore = h, awayScore = a,
-            )
-        val live = match(1, now - 80 * min, "IN_PLAY", "Harbor City", "Northport", 2, 1, minute = 64)
-        val later = match(5, now + 100 * min, "TIMED", "Riverside", "Kingsbridge")
-        val round = listOf(
-            match(2, now - 27 * 60 * min, "FINISHED", "Westmoor", "Oakham Rovers", 0, 0),
-            match(3, now - 25 * 60 * min, "FINISHED", "Millbrook", "Stonegate", 3, 1),
-            match(4, now - 25 * 60 * min, "FINISHED", "Ashford Town", "Larkhill", 1, 2),
-            live,
-            later,
-            match(6, now + 26 * 60 * min, "TIMED", "Brackenridge", "Fenwick"),
-            match(7, now + 28 * 60 * min, "TIMED", "Highcliffe", "Marston"),
-        )
-        val points = listOf(23, 21, 19, 18, 16, 15, 14, 14, 13, 12, 11, 11, 10, 9, 8, 7, 6, 5, 4, 2)
-        val table = clubs.mapIndexed { i, (name, tla) ->
-            val won = points[i] / 3
-            val drawn = points[i] - won * 3
-            TableRow(
-                position = i + 1, name = "$name FC", short = name, tla = tla, played = 9, won = won, draw = drawn,
-                lost = 9 - won - drawn, goalDifference = 15 - i * 3 / 2, points = points[i], form = "W,D,W,L,W",
-            )
-        }
-        return FootballFeed(configured = true, at = now - 2 * min, today = listOf(live, later), pl = LeagueRound(9, round, table))
     }
 
     /** The id the M3U parser gives a sample live channel. */
@@ -1023,32 +932,7 @@ class PhoneTwoScreens : ScreenshotBase() {
     fun phoneTwoScreens() = player(tv = false, live = true, dual = true) { shoot -> shoot("phone-25-two-screens") }
 }
 
-// ---- 7.0: Match centre, start over, For this hour, tidy list, mini player ----
-
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-class TvMatchCentreScreens : ScreenshotBase() {
-    // Matches in the guide (live first, with the score), then the league's round and table.
-    @Test @Config(qualifiers = TV)
-    fun tvMatchCentre() = mainScreens("tv", matches = true) { vm, shoot ->
-        vm.screen = Screen.MATCHES
-        shoot("tv-37-match-centre")
-        vm.matchTab = 1
-        shoot("tv-38-match-centre-league")
-    }
-}
-
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-class PhoneMatchCentreScreens : ScreenshotBase() {
-    @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneMatchCentre() = mainScreens("phone", matches = true) { vm, shoot ->
-        vm.screen = Screen.MATCHES
-        shoot("phone-26-match-centre")
-        vm.matchTab = 1
-        shoot("phone-27-match-centre-league")
-    }
-}
+// ---- 7.0: start over, For this hour, tidy list, mini player ----
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

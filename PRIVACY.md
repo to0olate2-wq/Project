@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 24 October 2026 (version 7.0)_
+_Last updated: 25 October 2026 (version 7.1)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -13,8 +13,7 @@ playlists that you add yourself. It does not come with any channels, films or ot
   on your device, the app version, and whether it's a TV or a phone) and, after the app stops
   unexpectedly, a **crash report** with personal details taken out (see both sections below).
 - The app only connects to the servers **you** choose (your playlist provider, the TV guide
-  sources you add), if you turn it on, to OpenSubtitles, and, while the Match centre is open, to
-  the developer's server for football scores (nothing about you is sent with that request).
+  sources you add) and, if you turn it on, to OpenSubtitles.
 
 ## What is stored on your device
 
@@ -56,12 +55,6 @@ The app only makes network connections needed for what you ask it to do:
   to find and download subtitles. See the OpenSubtitles privacy policy.
 - **Trailers.** If you open a trailer, it opens in YouTube or your browser, under their own
   policies.
-- **Match centre scores** (only while the Match centre is open). The app asks the developer's
-  server (the same small program on Cloudflare as the user count, see below) for today's football
-  scores and the Premier League's matches and table, which that server gets from
-  football-data.org. The request carries nothing about you: no random number, no playlist, nothing
-  about what you watch. Cloudflare receives your IP address to deliver it; the server doesn't store
-  it. Which matches are on your channels is worked out on your device from your TV guide.
 - **Your own devices** (only while you use it). When you open *Your devices* and start
   sharing, the app serves a page on your home network, protected by a 6-digit code shown on
   screen, so your phone or computer can manage playlists or copy them to another device running

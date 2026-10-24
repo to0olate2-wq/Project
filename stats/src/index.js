@@ -7,10 +7,6 @@
 // logins and file names already taken out on the device, plus the device model and Android
 // version. The stats page (password: the STATS_PASSWORD secret) shows how many use the app now,
 // today, this week, this month and ever, and the crash reports grouped by cause.
-//
-// It also serves the app's Match centre (/v1/football): today's football scores and the Premier
-// League table from football-data.org (key in the FOOTBALL_DATA_KEY secret, never in the app),
-// fetched at most once a minute for everyone and kept here.
 
 import { DurableObject } from "cloudflare:workers";
 
@@ -59,14 +55,6 @@ export default {
       const kind = body.kind === "tv" ? "tv" : "phone";
       await stats.ping(id, event, version, kind);
       return new Response(null, { status: 204 });
-    }
-
-    if (url.pathname === "/v1/football") {
-      if (request.method !== "GET") return new Response("Use GET", { status: 405 });
-      const data = await stats.football();
-      return new Response(JSON.stringify(data), {
-        headers: { "content-type": "application/json", "cache-control": "public, max-age=30" },
-      });
     }
 
     if (url.pathname === "/v1/crash") {
@@ -158,73 +146,6 @@ export class Stats extends DurableObject {
       device TEXT NOT NULL, android TEXT NOT NULL, report TEXT NOT NULL)`);
     this.sql.exec("CREATE INDEX IF NOT EXISTS crashes_install_day ON crashes(install, day)");
     this.sql.exec("CREATE INDEX IF NOT EXISTS crashes_sig ON crashes(sig, type, at)");
-  }
-
-  // ---- football (Match centre) ----
-
-  /**
-   * Today's matches in the competitions football-data.org's plan covers (with scores), and the
-   * Premier League's matches around now and its table. Shared by every user: football-data.org
-   * is asked at most once a minute for today, every 5 minutes for the league's fixtures and every
-   * 15 minutes for the table. When it can't be reached, the last answer is served (stale).
-   */
-  async football() {
-    const key = this.env.FOOTBALL_DATA_KEY;
-    if (!key) return { configured: false };
-    const now = Date.now();
-    const day = (ms) => new Date(ms).toISOString().slice(0, 10);
-    const [today, round, table] = await Promise.all([
-      this.cached("fb:today", MINUTE, async () =>
-        ((await this.footballData(`/matches?dateFrom=${day(now - DAY)}&dateTo=${day(now + DAY)}`, key)).matches ?? []).map(slimMatch),
-      ),
-      this.cached("fb:pl", 5 * MINUTE, async () =>
-        ((await this.footballData(`/competitions/PL/matches?dateFrom=${day(now - 4 * DAY)}&dateTo=${day(now + 5 * DAY)}`, key)).matches ?? []).map(slimMatch),
-      ),
-      this.cached("fb:table", 15 * MINUTE, async () => slimTable(await this.footballData("/competitions/PL/standings", key))),
-    ]);
-    // The league's fixtures take the fresher scores from today's list.
-    const fresh = new Map((today.data ?? []).map((m) => [m.id, m]));
-    const matches = (round.data ?? []).map((m) => fresh.get(m.id) ?? m);
-    const error = [today, round, table].map((r) => r.error).find(Boolean);
-    return {
-      configured: true,
-      at: Math.min(...[today, round, table].map((r) => r.at || now)),
-      stale: [today, round, table].some((r) => r.stale),
-      ...(error ? { error } : {}),
-      today: today.data ?? [],
-      pl: { matchday: table.data?.matchday ?? null, matches, table: table.data?.table ?? [] },
-    };
-  }
-
-  async footballData(path, key) {
-    const res = await fetch("https://api.football-data.org/v4" + path, { headers: { "X-Auth-Token": key } });
-    if (!res.ok) throw new Error(`football-data.org answered ${res.status}`);
-    return res.json();
-  }
-
-  /** [load]'s result, kept for [ttl] ms; the last good one when loading fails. One load at a time per key. */
-  async cached(key, ttl, load) {
-    this.mem ??= {};
-    this.inflight ??= {};
-    const hit = this.mem[key] ?? (await this.ctx.storage.get(key));
-    if (hit) this.mem[key] = hit;
-    if (hit && Date.now() - hit.at < ttl) return { data: hit.data, at: hit.at, stale: false };
-    if (!this.inflight[key]) {
-      this.inflight[key] = (async () => {
-        try {
-          const entry = { at: Date.now(), data: await load() };
-          this.mem[key] = entry;
-          await this.ctx.storage.put(key, entry);
-          return { data: entry.data, at: entry.at, stale: false };
-        } catch (e) {
-          const message = String(e?.message ?? e).slice(0, 120);
-          return hit ? { data: hit.data, at: hit.at, stale: true, error: message } : { data: null, at: 0, stale: true, error: message };
-        } finally {
-          delete this.inflight[key];
-        }
-      })();
-    }
-    return this.inflight[key];
   }
 
   /** Keeps a crash report (within the daily limits). */
@@ -334,45 +255,6 @@ function crashList(groups, now) {
 <pre>${esc(l.report)}</pre></details>`;
     })
     .join("")}</div>`;
-}
-
-/** What the app needs of a match: when, who, the score and how it stands. */
-function slimMatch(m) {
-  const team = (t) => ({ name: t?.name ?? "", short: t?.shortName ?? t?.name ?? "", tla: t?.tla ?? "" });
-  return {
-    id: m.id,
-    competition: m.competition?.name ?? "",
-    code: m.competition?.code ?? "",
-    time: Date.parse(m.utcDate) || 0,
-    status: m.status ?? "",
-    minute: Number.isFinite(m.minute) ? m.minute : null,
-    matchday: m.matchday ?? null,
-    home: team(m.homeTeam),
-    away: team(m.awayTeam),
-    homeScore: m.score?.fullTime?.home ?? null,
-    awayScore: m.score?.fullTime?.away ?? null,
-  };
-}
-
-/** The league table (overall, not home or away). */
-function slimTable(j) {
-  const total = (j.standings ?? []).find((s) => s.type === "TOTAL") ?? (j.standings ?? [])[0];
-  return {
-    matchday: j.season?.currentMatchday ?? null,
-    table: (total?.table ?? []).map((r) => ({
-      position: r.position,
-      name: r.team?.name ?? "",
-      short: r.team?.shortName ?? r.team?.name ?? "",
-      tla: r.team?.tla ?? "",
-      played: r.playedGames ?? 0,
-      won: r.won ?? 0,
-      draw: r.draw ?? 0,
-      lost: r.lost ?? 0,
-      goalDifference: r.goalDifference ?? 0,
-      points: r.points ?? 0,
-      form: r.form ?? "",
-    })),
-  };
 }
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

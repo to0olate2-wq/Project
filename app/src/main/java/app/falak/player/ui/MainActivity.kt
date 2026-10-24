@@ -194,7 +194,6 @@ class MainActivity : ComponentActivity() {
                                 Screen.PROFILES -> ProfilesScreen(vm, state)
                                 Screen.REMOTE -> RemoteScreen(vm, state)
                                 Screen.PRAYER -> PrayerScreen(vm, state)
-                                Screen.MATCHES -> MatchCentreScreen(vm, state, onPlay = ::play)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -368,7 +367,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.MATCHES -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
     }

@@ -31,7 +31,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           STATS_PASSWORD: ${{ secrets.STATS_PASSWORD }}
-          FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::notice::No Cloudflare secrets yet: the user counter isn't deployed and the app counts nothing."
@@ -57,12 +56,6 @@ jobs:
           else
             echo "::warning::No STATS_PASSWORD secret: the stats page stays locked."
           fi
-          # Match centre scores and the Premier League table (free key from football-data.org).
-          if [ -n "$FOOTBALL_DATA_KEY" ]; then
-            printf '%s' "$FOOTBALL_DATA_KEY" | npx --yes wrangler@4 secret put FOOTBALL_DATA_KEY
-          else
-            echo "::notice::No FOOTBALL_DATA_KEY secret: the Match centre shows matches from the TV guide, without scores or the table."
-          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### User counter is live: $url (sign in with any name and your STATS_PASSWORD)" >> "$GITHUB_STEP_SUMMARY"
 
@@ -83,8 +76,6 @@ jobs:
           opened=$(curl -s -o page.json -w '%{http_code}' -u "owner:$STATS_PASSWORD" "$URL/stats.json")
           refused=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/ping" -d '{"id":"x"}')
           badcrash=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/crash" -d '{"id":"x","type":"crash","report":"x"}')
-          football=$(curl -s "$URL/v1/football" | jq -r 'if .configured then "on, \(.today | length) matches today, \(.pl.table | length) teams in the table" + (if .error then " (error: \(.error))" else "" end) else "not set up (no FOOTBALL_DATA_KEY)" end' 2>/dev/null || echo "no answer")
-          echo "::notice::Match centre feed: $football"
           crashes=$(grep -c '"crashes"' page.json || true)
           rm -f page.json
           if [ "$locked" = 401 ] && [ "$opened" = 200 ] && [ "$refused" = 400 ] && [ "$badcrash" = 400 ] && [ "$crashes" = 1 ]; then

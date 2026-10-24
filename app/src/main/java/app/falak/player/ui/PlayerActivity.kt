@@ -2587,7 +2587,6 @@ class PlayerActivity : ComponentActivity() {
             if (idx.series.isNotEmpty()) add(MenuPlace("SERIES", "Series", Section.SERIES))
             add(MenuPlace("FAVORITES", "Favorites", Section.FAVORITES))
             if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
-            if (idx.live.isNotEmpty()) add(MenuPlace("MATCHES", "Match centre"))
             // Kids mode: no way out to grown-up pages from the player.
             if (!repo.kidsActive) {
                 add(MenuPlace("NOTICES", "What's new"))
@@ -2621,7 +2620,7 @@ class PlayerActivity : ComponentActivity() {
         FreezeWatch.note("player → $where")
         repo.pendingNav = where
         // Settings, the guide and What's new are a detour: Back there brings this back.
-        repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES", "MATCHES")) index else null
+        repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES")) index else null
         finish()
     }
 

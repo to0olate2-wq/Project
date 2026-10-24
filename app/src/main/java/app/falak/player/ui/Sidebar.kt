@@ -179,10 +179,6 @@ fun SidebarFrame(
                 onPlaylists = { vm.screen = Screen.PLAYLISTS },
                 onSettings = { vm.screen = Screen.SETTINGS },
                 modifier = m,
-                onMatches = {
-                    scope.launch { drawer.close() }
-                    vm.screen = Screen.MATCHES
-                },
             )
         }
         // TV, tablets, phones on their side: a slim rail of icons, so the page keeps the room.
@@ -197,7 +193,6 @@ fun SidebarFrame(
                 onPlaylists = { vm.screen = Screen.PLAYLISTS },
                 onSettings = { vm.screen = Screen.SETTINGS },
                 modifier = m,
-                onMatches = { vm.screen = Screen.MATCHES },
             )
         }
         val openMenu: () -> Unit = { scope.launch { drawer.open() } }
@@ -263,13 +258,12 @@ fun SideRail(
     onPlaylists: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    onMatches: (() -> Unit)? = null,
 ) {
     val tv = isTv()
     Row(modifier.width(railWidth()).background(Ink2)) {
         // Short screens (a phone on its side): the icons shrink so every one stays in view.
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-            val slots = sections.size + (if (hasGuide) 1 else 0) + (if (hasGuide && onMatches != null) 1 else 0) + 2
+            val slots = sections.size + (if (hasGuide) 1 else 0) + 2
             val fixed = (if (tv) 20 + 32 + 14 + 16 else 14 + 28 + 10 + 10) + 9
             val fit = (maxHeight - fixed.dp - 6.dp * (slots + 1)) / slots
             val box = fit.coerceIn(32.dp, if (tv) 46.dp else 44.dp)
@@ -284,7 +278,6 @@ fun SideRail(
                 ) {
                     sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box) { onSelect(s) } }
                     if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, onClick = onGuide)
-                    if (hasGuide && onMatches != null) RailIcon(painterResource(R.drawable.ic_nav_matches), "Match centre", false, box, onClick = onMatches)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -375,7 +368,6 @@ fun Sidebar(
     onPlaylists: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    onMatches: (() -> Unit)? = null,
 ) {
     val tv = isTv()
     Column(modifier.fillMaxHeight().background(Ink2)) {
@@ -395,9 +387,6 @@ fun Sidebar(
             }
             if (hasGuide) {
                 item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onClick = onGuide) }
-                if (onMatches != null) {
-                    item(key = "matches") { NavItem(painterResource(R.drawable.ic_nav_matches), "Match centre", null, false, onClick = onMatches) }
-                }
             }
             if (recent.isNotEmpty()) {
                 item(key = "recentTitle") {
