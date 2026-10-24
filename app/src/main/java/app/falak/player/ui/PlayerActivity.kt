@@ -37,6 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import app.falak.player.PrayerAlerts
+import app.falak.player.ProgramAlerts
+import app.falak.player.data.ProgramAlert
+import app.falak.player.player.TrackMatch
+import app.falak.player.player.TrackMemory
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.res.ResourcesCompat
@@ -200,6 +204,38 @@ class PlayerActivity : ComponentActivity() {
     private val hideBanner = Runnable { bannerView.visibility = View.GONE }
     private val timeFormat by lazy { android.text.format.DateFormat.getTimeFormat(this) }
 
+    // ---- two channels at once ----
+
+    /** The second picture while two-screen mode is on (null: one picture, as usual). */
+    private var dual: DualPane? = null
+
+    /** Two-screen mode: the second (right, or lower) picture is the one heard and steered. */
+    private var dualSecond = false
+
+    /** The channel list is open to pick the second channel. */
+    private var pickingSecond = false
+
+    /** Where each picture is in two-screen mode (left, top, right, bottom), for taps. */
+    private var rectMain = IntArray(4)
+    private var rectSecond = IntArray(4)
+    private lateinit var twoButton: TextView
+    private lateinit var dualFrame: View
+    private lateinit var dualLabelA: TextView
+    private lateinit var dualLabelB: TextView
+    private lateinit var dualHint: TextView
+    private lateinit var dualBar: LinearLayout
+    private lateinit var touchLayer: View
+    private val hideDualHint = Runnable { if (::dualHint.isInitialized) dualHint.visibility = View.GONE }
+
+    /** The channel the list opens on when it isn't the main picture's (two-screen mode). */
+    private var browserFocusId by mutableStateOf<String?>(null)
+
+    // ---- audio and subtitle choices remembered per channel, film or series ----
+    private val trackMemory by lazy { TrackMemory(this) }
+    private var audioMemoryDone = false
+    private var textMemoryDone = false
+    private var alertJob: kotlinx.coroutines.Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         queue = repo.playQueue
@@ -293,6 +329,8 @@ class PlayerActivity : ComponentActivity() {
         // Leave the player for another part of the app (Films, Series, Settings…).
         menuButton = pill("Menu", R.drawable.ic_pl_menu) { showAppMenu() }
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
+        // Live TV: a second channel beside this one.
+        twoButton = pill("Two screens", R.drawable.ic_pl_two) { startPickingSecond() }.apply { visibility = View.GONE }
         // Add what's playing to Favorites without leaving the player.
         favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
@@ -311,7 +349,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(menuButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -370,6 +408,7 @@ class PlayerActivity : ComponentActivity() {
             seekView,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
+        createDualViews()
 
         // Touch: double-tap the left or right side to jump 10 s (films and episodes); single tap shows the controls.
         val gestures = android.view.GestureDetector(
@@ -439,6 +478,14 @@ class PlayerActivity : ComponentActivity() {
                         UpNextCard(upNext, upNextLabel, upNextSecs, onPlay = { playUpNext() }, onHide = { dismissUpNext() })
                         val prayer by PrayerAlerts.current.collectAsState()
                         PrayerBanner(prayer, paused = prayerPaused) { endPrayerPause(resume = false) }
+                        // A programme reminder (not for the channel already on screen).
+                        val alert by ProgramAlerts.current.collectAsState()
+                        ProgramAlertCard(
+                            alert?.takeIf { it.channelId != currentChannelId },
+                            keysHint = true,
+                            onWatch = { watchAlert(it) },
+                            onDismiss = { ProgramAlerts.dismiss() },
+                        )
                         // Paused for a while: the ambient screen, over everything.
                         if (ambientOn) AmbientScreen(ambientSlides, paused = queue.getOrNull(index)?.name) { hideAmbient() }
                     }
@@ -462,7 +509,7 @@ class PlayerActivity : ComponentActivity() {
                         open = browserOpen,
                         showGroups = browserShowGroups,
                         groups = browserGroups,
-                        currentId = currentChannelId,
+                        currentId = browserFocusId ?: currentChannelId,
                         epg = epg,
                         favorites = favorites,
                         canFavorite = { canFavorite(it) },
@@ -515,12 +562,20 @@ class PlayerActivity : ComponentActivity() {
         handler.postDelayed(rateTick, 1_000)
         prayerJob?.cancel()
         prayerJob = lifecycleScope.launch { app.falak.player.PrayerAlerts.current.collect { onPrayer(it) } }
+        // A reminder for the channel already playing needs no card.
+        alertJob?.cancel()
+        alertJob = lifecycleScope.launch {
+            ProgramAlerts.current.collect { a -> if (a != null && a.channelId == currentChannelId) ProgramAlerts.dismiss() }
+        }
     }
 
     override fun onStop() {
         super.onStop()
         repo.nowPlaying = null
         prayerJob?.cancel()
+        alertJob?.cancel()
+        // Two-screen mode ends when the player leaves the screen.
+        if (dual != null) endDual(keepSecond = false, replay = false)
         handler.removeCallbacks(rateTick)
         repo.playerOpen = false
         FreezeWatch.note("player closing")
@@ -566,6 +621,7 @@ class PlayerActivity : ComponentActivity() {
         engine = e
         if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT)
         setPillLabel(engineButton, e.short)
+        applyDualVolume()
     }
 
     private fun createExo(software: Boolean) {
@@ -668,6 +724,7 @@ class PlayerActivity : ComponentActivity() {
         v.onTracksChanged = {
             if (isTvDevice) frameMatch.declared(v.frameRate())
             updateTrackButtons()
+            applyRememberedVlc(v)
             pickVlcSubtitle()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
@@ -798,6 +855,10 @@ class PlayerActivity : ComponentActivity() {
         // A fresh caption watcher for every item.
         sniffer = CaptionSniffer { onCaptionsChanged() }
         autoSubtitlesDone = false
+        audioMemoryDone = false
+        textMemoryDone = false
+        twoButton.visibility = if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null) View.VISIBLE else View.GONE
+        if (dual != null) updateDualLabels()
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
         val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.pos }
@@ -820,6 +881,11 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         val p = exo ?: return
+        // Each item starts from Settings' choices; ones picked by hand come back from TrackMemory.
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .clearOverrides()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
         val httpSource = OkHttpDataSource.Factory(repo.http).setUserAgent(ua).setTransferListener(transferMeter)
         if (ch.referrer.isNotBlank()) httpSource.setDefaultRequestProperties(mapOf("Referer" to ch.referrer))
         // DefaultDataSource adds local files (downloaded subtitles) on top of the network source.
@@ -934,6 +1000,7 @@ class PlayerActivity : ComponentActivity() {
 
         override fun onTracksChanged(tracks: Tracks) {
             updateTrackButtons()
+            applyRememberedTracks()
             maybeAutoSubtitles()
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
@@ -1034,9 +1101,10 @@ class PlayerActivity : ComponentActivity() {
         return out
     }
 
-    private fun openBrowser() {
+    private fun openBrowser(forChannel: Channel? = null) {
         if (inPip) return
-        val ch = queue.getOrNull(index) ?: return
+        val ch = forChannel ?: queue.getOrNull(index) ?: return
+        browserFocusId = forChannel?.id
         val groups = browserGroupsFor(ch)
         if (groups.isEmpty()) return
         browserGroups = groups
@@ -1058,9 +1126,12 @@ class PlayerActivity : ComponentActivity() {
         FreezeWatch.note("channel list closed")
         browserOpen = false
         browserShowGroups = false
+        pickingSecond = false
+        browserFocusId = null
         handler.postDelayed(hideBrowserView, 320)
-        playerView.useController = !inPip
+        playerView.useController = !inPip && dual == null
         applyVideoArea()
+        if (dual != null) updateDualLabels()
         playerView.requestFocus()
     }
 
@@ -1076,6 +1147,10 @@ class PlayerActivity : ComponentActivity() {
      * full screen straight away.
      */
     private fun pickFromBrowser(list: List<Channel>, ch: Channel) {
+        if (pickingSecond || dual != null) {
+            pickForDual(list, ch)
+            return
+        }
         val current = queue.getOrNull(index)
         if (ch.id == current?.id) {
             closeBrowser()
@@ -1105,6 +1180,10 @@ class PlayerActivity : ComponentActivity() {
         if (!::root.isInitialized) return
         val w = root.width
         val h = root.height
+        dual?.let { d ->
+            layoutDual(d, w, h)
+            return
+        }
         val m = when {
             !browserOpen || w == 0 || h == 0 -> intArrayOf(0, 0, 0, 0)
             h > w -> intArrayOf(0, 0, 0, (h - w * 9 / 16).coerceAtLeast(0))
@@ -1162,6 +1241,21 @@ class PlayerActivity : ComponentActivity() {
         }
         // While the browser is open, the remote moves through it instead of zapping.
         if (browserOpen) return super.dispatchKeyEvent(event)
+        // A programme reminder on screen: OK switches to it, Back closes it.
+        val alert = ProgramAlerts.current.value?.takeIf { it.channelId != currentChannelId }
+        if (alert != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            (!playerView.isControllerFullyVisible || dual != null)
+        ) {
+            val ok = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+            val back = event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE
+            if (ok || back) {
+                if (ok) watchAlert(alert) else ProgramAlerts.dismiss()
+                swallowUpKey = event.keyCode
+                return true
+            }
+        }
+        if (dual != null) return dualKey(event)
         val live = queue.getOrNull(index)?.kind == Kind.LIVE
         val controlsShown = playerView.isControllerFullyVisible
         // Up next / Skip intro on screen: OK takes it, Back keeps watching.
@@ -1364,6 +1458,8 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // Picture-in-picture shows one channel: the one being heard.
+        if (dual != null) endDual(keepSecond = dualSecond)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             player?.isPlaying == true &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -1497,7 +1593,8 @@ class PlayerActivity : ComponentActivity() {
 
     // ---- audio & subtitle tracks ----
 
-    private class TrackOption(val label: String, val selected: Boolean, val select: () -> Unit)
+    /** [memo]: what to remember when it's picked (see TrackMemory). */
+    private class TrackOption(val label: String, val selected: Boolean, val memo: String? = null, val select: () -> Unit)
 
     /** A caption track we added that turned out to carry text, or any track the stream declared. */
     private fun isReal(f: androidx.media3.common.Format): Boolean =
@@ -1509,7 +1606,7 @@ class PlayerActivity : ComponentActivity() {
         val out = ArrayList<TrackOption>()
         if (type == C.TRACK_TYPE_TEXT) {
             val anyOn = p.currentTracks.groups.any { it.type == type && it.isSelected }
-            out += TrackOption("Off", !anyOn) {
+            out += TrackOption("Off", !anyOn, "off") {
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .clearOverridesOfType(type)
                     .setTrackTypeDisabled(type, true)
@@ -1526,7 +1623,8 @@ class PlayerActivity : ComponentActivity() {
                 val n = (seen[base] ?: 0) + 1
                 seen[base] = n
                 val label = if (n > 1) "$base ($n)" else base
-                out += TrackOption(label, g.isTrackSelected(i)) {
+                val f = g.getTrackFormat(i)
+                out += TrackOption(label, g.isTrackSelected(i), TrackMatch.valueFor(f.language, base)) {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
@@ -1550,10 +1648,12 @@ class PlayerActivity : ComponentActivity() {
     private fun vlcTrackOptions(v: VlcPlayer, type: Int): List<TrackOption> {
         val out = ArrayList<TrackOption>()
         if (type == C.TRACK_TYPE_TEXT) {
-            out += TrackOption("Off", v.selectedSubtitle < 0) { v.selectSubtitle(-1) }
-            for (t in v.subtitleTracks()) out += TrackOption(t.name.ifBlank { "Subtitles ${t.id}" }, t.id == v.selectedSubtitle) { v.selectSubtitle(t.id) }
+            out += TrackOption("Off", v.selectedSubtitle < 0, "off") { v.selectSubtitle(-1) }
+            for (t in v.subtitleTracks()) {
+                out += TrackOption(t.name.ifBlank { "Subtitles ${t.id}" }, t.id == v.selectedSubtitle, "name:${t.name}") { v.selectSubtitle(t.id) }
+            }
         } else if (type == C.TRACK_TYPE_AUDIO) {
-            for (t in v.audioTracks()) out += TrackOption(t.name.ifBlank { "Audio ${t.id}" }, t.id == v.selectedAudio) { v.selectAudio(t.id) }
+            for (t in v.audioTracks()) out += TrackOption(t.name.ifBlank { "Audio ${t.id}" }, t.id == v.selectedAudio, "name:${t.name}") { v.selectAudio(t.id) }
         }
         return out
     }
@@ -1645,6 +1745,7 @@ class PlayerActivity : ComponentActivity() {
     private fun onCaptionsChanged() {
         if (exo == null) return
         updateTrackButtons()
+        applyRememberedTracks()
         maybeAutoSubtitles()
         if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
     }
@@ -1667,6 +1768,8 @@ class PlayerActivity : ComponentActivity() {
             .setSingleChoiceItems(options.map { it.label }.toTypedArray(), options.indexOfFirst { it.selected }) { d, which ->
                 d.dismiss()
                 options[which].select()
+                // Picked by hand: this channel, film or series gets it again next time.
+                options[which].memo?.let { rememberTrack(type, it) }
             }
             .setNegativeButton("Close", null)
             .show()
@@ -1855,7 +1958,7 @@ class PlayerActivity : ComponentActivity() {
     private var compactPills = false
 
     private fun pills(): List<TextView> =
-        listOf(menuButton, browseButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
+        listOf(menuButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
 
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
@@ -2244,6 +2347,7 @@ class PlayerActivity : ComponentActivity() {
         }
         if (alert.at == prayerSeen) return
         prayerSeen = alert.at
+        if (repo.state.value.settings.prayerMode == "pause" && dual != null) endDual(keepSecond = false, replay = false)
         val p = player ?: return
         if (repo.state.value.settings.prayerMode == "pause" && p.isPlaying) {
             p.pause()
@@ -2580,6 +2684,583 @@ class PlayerActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
+    // ---- two channels at once ----
+
+    /** The frame, names, hint and (touch) buttons of two-screen mode, hidden until it's on. */
+    private fun createDualViews() {
+        dualFrame = View(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(6).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(3), Color.WHITE)
+            }
+            visibility = View.GONE
+            isFocusable = false
+        }
+        root.addView(dualFrame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        fun label() = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 13f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
+            setSingleLine()
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(0xCC111010.toInt())
+            }
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            visibility = View.GONE
+        }
+        dualLabelA = label()
+        dualLabelB = label()
+        for (v in listOf(dualLabelA, dualLabelB)) {
+            root.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
+        }
+        dualHint = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 16f else 13f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
+            gravity = Gravity.CENTER
+            text = if (tvLayout) {
+                "◀ ▶  choose the sound        ▲ ▼  change channel        OK  channel list        BACK  one screen"
+            } else {
+                "Tap a picture for its sound  ·  double-tap to watch it full screen"
+            }
+            background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(0xE6111010.toInt())
+                setStroke(dp(1), 0x26FFFFFF)
+            }
+            setPadding(dp(22), dp(11), dp(22), dp(11))
+            visibility = View.GONE
+        }
+        root.addView(
+            dualHint,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                .apply { bottomMargin = dp(if (tvLayout) 28 else 76) },
+        )
+        // Touch: which picture is heard, and double-tap for full screen.
+        val taps = android.view.GestureDetector(
+            this,
+            object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: android.view.MotionEvent): Boolean = true
+
+                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    val second = inRect(rectSecond, e)
+                    if (second || inRect(rectMain, e)) {
+                        if (second != dualSecond) {
+                            dualSecond = second
+                            dualChanged()
+                        }
+                    }
+                    showDualHint()
+                    return true
+                }
+
+                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                    when {
+                        inRect(rectSecond, e) -> endDual(keepSecond = true)
+                        inRect(rectMain, e) -> endDual(keepSecond = false)
+                    }
+                    return true
+                }
+            },
+        )
+        touchLayer = View(this).apply {
+            visibility = View.GONE
+            isFocusable = false
+            setOnTouchListener { _, e -> taps.onTouchEvent(e) }
+        }
+        root.addView(touchLayer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Phones and tablets: a channel list for the picture being heard, and a clear way out.
+        dualBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            val channels = pill("Channels", R.drawable.ic_pl_channels) { openBrowserForDual() }
+            val exit = pill("One screen", R.drawable.ic_pl_close) { endDual() }
+            for (b in listOf(channels, exit)) {
+                addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { setMargins(dp(6), 0, dp(6), 0) })
+            }
+        }
+        root.addView(
+            dualBar,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                .apply { bottomMargin = dp(20) },
+        )
+    }
+
+    private fun inRect(r: IntArray, e: android.view.MotionEvent): Boolean =
+        e.x >= r[0] && e.x < r[2] && e.y >= r[1] && e.y < r[3]
+
+    /** "Two screens": the channel list opens to pick the second channel. */
+    private fun startPickingSecond() {
+        val ch = queue.getOrNull(index) ?: return
+        if (ch.kind != Kind.LIVE || inPip || dual != null) return
+        playerView.hideController()
+        openBrowser()
+        if (!browserOpen) return
+        pickingSecond = true
+        Toast.makeText(this, "Pick a channel to watch beside “${ch.name}”", Toast.LENGTH_LONG).show()
+    }
+
+    /** A channel picked in the list: the second picture (starting two-screen mode), or the one being steered. */
+    private fun pickForDual(list: List<Channel>, ch: Channel) {
+        val at = list.indexOfFirst { it.id == ch.id }
+        if (at < 0) return
+        val d = dual
+        if (d == null) {
+            if (ch.id == queue.getOrNull(index)?.id) {
+                Toast.makeText(this, "That one is already playing: pick another channel", Toast.LENGTH_SHORT).show()
+                return
+            }
+            closeBrowser()
+            startDual(list, at)
+            return
+        }
+        closeBrowser()
+        if (dualSecond) {
+            d.play(list, at)
+        } else {
+            saveProgress()
+            queue = list
+            repo.playQueue = list
+            index = at
+            retried = false
+            resumePositionMs = C.TIME_UNSET
+            playCurrent(showInfo = false)
+        }
+        updateDualLabels()
+        showDualHint()
+    }
+
+    private fun startDual(list: List<Channel>, at: Int) {
+        if (dual != null) return
+        val d = DualPane(
+            this,
+            repo.http,
+            headersFor = { c -> headersFor(c) },
+            preferHls = repo.state.value.settings.preferHls,
+            onChange = { updateDualLabels() },
+        )
+        root.addView(
+            d.container,
+            root.indexOfChild(playerView) + 1,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        dual = d
+        dualSecond = false
+        playerView.hideController()
+        playerView.useController = false
+        bannerView.visibility = View.GONE
+        twoButton.visibility = View.GONE
+        d.play(list, at)
+        dualChanged()
+        showDualHint()
+        FreezeWatch.note("two screens on")
+    }
+
+    /**
+     * Back to one screen. [keepSecond]: the second channel goes full screen (else the main one
+     * stays); [replay] = false only tidies up (the player is closing).
+     */
+    private fun endDual(keepSecond: Boolean = dualSecond, replay: Boolean = true) {
+        val d = dual ?: return
+        val list = d.list
+        val at = d.index
+        val second = d.channel
+        d.release()
+        root.removeView(d.container)
+        dual = null
+        dualSecond = false
+        handler.removeCallbacks(hideDualHint)
+        for (v in listOf(dualFrame, dualLabelA, dualLabelB, dualHint, touchLayer, dualBar)) v.visibility = View.GONE
+        playerView.useController = !inPip
+        applyDualVolume()
+        applyVideoArea()
+        FreezeWatch.note("two screens off")
+        if (!replay) return
+        if (keepSecond && second != null) {
+            saveProgress()
+            rememberPrevious()
+            queue = list
+            repo.playQueue = list
+            index = at
+            retried = false
+            resumePositionMs = C.TIME_UNSET
+            playCurrent(showInfo = true)
+        } else {
+            queue.getOrNull(index)?.let {
+                twoButton.visibility = if (it.kind == Kind.LIVE && !it.id.startsWith("cu:")) View.VISIBLE else View.GONE
+                showBanner(it)
+            }
+        }
+        playerView.requestFocus()
+    }
+
+    /** The picture being heard changed (or two-screen mode started). */
+    private fun dualChanged() {
+        applyDualVolume()
+        applyVideoArea()
+        updateDualLabels()
+    }
+
+    /** Only the picture being heard makes a sound. */
+    private fun applyDualVolume() {
+        val mainHeard = dual == null || !dualSecond
+        exo?.volume = if (mainHeard) 1f else 0f
+        vlc?.setMuted(!mainHeard)
+        dual?.setHeard(!mainHeard)
+    }
+
+    /** The two pictures side by side (one above the other on an upright phone), the heard one framed. */
+    private fun layoutDual(d: DualPane, w: Int, h: Int) {
+        if (w == 0 || h == 0) return
+        val gap = dp(if (tvLayout) 16 else 6)
+        val none = intArrayOf(0, 0, 0, 0)
+        val a: IntArray
+        val b: IntArray
+        if (browserOpen) {
+            // The list beside (or below) the picture being steered; the other one waits out of sight.
+            val area = if (h > w) {
+                intArrayOf(0, 0, w, w * 9 / 16)
+            } else {
+                val panel = dp(BrowserLayout.panelWidthDp(tvLayout, browserShowGroups))
+                fit16x9((panel + gap).coerceAtMost(w - dp(120)), gap, w - gap, h - gap)
+            }
+            a = if (dualSecond) none else area
+            b = if (dualSecond) area else none
+        } else if (h > w) {
+            val ph = w * 9 / 16
+            val top = ((h - 2 * ph - gap) / 2).coerceAtLeast(0)
+            a = intArrayOf(0, top, w, top + ph)
+            b = intArrayOf(0, top + ph + gap, w, top + 2 * ph + gap)
+        } else {
+            val pw = (w - 3 * gap) / 2
+            val ph = pw * 9 / 16
+            val top = ((h - ph) / 2).coerceAtLeast(0)
+            a = intArrayOf(gap, top, gap + pw, top + ph)
+            b = intArrayOf(2 * gap + pw, top, 2 * gap + 2 * pw, top + ph)
+        }
+        rectMain = a
+        rectSecond = b
+        for (v in listOfNotNull<View>(playerView, vlcLayout, messageView)) placeIn(v, a, w, h)
+        placeIn(d.container, b, w, h)
+        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        vlc?.setScale(0)
+        val heard = if (dualSecond) b else a
+        val showing = !browserOpen
+        // The frame sits just outside the heard picture.
+        val pad = dp(4)
+        placeIn(dualFrame, intArrayOf(heard[0] - pad, heard[1] - pad, heard[2] + pad, heard[3] + pad), w, h)
+        dualFrame.visibility = if (showing) View.VISIBLE else View.GONE
+        for ((label, r) in listOf(dualLabelA to a, dualLabelB to b)) {
+            val lp = label.layoutParams as FrameLayout.LayoutParams
+            lp.leftMargin = r[0] + dp(10)
+            lp.bottomMargin = (h - r[3]) + dp(10)
+            label.layoutParams = lp
+            label.maxWidth = (r[2] - r[0] - dp(20)).coerceAtLeast(dp(80))
+            label.visibility = if (showing && r[2] > r[0]) View.VISIBLE else View.GONE
+        }
+        touchLayer.visibility = if (showing && !tvLayout) View.VISIBLE else View.GONE
+        dualBar.visibility = if (showing && !tvLayout) View.VISIBLE else View.GONE
+    }
+
+    /** A view filling [r] (left, top, right, bottom) of a [w]×[h] screen; an empty [r] hides it. */
+    private fun placeIn(v: View, r: IntArray, w: Int, h: Int) {
+        val lp = v.layoutParams as? FrameLayout.LayoutParams ?: return
+        val m = if (r[2] <= r[0] || r[3] <= r[1]) intArrayOf(w, h, 0, 0) else intArrayOf(r[0], r[1], w - r[2], h - r[3])
+        if (lp.leftMargin != m[0] || lp.topMargin != m[1] || lp.rightMargin != m[2] || lp.bottomMargin != m[3]) {
+            lp.setMargins(m[0], m[1], m[2], m[3])
+            v.layoutParams = lp
+        }
+    }
+
+    /** The largest 16:9 area centred in the given box. */
+    private fun fit16x9(l: Int, t: Int, r: Int, b: Int): IntArray {
+        val bw = (r - l).coerceAtLeast(1)
+        val bh = (b - t).coerceAtLeast(1)
+        return if (bw * 9 <= bh * 16) {
+            val hh = bw * 9 / 16
+            intArrayOf(l, t + (bh - hh) / 2, r, t + (bh - hh) / 2 + hh)
+        } else {
+            val ww = bh * 16 / 9
+            intArrayOf(l + (bw - ww) / 2, t, l + (bw - ww) / 2 + ww, b)
+        }
+    }
+
+    /**
+     * The remote in two-screen mode: Left/Right choose the picture heard, Up/Down (and CH±) change
+     * its channel, OK opens the channel list for it, Back goes back to one screen (the one heard).
+     */
+    private fun dualKey(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                    if (event.repeatCount == 0) endDual()
+                    swallowUpKey = event.keyCode
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    val second = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    if (second != dualSecond) {
+                        dualSecond = second
+                        dualChanged()
+                    }
+                    showDualHint()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    if (event.repeatCount == 0) dualZap(1)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    if (event.repeatCount == 0) dualZap(-1)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MENU -> {
+                    if (event.repeatCount == 0) openBrowserForDual()
+                    swallowUpKey = event.keyCode
+                    return true
+                }
+                KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> {
+                    showDualHint()
+                    return true
+                }
+            }
+        } else if (event.action == KeyEvent.ACTION_UP) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE,
+                -> return true
+            }
+        }
+        // Volume and the rest: as usual.
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** The next or previous channel in the picture being steered. */
+    private fun dualZap(delta: Int) {
+        val d = dual ?: return
+        if (dualSecond) {
+            d.zap(delta)
+        } else {
+            if (queue.size < 2) return
+            saveProgress()
+            rememberPrevious()
+            index = (index + delta).mod(queue.size)
+            retried = false
+            resumePositionMs = C.TIME_UNSET
+            playCurrent(showInfo = false)
+        }
+        updateDualLabels()
+        showDualHint()
+    }
+
+    /** The channel list, for the picture being steered. */
+    private fun openBrowserForDual() {
+        val d = dual ?: return
+        openBrowser(if (dualSecond) d.channel else null)
+    }
+
+    /** Each picture's channel and what's on, the heard one marked. */
+    private fun updateDualLabels() {
+        val d = dual ?: return
+        if (!::dualLabelA.isInitialized) return
+        val now = System.currentTimeMillis()
+        val epg = repo.epg.value
+        fun line(ch: Channel?, heard: Boolean): String {
+            if (ch == null) return ""
+            val on = epg[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop }?.title
+            return (if (heard) "🔊  " else "") + ch.name + (on?.let { "  ·  $it" } ?: "")
+        }
+        dualLabelA.text = line(queue.getOrNull(index), !dualSecond)
+        dualLabelB.text = line(d.channel, dualSecond)
+        dualLabelA.alpha = if (dualSecond) 0.75f else 1f
+        dualLabelB.alpha = if (dualSecond) 1f else 0.75f
+    }
+
+    /** How to use two-screen mode, for a few seconds. */
+    private fun showDualHint() {
+        if (dual == null || browserOpen) return
+        dualHint.visibility = View.VISIBLE
+        handler.removeCallbacks(hideDualHint)
+        handler.postDelayed(hideDualHint, 5_000)
+    }
+
+    /** User agent and referrer for a channel (its own, the playlist's, or the app's). */
+    private fun headersFor(c: Channel): Pair<String, String> =
+        c.userAgent.ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }.ifBlank { Repository.DEFAULT_UA } to c.referrer
+
+    /** Screenshot tests: two-screen mode with stand-in players. */
+    internal fun previewDual(main: Player, second: Player, secondChannel: Channel, heardSecond: Boolean) {
+        playerView.player = main
+        val d = DualPane(this, repo.http, { c -> headersFor(c) }, false) { updateDualLabels() }
+        root.addView(
+            d.container,
+            root.indexOfChild(playerView) + 1,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        dual = d
+        dualSecond = heardSecond
+        playerView.hideController()
+        playerView.useController = false
+        bannerView.visibility = View.GONE
+        d.previewWith(second, listOf(secondChannel), 0)
+        dualChanged()
+        dualHint.visibility = View.VISIBLE
+        handler.removeCallbacks(hideDualHint)
+    }
+
+    // ---- programme reminders ----
+
+    /** "Watch now" on a reminder: its channel, with its group to zap through. */
+    private fun watchAlert(a: ProgramAlert) {
+        ProgramAlerts.dismiss()
+        val idx = repo.currentIndex
+        val ch = idx.byId[a.channelId]
+        if (ch == null || repo.currentPlaylist?.id != a.playlistId || ch.group in repo.excludedGroups) {
+            Toast.makeText(this, "“${a.channelName}” isn't in this playlist", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (dual != null) endDual(keepSecond = false, replay = false)
+        if (browserOpen) closeBrowser()
+        val list = idx.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)
+        saveProgress()
+        rememberPrevious()
+        queue = list
+        repo.playQueue = list
+        index = list.indexOfFirst { it.id == ch.id }.coerceAtLeast(0)
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        repo.currentPlaylist?.let { repo.addRecent(it.id, ch.id) }
+        playCurrent(showInfo = true)
+    }
+
+    // ---- audio and subtitles picked by hand, remembered ----
+
+    /** Where this item's choices are kept: the series for an episode, else the channel or film. */
+    private fun trackKey(): String? {
+        val ch = queue.getOrNull(index) ?: return null
+        if (ch.id.startsWith("cu:")) return null
+        return showKey(ch) ?: ((repo.currentPlaylist?.id ?: "") + "|" + ch.id)
+    }
+
+    private fun rememberTrack(type: Int, value: String) {
+        val key = trackKey() ?: return
+        if (type == C.TRACK_TYPE_AUDIO) trackMemory.setAudio(key, value) else if (type == C.TRACK_TYPE_TEXT) trackMemory.setText(key, value)
+    }
+
+    /** ExoPlayer: the audio and subtitles picked last time for this item, once its tracks are known. */
+    private fun applyRememberedTracks() {
+        val p = exo ?: return
+        if (audioMemoryDone && textMemoryDone) return
+        val saved = trackKey()?.let { trackMemory.get(it) }
+        if (saved == null) {
+            audioMemoryDone = true
+            textMemoryDone = true
+            return
+        }
+        val groups = p.currentTracks.groups
+        if (!audioMemoryDone) {
+            val want = saved.audio
+            if (want == null) {
+                audioMemoryDone = true
+            } else {
+                val cands = ArrayList<Pair<androidx.media3.common.Tracks.Group, Int>>()
+                for (g in groups) if (g.type == C.TRACK_TYPE_AUDIO) for (i in 0 until g.length) if (g.isTrackSupported(i)) cands += g to i
+                if (cands.isNotEmpty()) {
+                    audioMemoryDone = true
+                    val at = TrackMatch.pick(want, cands.map { (g, i) -> g.getTrackFormat(i).let { it.language to trackLabel(it) } })
+                    if (at >= 0) {
+                        val (g, i) = cands[at]
+                        if (!g.isTrackSelected(i)) {
+                            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                                .build()
+                        }
+                    }
+                }
+            }
+        }
+        if (!textMemoryDone) {
+            val want = saved.text
+            when {
+                want == null -> textMemoryDone = true
+                want == "off" -> {
+                    textMemoryDone = true
+                    autoSubtitlesDone = true
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        .build()
+                }
+                else -> {
+                    val cands = ArrayList<Pair<androidx.media3.common.Tracks.Group, Int>>()
+                    for (g in groups) {
+                        if (g.type != C.TRACK_TYPE_TEXT) continue
+                        for (i in 0 until g.length) if (g.isTrackSupported(i) && isReal(g.getTrackFormat(i))) cands += g to i
+                    }
+                    if (cands.isNotEmpty()) {
+                        val at = TrackMatch.pick(want, cands.map { (g, i) -> g.getTrackFormat(i).let { it.language to trackLabel(it) } })
+                        if (at >= 0) {
+                            textMemoryDone = true
+                            autoSubtitlesDone = true
+                            val (g, i) = cands[at]
+                            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                                .build()
+                            watchCaptions()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** VLC: the same, by track name (VLC lists names like "Arabic - [ara]"). */
+    private fun applyRememberedVlc(v: VlcPlayer) {
+        if (audioMemoryDone && textMemoryDone) return
+        val saved = trackKey()?.let { trackMemory.get(it) }
+        if (saved == null) {
+            audioMemoryDone = true
+            textMemoryDone = true
+            return
+        }
+        if (!audioMemoryDone) {
+            val want = saved.audio
+            val tracks = v.audioTracks()
+            if (want == null) {
+                audioMemoryDone = true
+            } else if (tracks.isNotEmpty()) {
+                audioMemoryDone = true
+                val at = TrackMatch.pick(want, tracks.map { null to it.name })
+                if (at >= 0 && tracks[at].id != v.selectedAudio) v.selectAudio(tracks[at].id)
+            }
+        }
+        if (!textMemoryDone) {
+            val want = saved.text
+            val tracks = v.subtitleTracks()
+            when {
+                want == null -> textMemoryDone = true
+                want == "off" -> {
+                    textMemoryDone = true
+                    autoSubtitlesDone = true
+                    if (v.selectedSubtitle >= 0 && !wantVlcSubtitles) v.selectSubtitle(-1)
+                }
+                tracks.isNotEmpty() -> {
+                    val at = TrackMatch.pick(want, tracks.map { null to it.name })
+                    if (at >= 0) {
+                        textMemoryDone = true
+                        autoSubtitlesDone = true
+                        if (tracks[at].id != v.selectedSubtitle) v.selectSubtitle(tracks[at].id)
+                    }
+                }
             }
         }
     }

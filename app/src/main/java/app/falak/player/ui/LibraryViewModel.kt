@@ -21,6 +21,9 @@ import app.falak.player.data.suggestGuides
 import app.falak.player.data.Kind
 import app.falak.player.data.LibraryIndex
 import app.falak.player.data.SearchText
+import app.falak.player.data.Alerts
+import app.falak.player.data.Reminder
+import app.falak.player.data.ProgramAlert
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SeriesInfo
@@ -197,6 +200,118 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun clearRecentSearches() {
         recentSearches = emptyList()
         searchPrefs.edit().remove("recent").apply()
+    }
+
+    // ---- programme reminders and alert words ----
+
+    /** What's coming up (reminders and alert-word finds) for the open playlist, soonest first. */
+    var upcomingAlerts by mutableStateOf<List<ProgramAlert>>(emptyList())
+        private set
+
+    fun isReminded(ch: Channel, prog: Program): Boolean =
+        state.value.reminders.any { it.channelId == ch.id && it.start == prog.start }
+
+    /** "Remind me" in the guide (or cancels it). */
+    fun toggleReminder(ch: Channel, prog: Program) {
+        val p = playlist ?: return
+        repo.update { s ->
+            val there = s.reminders.any { it.channelId == ch.id && it.start == prog.start }
+            s.copy(
+                reminders = if (there) {
+                    s.reminders.filterNot { it.channelId == ch.id && it.start == prog.start }
+                } else {
+                    (s.reminders + Reminder(p.id, ch.id, ch.name, prog.title.ifBlank { ch.name }, prog.start, prog.stop)).sortedBy { it.start }
+                },
+            )
+        }
+    }
+
+    fun cancelReminder(channelId: String, start: Long) = repo.update { s ->
+        s.copy(reminders = s.reminders.filterNot { it.channelId == channelId && it.start == start })
+    }
+
+    fun hasAlertWord(word: String): Boolean {
+        val key = SearchText.normalize(word)
+        return key.isNotEmpty() && state.value.alertWords.any { SearchText.normalize(it) == key }
+    }
+
+    /** Alert me whenever a programme with [word] in its name is on (or stop it). */
+    fun toggleAlertWord(word: String) {
+        val w = word.trim().replace(Regex("\\s+"), " ").take(60)
+        val key = SearchText.normalize(w)
+        if (key.isEmpty()) return
+        repo.update { s ->
+            val there = s.alertWords.any { SearchText.normalize(it) == key }
+            s.copy(alertWords = if (there) s.alertWords.filterNot { SearchText.normalize(it) == key } else (s.alertWords + w).takeLast(30))
+        }
+    }
+
+    /** The channel a reminder is for, with its group to zap through. */
+    fun channelForAlert(a: ProgramAlert): Pair<List<Channel>, Channel>? {
+        if (playlist?.id != a.playlistId) return null
+        val ch = index.byId[a.channelId] ?: return null
+        if (ch.group in currentExclusions()) return null
+        return (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
+    }
+
+    /** A reminder's notification was tapped: open its playlist if needed and play the channel. */
+    fun playFromAlert(playlistId: String, channelId: String) {
+        repo.autoPlayChecked = true
+        val p = state.value.playlists.firstOrNull { it.id == playlistId } ?: return
+        viewModelScope.launch {
+            if (playlist?.id != p.id) open(p)
+            withTimeoutOrNull(30_000) {
+                while (index.byId[channelId] == null && (loading || index.all.isEmpty())) delay(200)
+            }
+            val ch = index.byId[channelId] ?: return@launch
+            if (ch.group in currentExclusions()) return@launch
+            screen = Screen.LIBRARY
+            autoPlay = (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
+        }
+    }
+
+    /**
+     * Keeps [upcomingAlerts] (and the reminder cards and notifications, see ProgramAlerts) up to
+     * date as reminders, alert words, the guide, the playlist or what may be shown change, and
+     * every 10 minutes as the day moves on. Finished reminders are tidied away.
+     */
+    private fun watchAlerts() {
+        viewModelScope.launch {
+            var last: Array<Any?>? = null
+            var lastExcluded: Set<String>? = null
+            var lastAt = 0L
+            while (true) {
+                val s = state.value
+                val p = playlist
+                val idx = index
+                val guide = epg.value
+                val excluded = currentExclusions()
+                val refs = arrayOf<Any?>(p?.id, s.reminders, s.alertWords, idx, guide, s.favorites, s.activeProfile)
+                val now = System.currentTimeMillis()
+                val same = last?.let { old -> old.indices.all { old[it] === refs[it] || old[it] == refs[it] && it == 0 } } == true &&
+                    excluded == lastExcluded
+                if (!same || now - lastAt > 10 * 60_000L) {
+                    last = refs
+                    lastExcluded = excluded
+                    lastAt = now
+                    val list = if (p == null || (s.reminders.isEmpty() && s.alertWords.isEmpty())) {
+                        emptyList()
+                    } else {
+                        withContext(Dispatchers.Default) {
+                            val live = if (excluded.isEmpty()) idx.live else idx.live.filter { it.group !in excluded }
+                            val favs = s.favorites[s.mine(p.id)].orEmpty().toHashSet()
+                            Alerts.upcoming(p.id, s.reminders, s.alertWords, live, guide, now, favs)
+                        }
+                    }
+                    upcomingAlerts = list
+                    app.falak.player.ProgramAlerts.update(list)
+                    if (s.reminders.any { it.stop < now - 3_600_000L }) {
+                        repo.update { st -> st.copy(reminders = st.reminders.filter { it.stop >= now - 3_600_000L }) }
+                    }
+                }
+                delay(3_000)
+            }
+        }
     }
 
     /**
@@ -1159,6 +1274,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     // Runs last, after every property above exists (opening a playlist touches many of them).
     init {
         followOutsideChanges()
+        watchAlerts()
         forgetDetourOnLeave()
         renameAddressNamedPlaylists()
         // Read and cleared: nothing is shown; the report (personal details taken out) goes to

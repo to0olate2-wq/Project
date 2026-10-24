@@ -65,6 +65,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.runtime.key
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -86,6 +87,7 @@ enum class SettingsPage(val title: String) {
     PLAYBACK("Picture & playback"),
     SOUND("Sound & subtitles"),
     PLAYLISTS("Playlists & TV guide"),
+    REMINDERS("Reminders & alerts"),
     FAMILY("Profiles & parental control"),
     DEVICES("Devices & phone remote"),
     ABOUT("About"),
@@ -108,6 +110,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var guideSources by remember { mutableStateOf(false) }
     var guideShift by remember { mutableStateOf(false) }
     var editSubs by remember { mutableStateOf(false) }
+    var addAlertWord by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
     val guarded: (() -> Unit) -> Unit = { action ->
@@ -118,6 +121,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
     val page = vm.settingsPage
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    // Checked each time a page opens (the user may have changed it in Android's settings).
+    val notificationsOff = remember(page) {
+        !androidx.core.app.NotificationManagerCompat.from(appContext).areNotificationsEnabled()
+    }
     // Back: from a page to the list of pages; from the list, out of Settings.
     val back: () -> Unit = {
         if (page != null) {
@@ -216,6 +224,22 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         if (p != null && p.epgShiftMinutes != 0) " · Guide ${formatShift(p.epgShiftMinutes)}" else "",
                     focusAt(SettingsPage.PLAYLISTS.name),
                 ) { openPage(SettingsPage.PLAYLISTS) }
+            }
+            item {
+                val reminders = state.reminders.count { it.start > System.currentTimeMillis() }
+                HubRow(
+                    { HubIcon(rememberVectorPainter(Icons.Outlined.Notifications)) },
+                    "Reminders & alerts",
+                    listOf(
+                        when (reminders) {
+                            0 -> "No reminders"
+                            1 -> "1 reminder"
+                            else -> "$reminders reminders"
+                        },
+                        if (state.alertWords.isEmpty()) "No alert words" else "Alerts: " + state.alertWords.joinToString(", "),
+                    ).joinToString(" · "),
+                    focusAt(SettingsPage.REMINDERS.name),
+                ) { openPage(SettingsPage.REMINDERS) }
             }
             item { HubGap() }
             item {
@@ -524,6 +548,10 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 else "On" + if (s.osUser.isNotBlank()) " · signed in as ${s.osUser}" else " · not signed in (fewer downloads per day)",
             ) { editSubs = true }
         }
+        }
+
+        SettingsPage.REMINDERS -> {
+            remindersPage(vm, state, focusAt("first"), notificationsOff) { addAlertWord = true }
         }
 
         SettingsPage.PLAYLISTS -> {
@@ -835,6 +863,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         )
     }
 
+    if (addAlertWord) {
+        AlertWordDialog(onDismiss = { addAlertWord = false }) { w -> if (!vm.hasAlertWord(w)) vm.toggleAlertWord(w) }
+    }
     if (editSubs) {
         var key by remember { mutableStateOf(s.osApiKey) }
         var user by remember { mutableStateOf(s.osUser) }
@@ -928,13 +959,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 }
 
 @Composable
-private fun SectionTitle(text: String, first: Boolean = false) {
+internal fun SectionTitle(text: String, first: Boolean = false) {
     Box(Modifier.padding(start = 4.dp, top = if (first) 10.dp else 26.dp, bottom = 6.dp)) { Kicker(text) }
 }
 
 /** A short line in place of settings that need a playlist open. */
 @Composable
-private fun Note(text: String) {
+internal fun Note(text: String) {
     Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
 }
 

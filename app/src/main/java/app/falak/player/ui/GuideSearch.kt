@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -102,6 +103,9 @@ fun GuideSearch(
     timeFormat: java.text.DateFormat,
     onHit: (Channel, Program) -> Unit,
     onHitLong: (Channel, Program) -> Unit,
+    /** The search is also an alert word (a reminder whenever a matching programme comes up). */
+    alertOn: Boolean = false,
+    onAlert: (() -> Unit)? = null,
 ) {
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
@@ -121,6 +125,15 @@ fun GuideSearch(
                 cursorBrush = SolidColor(Signal),
                 modifier = Modifier.fillMaxWidth().focusRequester(field),
             )
+        }
+    }
+    if (onAlert != null && query.trim().length >= 2) {
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
+            TagChip(
+                if (alertOn) "🔔 Alert on for “${query.trim()}” · tap to stop" else "🔔 Alert me whenever “${query.trim()}” is on",
+                alertOn,
+                modifier = Modifier.widthIn(max = 520.dp),
+            ) { onAlert() }
         }
     }
     when {
@@ -193,7 +206,7 @@ fun GuideSearch(
 }
 
 /** "Today", "Tomorrow", "Yesterday" or the weekday and date. */
-private fun dayLabel(time: Long, now: Long): String {
+internal fun dayLabel(time: Long, now: Long): String {
     val a = Calendar.getInstance().apply { timeInMillis = now }
     val b = Calendar.getInstance().apply { timeInMillis = time }
     val days = run {

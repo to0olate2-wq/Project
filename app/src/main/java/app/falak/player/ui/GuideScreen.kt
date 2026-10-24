@@ -152,6 +152,10 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val pick: (List<Channel>, Channel) -> Unit = { list, ch ->
         if (vm.guidePreview?.id == ch.id) full(list, ch) else vm.guidePreview = ch
     }
+    // Programmes with a reminder, by channel (a bell on them in the guide).
+    val remindedAt = remember(state.reminders) {
+        state.reminders.groupBy({ it.channelId }, { it.start }).mapValues { it.value.toHashSet() }
+    }
     val hits by produceState<List<Pair<Channel, Program>>?>(null, query, guided, epg) {
         val q = query.trim()
         if (q.length < 2) {
@@ -210,6 +214,8 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                     if (live) pick(guided, ch) else details = ch to prog
                 },
                 onHitLong = { ch, prog -> details = ch to prog },
+                alertOn = vm.hasAlertWord(query) && state.alertWords.isNotEmpty(),
+                onAlert = { vm.toggleAlertWord(query) },
             )
         } else {
             // While previewing, the picture takes the place of the day and group rows.
@@ -309,6 +315,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                                 if (live) pick(channels, ch) else details = ch to prog
                             },
                             onProgramLong = { prog -> details = ch to prog },
+                            reminded = remindedAt[ch.id].orEmpty(),
                         )
                     }
                 }
@@ -334,6 +341,13 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
             },
             confirmButton = {
                 Row {
+                    // Coming up: a reminder 2 minutes before it starts.
+                    if (prog.start > now) {
+                        val on = state.reminders.any { it.channelId == ch.id && it.start == prog.start }
+                        TextButton(onClick = { vm.toggleReminder(ch, prog) }) {
+                            Text(if (on) "🔔 Reminder set · cancel" else "🔔 Remind me")
+                        }
+                    }
                     if (Catchup.canReplay(ch, prog, now)) {
                         val live = now >= prog.start && now < prog.stop
                         TextButton(onClick = {
@@ -367,6 +381,8 @@ private fun GuideRow(
     onChannelLong: () -> Unit,
     onProgram: (Program) -> Unit,
     onProgramLong: (Program) -> Unit,
+    /** Start times of this channel's programmes with a reminder. */
+    reminded: Set<Long> = emptySet(),
 ) {
     val colors = MaterialTheme.colorScheme
     val cellShape = RoundedCornerShape(10.dp)
@@ -431,7 +447,8 @@ private fun GuideRow(
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         ) {
                             Text(
-                                (if (Catchup.canReplay(ch, prog, now) && !live) "⟲ " else "") + prog.title,
+                                (if (prog.start in reminded) "🔔 " else "") +
+                                    (if (Catchup.canReplay(ch, prog, now) && !live) "⟲ " else "") + prog.title,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (live) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 2,

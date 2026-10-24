@@ -411,7 +411,24 @@ data class AppState(
     val activeProfile: String = "",
     /** Phones paired as remotes (Settings → Phone remote). */
     val remotes: List<RemotePhone> = emptyList(),
+    /** Programmes to be reminded of ("Remind me" in the TV guide), kept on this device. */
+    val reminders: List<Reminder> = emptyList(),
+    /** Words to be alerted about: any programme with them in its name (Settings → Reminders & alerts). */
+    val alertWords: List<String> = emptyList(),
 )
+
+/** A programme the user asked to be reminded of. */
+@Serializable
+data class Reminder(
+    val playlistId: String,
+    val channelId: String,
+    val channelName: String,
+    val title: String,
+    val start: Long,
+    val stop: Long,
+) {
+    val key: String get() = "$channelId|$start"
+}
 
 /** A phone paired as a remote: a hash of its key (the key itself stays on the phone). */
 @Serializable

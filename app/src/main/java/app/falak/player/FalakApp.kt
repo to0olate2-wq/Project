@@ -80,11 +80,14 @@ class FalakApp : Application(), ImageLoaderFactory {
                 refreshRemote()
                 if (visible == 1) PrayerAlerts.schedule(this@FalakApp, repo, visible = true)
                 if (visible == 1) Stats.start(this@FalakApp, repo)
+                if (visible == 1) ProgramAlerts.setVisible(this@FalakApp, true)
             }
 
             override fun onActivityStopped(activity: Activity) {
                 visible = (visible - 1).coerceAtLeast(0)
                 if (visible == 0) Stats.stop()
+                // Reminders from now on come as notifications.
+                if (visible == 0) ProgramAlerts.setVisible(this@FalakApp, false)
                 // Not straight away: going from the lists to the player stops one screen as the next starts.
                 if (visible == 0) main.postDelayed(stopSync, 30_000)
             }

@@ -19,6 +19,9 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.test.core.app.ApplicationProvider
 import app.falak.player.FalakApp
+import app.falak.player.ProgramAlerts
+import app.falak.player.data.ProgramAlert
+import app.falak.player.data.Reminder
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
 import app.falak.player.data.Notice
@@ -85,9 +88,10 @@ abstract class ScreenshotBase {
         profiles: List<String> = emptyList(),
         prayerMode: String = "off",
         liveOnly: Boolean = false,
+        reminder: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -104,6 +108,9 @@ abstract class ScreenshotBase {
         upNext: Boolean = false,
         ambient: Boolean = false,
         prayer: Boolean = false,
+        dual: Boolean = false,
+        heardSecond: Boolean = false,
+        alert: Boolean = false,
         block: ((String) -> Unit) -> Unit,
     ) {
         seed(if (tv) "tv" else "phone")
@@ -116,7 +123,21 @@ abstract class ScreenshotBase {
         val intent = Intent(app, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, 2)
         val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
         idle(500)
-        activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
+        if (dual) {
+            activity.previewDual(StandIn(live, queue[2].name), StandIn(live, queue[6].name), queue[6], heardSecond)
+        } else {
+            activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
+        }
+        if (alert) {
+            val now = System.currentTimeMillis()
+            ProgramAlerts.showForTest(
+                ProgramAlert(
+                    playlistId = "sample", channelId = queue[8].id, channelName = queue[8].name,
+                    title = "The Big Match", start = now + 2 * 60_000L, stop = now + 2 * 3_600_000L,
+                    word = "Big Match", alsoOn = 2,
+                ),
+            )
+        }
         if (upNext) activity.previewUpNext(queue[3])
         if (ambient) activity.previewAmbient()
         if (prayer) activity.previewPrayer()
@@ -136,6 +157,7 @@ abstract class ScreenshotBase {
         profiles: List<String> = emptyList(),
         prayerMode: String = "off",
         liveOnly: Boolean = false,
+        reminder: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
@@ -170,6 +192,14 @@ abstract class ScreenshotBase {
                     progressKey(p.id, id) to Watch(pos = (20 + i * 25) * 60_000L, dur = 110 * 60_000L)
                 },
                 favorites = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"))),
+                // A reminder starting in a minute (the card comes up), and an alert word for the guide's shows.
+                reminders = if (!reminder) emptyList() else listOf(
+                    Reminder(
+                        p.id, liveId("Pulse Sports 1"), "Pulse Sports 1", "The Big Match: Final",
+                        System.currentTimeMillis() + 60_000L, System.currentTimeMillis() + 2 * 3_600_000L,
+                    ),
+                ),
+                alertWords = if (!reminder) emptyList() else listOf("Nature Hour"),
                 recents = if (!watching) emptyMap() else mapOf(p.id to listOf(liveId("Atlas News"), liveId("Pulse Sports 1"))),
                 // What's new: one fresh entry and one seen earlier.
                 notices = if (!watching) emptyList() else listOf(
@@ -218,7 +248,7 @@ abstract class ScreenshotBase {
         looper.idle()
     }
 
-    private fun waitFor(condition: () -> Boolean) {
+    protected fun waitFor(condition: () -> Boolean) {
         val until = System.currentTimeMillis() + 20_000
         while (!condition() && System.currentTimeMillis() < until) idle(100)
         check(condition()) { "Sample playlist didn't load" }
@@ -808,4 +838,56 @@ class PhoneSearchScreens : ScreenshotBase() {
         vm.query = "zzzz"
         shoot("phone-23-search-nothing")
     }
+}
+
+// ---- Reminders and two screens ----
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvReminderScreens : ScreenshotBase() {
+    // A reminder set in the guide comes up over Home a minute before; Settings lists what's coming up.
+    @Test @Config(qualifiers = TV)
+    fun tvReminder() = mainScreens("tv", reminder = true) { vm, shoot ->
+        waitFor { ProgramAlerts.current.value != null }
+        shoot("tv-33-reminder-home")
+        ProgramAlerts.dismiss()
+        vm.screen = Screen.SETTINGS
+        vm.settingsPage = SettingsPage.REMINDERS
+        waitFor { vm.upcomingAlerts.size > 1 }
+        shoot("tv-34-settings-reminders")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneReminderScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneReminder() = mainScreens("phone", look = "sidebar", reminder = true) { _, shoot ->
+        waitFor { ProgramAlerts.current.value != null }
+        shoot("phone-24-reminder-home")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvTwoScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvTwoScreens() = player(tv = true, live = true, dual = true) { shoot -> shoot("tv-35-two-screens") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvTwoScreensSecondHeard : ScreenshotBase() {
+    // The second picture heard, and a reminder coming up in the player.
+    @Test @Config(qualifiers = TV)
+    fun tvTwoScreensSecond() = player(tv = true, live = true, dual = true, heardSecond = true, alert = true) { shoot ->
+        shoot("tv-36-two-screens-second-reminder")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneTwoScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneTwoScreens() = player(tv = false, live = true, dual = true) { shoot -> shoot("phone-25-two-screens") }
 }

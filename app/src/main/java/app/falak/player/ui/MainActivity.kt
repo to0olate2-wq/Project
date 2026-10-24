@@ -136,6 +136,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 Backdrop()
+                // A first reminder or alert word on a phone: may notifications come when the app is closed?
+                val wantsAlerts = state.reminders.isNotEmpty() || state.alertWords.isNotEmpty()
+                LaunchedEffect(wantsAlerts) { if (wantsAlerts) askForNotificationsOnce(forReminders = true) }
                 // Where the user is, for problem reports ("Last steps").
                 val tvNow = isTv()
                 LaunchedEffect(vm.screen, vm.section, vm.group != null, s.look, tvNow) {
@@ -196,6 +199,17 @@ class MainActivity : ComponentActivity() {
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
                         val prayer by app.falak.player.PrayerAlerts.current.collectAsStateWithLifecycle()
                         PrayerBanner(prayer, paused = false) { app.falak.player.PrayerAlerts.dismiss() }
+                        // A programme reminder or alert word: "Watch now" plays the channel.
+                        val alert by app.falak.player.ProgramAlerts.current.collectAsStateWithLifecycle()
+                        ProgramAlertCard(
+                            alert,
+                            keysHint = false,
+                            onWatch = { a ->
+                                app.falak.player.ProgramAlerts.dismiss()
+                                vm.channelForAlert(a)?.let { (list, ch) -> play(list, ch) }
+                            },
+                            onDismiss = { app.falak.player.ProgramAlerts.dismiss() },
+                        )
                     }
                     // Left alone for a while on the lists: the ambient screen.
                     LaunchedEffect(Unit) {
@@ -271,6 +285,16 @@ class MainActivity : ComponentActivity() {
             vm.resumeFromHome(key)
             return
         }
+        // A reminder's notification: play its channel.
+        val alertChannel = intent?.getStringExtra(app.falak.player.AlertAlarm.EXTRA_CHANNEL)
+        val alertPlaylist = intent?.getStringExtra(app.falak.player.AlertAlarm.EXTRA_PLAYLIST)
+        if (intent != null && alertChannel != null && alertPlaylist != null) {
+            intent.removeExtra(app.falak.player.AlertAlarm.EXTRA_CHANNEL)
+            intent.removeExtra(app.falak.player.AlertAlarm.EXTRA_PLAYLIST)
+            app.falak.player.ProgramAlerts.dismiss()
+            vm.playFromAlert(alertPlaylist, alertChannel)
+            return
+        }
         intent?.getStringExtra(app.falak.player.data.Notifier.EXTRA_OPEN)?.let { where ->
             repo.autoPlayChecked = true // opened for What's new: don't start a channel over it
             intent.removeExtra(app.falak.player.data.Notifier.EXTRA_OPEN)
@@ -287,9 +311,11 @@ class MainActivity : ComponentActivity() {
     /** Android 13+: ask once whether "New in your playlist" notifications may be shown. */
     private val notifyPermission = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
 
-    private fun askForNotificationsOnce() {
+    private fun askForNotificationsOnce(forReminders: Boolean = false) {
         val s = vm.state.value.settings
-        if (android.os.Build.VERSION.SDK_INT < 33 || !s.notifyNew || s.askedNotify) return
+        if (android.os.Build.VERSION.SDK_INT < 33 || !(s.notifyNew || forReminders) || s.askedNotify) return
+        // On a TV the reminder shows in the app; its notifications aren't seen there.
+        if (forReminders && detectTv(this)) return
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         vm.updateSettings { it.copy(askedNotify = true) }

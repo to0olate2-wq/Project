@@ -176,6 +176,14 @@ class VlcPlayer(
         if (!released) vlc.addSlave(org.videolan.libvlc.interfaces.IMedia.Slave.Type.Subtitle, Uri.fromFile(file), true)
     }
 
+    private var muted = false
+
+    /** Silent (two-screen mode, while the other picture is heard). Kept across channels. */
+    fun setMuted(on: Boolean) {
+        muted = on
+        if (!released) runCatching { vlc.volume = if (on) 0 else 100 }
+    }
+
     /** 0 = fit, 1 = fill (stretch), 2 = zoom (crop). */
     fun setScale(mode: Int) {
         if (released) return
@@ -196,7 +204,11 @@ class VlcPlayer(
                 val ready = event.buffering >= 100f
                 if (state != Player.STATE_ENDED) state = if (ready) Player.STATE_READY else Player.STATE_BUFFERING
             }
-            MediaPlayer.Event.Playing -> state = Player.STATE_READY
+            MediaPlayer.Event.Playing -> {
+                state = Player.STATE_READY
+                // VLC's sound output starts afresh with each stream.
+                if (muted) runCatching { vlc.volume = 0 }
+            }
             MediaPlayer.Event.Paused -> if (state == Player.STATE_BUFFERING) state = Player.STATE_READY
             MediaPlayer.Event.EndReached -> state = Player.STATE_ENDED
             MediaPlayer.Event.EncounteredError -> {

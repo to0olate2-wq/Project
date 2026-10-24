@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 24 October 2026 (version 6.8)_
+_Last updated: 24 October 2026 (version 6.9)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -23,6 +23,8 @@ The app keeps these in its private storage on your device:
 - your settings, favourites, custom lists, recently watched channels and how far you got in films
   and episodes;
 - the TV guide sources you add and a copy of the guide data;
+- programme reminders and alert words you set, and the audio and subtitle tracks you picked for
+  each channel, film or series (so they come back next time);
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
@@ -128,7 +130,9 @@ anyone.
 The app uses the Internet permission to load your playlists, guides and streams, and the network
 state permission, which the video engine uses to adapt playback to your connection. On Android 13
 and later it may ask to show notifications: they only tell you, on your device, when a playlist
-refresh finds new channels, films or series. Nothing is sent anywhere to do this. On Android TV it
+refresh finds new channels, films or series, or that a programme you asked to be reminded of is
+about to start. Nothing is sent anywhere to do this; reminders are worked out on the device from
+your TV guide. On Android TV it
 uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
 row. The version downloaded from Google Play asks for nothing else: no location, contacts, camera, microphone or storage access.
 
