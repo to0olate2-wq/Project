@@ -2728,7 +2728,7 @@ class PlayerActivity : ComponentActivity() {
             text = if (tvLayout) {
                 "◀ ▶  choose the sound        ▲ ▼  change channel        OK  channel list        BACK  one screen"
             } else {
-                "Tap a picture for its sound  ·  double-tap to watch it full screen"
+                "Tap a picture for its sound · double-tap for full screen"
             }
             background = GradientDrawable().apply {
                 cornerRadius = dp(22).toFloat()
@@ -2741,7 +2741,11 @@ class PlayerActivity : ComponentActivity() {
         root.addView(
             dualHint,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                .apply { bottomMargin = dp(if (tvLayout) 28 else 76) },
+                .apply {
+                    bottomMargin = dp(if (tvLayout) 28 else 76)
+                    leftMargin = dp(16)
+                    rightMargin = dp(16)
+                },
         )
         // Touch: which picture is heard, and double-tap for full screen.
         val taps = android.view.GestureDetector(

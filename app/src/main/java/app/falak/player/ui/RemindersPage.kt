@@ -105,7 +105,11 @@ private fun AlertRow(a: ProgramAlert, vm: LibraryViewModel) {
             Text(a.title, style = MaterialTheme.typography.bodyLarge, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 a.channelName + (if (a.word != null) "  ·  alert: ${a.word}" else "") +
-                    if (a.alsoOn > 0) "  ·  +${a.alsoOn} channels" else "",
+                    when (a.alsoOn) {
+                        0 -> ""
+                        1 -> "  ·  +1 more channel"
+                        else -> "  ·  +${a.alsoOn} more channels"
+                    },
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
                 maxLines = 1,
