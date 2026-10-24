@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -201,6 +202,11 @@ private fun OnTv(
 private fun MatchRow(m: TvMatch, live: Boolean, reminded: Boolean, now: Long, timeFormat: java.text.DateFormat, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     val score = m.score
+    val tv = isTv()
+    // Phones: how long until kick-off goes under the time, so the teams get the width.
+    val untilUnderTime = !tv && !live && score?.score == null && !reminded
+    // Arabic names read right to left, with "×" between them as Arabic guides write it.
+    val arabic = ARABIC.containsMatchIn(m.home) || ARABIC.containsMatchIn(m.away)
     Row(
         Modifier
             .fillMaxWidth()
@@ -219,17 +225,24 @@ private fun MatchRow(m: TvMatch, live: Boolean, reminded: Boolean, now: Long, ti
                 }
             } else {
                 Text(timeFormat.format(Date(m.program.start)), style = Tabular.copy(fontSize = 15.sp), color = Paper)
+                if (untilUnderTime) {
+                    Text(Matches.untilLabel(m.program.start, now), fontFamily = Sans, fontSize = 11.sp, color = Muted, maxLines = 2)
+                }
             }
         }
         Column(Modifier.weight(1f)) {
             Text(
-                "${m.home}  v  ${m.away}",
+                if (arabic) "${m.home}  ×  ${m.away}" else "${m.home}  v  ${m.away}",
                 fontFamily = Sans,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 color = Paper,
-                maxLines = 1,
+                maxLines = if (tv) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
+                style = androidx.compose.material3.LocalTextStyle.current.copy(
+                    textDirection = if (arabic) TextDirection.Content else TextDirection.Unspecified,
+                ),
+                textAlign = TextAlign.Left,
             )
             val more = when (m.alsoOn) {
                 0 -> null
@@ -251,8 +264,9 @@ private fun MatchRow(m: TvMatch, live: Boolean, reminded: Boolean, now: Long, ti
                 Text(score.score!!, style = Tabular.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold), color = Paper)
                 score.state?.let { Text(it, fontFamily = Sans, fontSize = 11.sp, color = if (score.live) Signal else Muted) }
             }
-            live -> Text("Watch  ▶", fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Paper)
-            reminded -> Text("🔔 Reminder set", fontFamily = Sans, fontSize = 13.sp, color = Color(0xFFF2C14E))
+            live -> Text(if (tv) "Watch  ▶" else "▶", fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Paper)
+            reminded -> Text(if (tv) "🔔 Reminder set" else "🔔", fontFamily = Sans, fontSize = 13.sp, color = Color(0xFFF2C14E))
+            untilUnderTime -> Unit
             else -> Text(
                 Matches.untilLabel(m.program.start, now),
                 fontFamily = Sans,
@@ -350,6 +364,8 @@ private fun LazyListScope.table(rows: List<TableRow>, wide: Boolean) {
     }
 }
 
+private val ARABIC = Regex("[\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF]")
+
 private val TOP_ZONE = Color(0xFF4C8DFF)
 private val BOTTOM_ZONE = Color(0xFFE5484D)
 
@@ -360,7 +376,7 @@ private fun TableLine(r: TableRow?, wide: Boolean, last: Int = 20) {
     val head = r == null
     val color = if (head) Faint else Paper
     val size = if (head) 11.sp else 14.sp
-    val cell = if (wide) 34.dp else 28.dp
+    val cell = if (wide) 34.dp else 26.dp
     Row(
         Modifier
             .fillMaxWidth()
@@ -397,7 +413,14 @@ private fun TableLine(r: TableRow?, wide: Boolean, last: Int = 20) {
                 style = Tabular.copy(fontSize = size, fontWeight = if (i == values.lastIndex && !head) FontWeight.SemiBold else FontWeight.Normal),
                 color = if (i == values.lastIndex || head) color else Muted,
                 textAlign = TextAlign.End,
-                modifier = Modifier.width(cell),
+                // Goal difference ("+15", "-13") and points need more room than the counts.
+                modifier = Modifier.width(
+                    when (i) {
+                        4 -> cell + 14.dp
+                        5 -> cell + 6.dp
+                        else -> cell
+                    },
+                ),
             )
         }
         Spacer(Modifier.width(4.dp))

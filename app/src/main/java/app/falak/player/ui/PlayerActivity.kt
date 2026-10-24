@@ -905,6 +905,8 @@ class PlayerActivity : ComponentActivity() {
             Kind.MOVIE -> "Films"
             Kind.SERIES -> "Episodes"
         })
+        // A replay on its own (such as "From the start"): there's no list to browse.
+        browseButton.visibility = if (ch.id.startsWith("cu:") && queue.size <= 1) View.GONE else View.VISIBLE
         val settings = repo.state.value.settings
         val url = overrideUrl
             ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
@@ -3343,6 +3345,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun startListening(): Boolean {
         if (listening) return true
+        if (isFinishing) return false
         val ch = queue.getOrNull(index) ?: return false
         val p = player ?: return false
         if (!repo.state.value.settings.listenMode || isTvDevice || inPip || dual != null || handingOff) return false
