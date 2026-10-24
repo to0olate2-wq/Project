@@ -254,11 +254,12 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
         val needle = q.trim()
         val epg = repo.epg.value
         val now = System.currentTimeMillis()
-        val items = pool.asSequence()
-            .filter { it.group !in excluded }
-            .filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) }
-            .take(MAX_ITEMS)
-            .toList()
+        val items = if (needle.isEmpty()) {
+            pool.asSequence().filter { it.group !in excluded }.take(MAX_ITEMS).toList()
+        } else {
+            // The same smart search as on the TV, best matches first.
+            idx.search.find(needle, MAX_ITEMS) { it.kind == k && it.group !in excluded && (group.isEmpty() || it.group == group) }
+        }
         return buildJsonArray {
             for (ch in items) {
                 addJsonObject {

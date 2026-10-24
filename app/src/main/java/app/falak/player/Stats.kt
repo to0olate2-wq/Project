@@ -31,9 +31,20 @@ object Stats {
     private var repo: Repository? = null
     private var running = false
 
-    /** The counter's ping address, or "" when this build has none. */
+    /** The counter's address, or "" when this build has none. */
+    val base: String
+        get() = BuildConfig.STATS_URL.trim().trimEnd('/').takeIf { it.startsWith("https://") }.orEmpty()
+
     private val endpoint: String
-        get() = BuildConfig.STATS_URL.trim().trimEnd('/').let { if (it.startsWith("https://")) "$it/v1/ping" else "" }
+        get() = base.let { if (it.isEmpty()) "" else "$it/v1/ping" }
+
+    /** This device's random number (made the first time it's needed). */
+    fun installId(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_ID, null) ?: UUID.randomUUID().toString().replace("-", "").also {
+            prefs.edit().putString(KEY_ID, it).apply()
+        }
+    }
 
     private val beat = object : Runnable {
         override fun run() {
@@ -62,11 +73,7 @@ object Stats {
     private fun send(event: String) {
         val context = app ?: return
         val repository = repo ?: return
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val id = prefs.getString(KEY_ID, null) ?: UUID.randomUUID().toString().replace("-", "").also {
-            prefs.edit().putString(KEY_ID, it).apply()
-        }
-        post(context, repository, id, event)
+        post(context, repository, installId(context), event)
     }
 
     private fun post(context: Context, repository: Repository, id: String, event: String) {

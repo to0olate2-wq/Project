@@ -57,6 +57,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -87,6 +89,7 @@ import app.falak.player.data.DEFAULT_LIST
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
 import app.falak.player.data.Program
+import app.falak.player.data.SearchIndex
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
 import coil.compose.AsyncImage
@@ -166,18 +169,27 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     val visibleTotal = remember(groupMap) { groupMap.values.sumOf { it.size } }
     val gridView = section.name in state.settings.gridSections
-    val visible by produceState<List<Channel>?>(null, base, group, q, sort, excluded, groupMap, favOfKind) {
+    // With a search: every match in the section (all of them from Home), best first (see
+    // SearchIndex), and the best five for the row under the search box.
+    val result by produceState<Pair<List<Channel>, List<Channel>>?>(null, base, group, q, sort, excluded, groupMap, favOfKind, section) {
         if (q.isNotEmpty()) delay(160)
         value = withContext(Dispatchers.Default) {
-            val src = when {
-                q.isNotEmpty() || group == null -> base
-                group == FAV_FILTER -> favOfKind
-                else -> groupMap[group].orEmpty()
+            val allowed: (Channel) -> Boolean = { ch -> excluded.isEmpty() || ch.group !in excluded }
+            val out = when {
+                q.isNotEmpty() && (section == Section.HOME || kind != null) ->
+                    index.search.find(q) { ch -> (kind == null || ch.kind == kind) && allowed(ch) }
+                q.isNotEmpty() -> SearchIndex.rank(base, q, allowed)
+                else -> {
+                    val src = when (group) {
+                        null -> base
+                        FAV_FILTER -> favOfKind
+                        else -> groupMap[group].orEmpty()
+                    }
+                    if (excluded.isEmpty()) src else src.filter(allowed)
+                }
             }
-            val out = if (excluded.isEmpty() && q.isEmpty()) src else src.filter { ch ->
-                (excluded.isEmpty() || ch.group !in excluded) && (q.isEmpty() || ch.name.contains(q, ignoreCase = true))
-            }
-            when (sort) {
+            val top = if (q.isEmpty()) emptyList() else out.take(5)
+            val sorted = when (sort) {
                 Sort.DEFAULT -> out
                 Sort.NEWEST -> out.sortedByDescending { it.added }
                 // Compare without making a lowercase copy of a name on every comparison: on 100,000 films
@@ -185,8 +197,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 Sort.AZ -> out.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 Sort.RATING -> out.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
             }
+            sorted to top
         }
     }
+    val visible = result?.first
     val list = visible.orEmpty()
     val sorts = remember(base, isVod) {
         if (!isVod) emptyList() else Sort.entries.filter { s ->
@@ -228,16 +242,30 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         delay(400)
         vm.focusId = null
     }
-    val openItem: (Channel) -> Unit = { ch ->
+    // Opening something found by a search remembers the search (Recent, under the search box).
+    val openFrom: (List<Channel>, Channel) -> Unit = { row, ch ->
+        if (q.isNotEmpty()) vm.rememberSearch(q)
         when {
             ch.isSeriesFolder -> vm.openSeries(ch)
             ch.kind == Kind.MOVIE -> vm.openDetails(ch)
-            else -> onPlay(list, ch)
+            // The player steps through items of the same kind (never from a channel into a film).
+            else -> onPlay(if (row.all { it.kind == ch.kind }) row else row.filter { it.kind == ch.kind }, ch)
         }
     }
+    val openItem: (Channel) -> Unit = { ch -> openFrom(list, ch) }
+    LaunchedEffect(q.isEmpty()) { if (q.isEmpty()) vm.searchFromHome = false }
+    // Sidebar look: recent searches show while the search bar (or the row itself) has the focus.
+    var assistFocused by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { onDispose { vm.searchFocused = false } }
+    val showRecent = !vm.kidsActive && (if (sidebarLook) vm.searchFocused || assistFocused else searching)
 
     BackHandler(enabled = searchOn || group != null || (section != Section.HOME && Section.HOME in sections)) {
         when {
+            // "See all" from Home's results: back to them, search kept.
+            searchOn && vm.searchFromHome && section != Section.HOME -> {
+                vm.searchFromHome = false
+                vm.section = Section.HOME
+            }
             searchOn -> {
                 searching = false
                 vm.query = ""
@@ -259,6 +287,18 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             }
             vm.error?.takeIf { index.all.isNotEmpty() }?.let {
                 Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+            if (index.all.isNotEmpty()) {
+                SearchAssist(
+                    query = vm.query,
+                    recent = vm.recentSearches,
+                    showRecent = showRecent,
+                    top = result?.second.orEmpty(),
+                    onRecent = { vm.query = it },
+                    onClearRecent = { vm.clearRecentSearches() },
+                    onOpen = { ch -> openFrom(listOf(ch), ch) },
+                    modifier = Modifier.onFocusChanged { assistFocused = it.hasFocus },
+                )
             }
 
             when {
@@ -291,6 +331,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 ) { (shown, noQuery) ->
                     if (shown == Section.HOME && noQuery) {
                         HomeContent(vm, state, excluded, epg, now, onPlay, sidebar = sidebarLook)
+                    } else if (shown == Section.HOME) {
+                        SearchResults(vm, state, q, visible, excluded, epg, now, openFrom)
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             val wide = maxWidth >= 720.dp

@@ -214,6 +214,7 @@ fun SidebarFrame(
                         null
                     },
                     kids = vm.kidsActive,
+                    onSearchFocus = { vm.searchFocused = it },
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -519,6 +520,8 @@ fun SidebarTopBar(
     /** Who's watching (when there are profiles). */
     profileButton: (@Composable () -> Unit)? = null,
     kids: Boolean = false,
+    /** The search box gained or lost the focus. */
+    onSearchFocus: (Boolean) -> Unit = {},
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -556,7 +559,7 @@ fun SidebarTopBar(
                     singleLine = true,
                     textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 14.sp),
                     cursorBrush = SolidColor(Signal),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { onSearchFocus(it.isFocused) },
                 )
             }
             if (query.isNotEmpty()) {

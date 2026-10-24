@@ -1,9 +1,15 @@
-# The Player: user counter
+# The Player: user counter and crash reports
 
 A tiny Cloudflare Worker (`src/index.js`) that counts the devices using The Player: the app sends a
 random number made up on the device, the app version and TV or phone when it opens and every
 10 minutes while it's on screen (see `app/.../Stats.kt` and PRIVACY.md). The page at the Worker's
 address shows how many use it now, today, this week, this month and ever.
+
+After the app stops unexpectedly, its next start sends a crash report (`POST /v1/crash`, see
+`app/.../CrashReports.kt`): the error and where in the app's code it happened, with web
+addresses, IP addresses, logins and file names already taken out on the device. The page lists
+them grouped by cause, newest first; open one to see its latest report. Kept 90 days, the newest
+500 at most, 5 a day per device.
 
 ## Turning it on (once)
 

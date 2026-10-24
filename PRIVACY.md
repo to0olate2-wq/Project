@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 23 October 2026 (version 6.6)_
+_Last updated: 24 October 2026 (version 6.8)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -9,9 +9,9 @@ playlists that you add yourself. It does not come with any channels, films or ot
 
 - The Player has **no account, no ads and no tracking**.
 - Everything you enter stays **on your devices**. The developer never receives it.
-- The only thing sent to the developer is an **anonymous user count**: a random number made up
-  on your device, the app version, and whether it's a TV or a phone (see *Anonymous user count*
-  below).
+- The only things sent to the developer are an **anonymous user count** (a random number made up
+  on your device, the app version, and whether it's a TV or a phone) and, after the app stops
+  unexpectedly, a **crash report** with personal details taken out (see both sections below).
 - The app only connects to the servers **you** choose (your playlist provider, the TV guide
   sources you add) and, if you turn it on, to OpenSubtitles.
 
@@ -26,11 +26,12 @@ The app keeps these in its private storage on your device:
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
-  was playing; it is never shown or sent anywhere;
+  was playing; it is sent as a crash report (see *Crash reports* below) and then deleted;
 - the random number used for the anonymous user count.
 
-None of this is sent to the developer or to anyone else. Removing a playlist removes it from the
-app; clearing the app's data or uninstalling the app deletes everything.
+None of this is sent to the developer or to anyone else, except the crash record as described
+below. Removing a playlist removes it from the app; clearing the app's data or uninstalling the
+app deletes everything.
 
 ## What the app connects to
 
@@ -71,7 +72,8 @@ The app only makes network connections needed for what you ask it to do:
   locked or adult groups, or anything while kids mode is on.
 
 The app does not send your viewing history, your playlists, your logins or anything that
-identifies you to the developer.
+identifies you to the developer. The only messages to the developer are the anonymous user count
+and crash reports, both described below.
 
 ## Anonymous user count
 
@@ -94,6 +96,27 @@ deleted.
 The count is part of how the app works and has no setting. It stops when the app is uninstalled.
 Because the number isn't linked to you, the developer can't pick out one person's number; numbers
 not seen for 400 days are deleted.
+
+## Crash reports
+
+If the app stops unexpectedly (a crash, a freeze, or Android closing it), the next time it starts
+it sends the developer's counter one report so the fault can be found and fixed. Nothing is shown
+on screen. The report contains:
+
+- what kind of stop it was, the error, and where in the app's own code it happened;
+- the app's last steps before it stopped, as the app writes them (for example "player opened" or
+  "channel list opened (3 groups, 120 items)"), never names of channels, films or playlists;
+- the app version, whether it's a TV or a phone, the device model (for example "Google Pixel 8")
+  and the Android version;
+- the same random number as the user count, so repeated reports from one device can be told apart.
+
+Before the report leaves your device, the app removes web and stream addresses, IP and MAC
+addresses, server names, usernames, passwords and tokens, email addresses, file names from your
+storage and long pieces of quoted text. It never contains your playlists, logins, what you watch
+or your location. Reports are kept by the counter for 90 days at most (the newest 500), are seen
+only by the developer, and are used only to fix faults. If a report can't be sent, it waits on
+the device for the next start, a week at most. Crash reports are part of how the app works and
+have no setting.
 
 ## Children
 

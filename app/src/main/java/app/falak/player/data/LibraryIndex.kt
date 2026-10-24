@@ -18,6 +18,9 @@ class LibraryIndex(
     /** Home's "Trending now": films and series (see [Trending]). */
     val trending: List<Channel>,
 ) {
+    /** Search over every name, prepared on the first search (see [SearchIndex]). */
+    val search: SearchIndex by lazy { SearchIndex(all) }
+
     fun ofKind(kind: Kind): List<Channel> = when (kind) {
         Kind.LIVE -> live
         Kind.MOVIE -> movies

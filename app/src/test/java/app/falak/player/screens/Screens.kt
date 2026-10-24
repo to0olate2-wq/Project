@@ -766,3 +766,46 @@ class PhonePlayerScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_LAND)
     fun phonePlayerFilm() = player(tv = false, live = false) { shoot -> shoot("phone-10-player-film-landscape") }
 }
+
+// ---------- Search ----------
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSearchScreens : ScreenshotBase() {
+    // Search from Home: films, series and channels grouped, best match first ("Harbor News" by a
+    // forgiven typo), the top five under the box; then a section's own results; then recent searches.
+    @Test @Config(qualifiers = TV)
+    fun tvSearch() = mainScreens("tv") { vm, shoot ->
+        vm.query = "harbour"
+        shoot("tv-29-search-home")
+        vm.section = Section.MOVIES
+        shoot("tv-30-search-films")
+        vm.section = Section.HOME
+        vm.rememberSearch("harbour")
+        vm.rememberSearch("pulse sports")
+        vm.query = ""
+        shoot("tv-31-search-recent")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSidebarSearchScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvSidebarSearch() = mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
+        vm.query = "news"
+        shoot("tv-32-sidebar-search")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSearchScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneSearch() = mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
+        vm.query = "harb"
+        shoot("phone-22-search-home")
+        vm.query = "zzzz"
+        shoot("phone-23-search-nothing")
+    }
+}

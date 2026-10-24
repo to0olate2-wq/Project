@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.falak.player.CrashReports
 import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.KIDS_PROFILE
@@ -19,6 +20,7 @@ import app.falak.player.data.GuideSuggestion
 import app.falak.player.data.suggestGuides
 import app.falak.player.data.Kind
 import app.falak.player.data.LibraryIndex
+import app.falak.player.data.SearchText
 import app.falak.player.data.Playlist
 import app.falak.player.data.Program
 import app.falak.player.data.SeriesInfo
@@ -167,9 +169,40 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var group by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
 
+    private val searchPrefs = app.getSharedPreferences("search", 0)
+
+    /** Searches that led somewhere, newest first (up to 8). Kept on this device only. */
+    var recentSearches by mutableStateOf(
+        searchPrefs.getString("recent", null).orEmpty().split('\n').filter { it.isNotBlank() }.take(8),
+    )
+        private set
+
+    /** The sidebar look's search bar has the focus (recent searches show under it). */
+    var searchFocused by mutableStateOf(false)
+
+    /** "See all" was picked in Home's search results: Back goes back to them. */
+    var searchFromHome = false
+
+    /** Remembers [text] as a recent search (not in kids mode: those stay out of sight there). */
+    fun rememberSearch(text: String) {
+        val t = text.trim()
+        if (t.length < 2 || kidsActive) return
+        val key = SearchText.normalize(t)
+        val list = (listOf(t) + recentSearches.filter { SearchText.normalize(it) != key }).take(8)
+        if (list == recentSearches) return
+        recentSearches = list
+        searchPrefs.edit().putString("recent", list.joinToString("\n")).apply()
+    }
+
+    fun clearRecentSearches() {
+        recentSearches = emptyList()
+        searchPrefs.edit().remove("recent").apply()
+    }
+
     /**
-     * The app stopped unexpectedly last time. Nothing is shown about it; this once the last
-     * playlist and channel don't reopen by themselves, so a crash can't repeat at every start.
+     * The app stopped unexpectedly last time. Nothing is shown about it (a report goes to the
+     * developer, see CrashReports); this once the last playlist and channel don't reopen by
+     * themselves, so a crash can't repeat at every start.
      */
     private var crashedLastTime = false
 
@@ -1128,8 +1161,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         followOutsideChanges()
         forgetDetourOnLeave()
         renameAddressNamedPlaylists()
-        // Read and cleared (the saved details are no longer shown).
-        crashedLastTime = repo.takeCrashReport() != null
+        // Read and cleared: nothing is shown; the report (personal details taken out) goes to
+        // the developer's counter (see CrashReports), with anything that couldn't go before.
+        val crash = repo.takeCrashReport()
+        crashedLastTime = crash != null
+        CrashReports.submit(getApplication<Application>(), repo, crash)
         val s = state.value
         // Kids mode or extra profiles: ask who's watching each time the app opens.
         choosingProfile = profilesWanted(s)

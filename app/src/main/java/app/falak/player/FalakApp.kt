@@ -55,7 +55,7 @@ class FalakApp : Application(), ImageLoaderFactory {
         FreezeWatch.start(filesDir)
         FreezeWatch.note("app started")
 
-        // Save any crash so the next launch can show it (there is no other way to see it on a phone).
+        // Save any crash so the next launch can report it (personal details taken out, see CrashReports).
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {

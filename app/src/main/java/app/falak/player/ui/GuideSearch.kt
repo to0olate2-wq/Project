@@ -39,17 +39,27 @@ import androidx.compose.ui.unit.sp
 import app.falak.player.data.Catchup
 import app.falak.player.data.Channel
 import app.falak.player.data.Program
+import app.falak.player.data.SearchQuery
 import java.util.Calendar
 import java.util.Date
 
 /**
- * Programmes whose title matches [query]: on now first, then coming up (soonest first), then
- * earlier ones that can still be replayed (latest first).
+ * Programmes whose title matches [query] (the same smart matching as the rest of search): on now
+ * first, then coming up (soonest first), then earlier ones that can still be replayed (latest
+ * first). [onNowOnly] keeps just what's on now, best matches first.
  */
-fun searchGuide(channels: List<Channel>, epg: Map<String, List<Program>>, query: String, now: Long, limit: Int = 200): List<Pair<Channel, Program>> {
-    val q = query.trim()
-    if (q.isEmpty()) return emptyList()
+fun searchGuide(
+    channels: List<Channel>,
+    epg: Map<String, List<Program>>,
+    query: String,
+    now: Long,
+    limit: Int = 200,
+    onNowOnly: Boolean = false,
+): List<Pair<Channel, Program>> {
+    val q = SearchQuery(query)
+    if (q.isEmpty) return emptyList()
     val live = ArrayList<Pair<Channel, Program>>()
+    val liveScore = HashMap<Pair<Channel, Program>, Int>()
     val later = ArrayList<Pair<Channel, Program>>()
     val earlier = ArrayList<Pair<Channel, Program>>()
     val horizon = now + 2 * 86_400_000L
@@ -57,16 +67,25 @@ fun searchGuide(channels: List<Channel>, epg: Map<String, List<Program>>, query:
     for (ch in channels) {
         val programs = epg[ch.epgKey] ?: continue
         for (p in programs) {
-            if (p.start >= horizon || !p.title.contains(q, ignoreCase = true)) continue
+            if (p.start >= horizon) continue
+            val onNow = now >= p.start && now < p.stop
+            val bucket = when {
+                onNow -> live
+                onNowOnly -> continue
+                p.start >= now -> later
+                Catchup.canReplay(ch, p, now) -> earlier
+                else -> continue
+            }
+            val score = q.score(p.title)
+            if (score == 0) continue
             // The same programme on the same guide row listed under two channel entries: once.
             if (!seen.add(ch.epgKey + "|" + p.start + "|" + ch.name)) continue
-            when {
-                now >= p.start && now < p.stop -> live += ch to p
-                p.start >= now -> later += ch to p
-                Catchup.canReplay(ch, p, now) -> earlier += ch to p
-            }
+            val hit = ch to p
+            bucket += hit
+            if (onNow) liveScore[hit] = score
         }
     }
+    if (onNowOnly) live.sortByDescending { liveScore[it] ?: 0 }
     later.sortBy { it.second.start }
     earlier.sortByDescending { it.second.start }
     return (live + later + earlier).take(limit)

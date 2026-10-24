@@ -73,12 +73,15 @@ jobs:
             [ "$locked" = 401 ] && break
             sleep 10
           done
-          opened=$(curl -s -o /dev/null -w '%{http_code}' -u "owner:$STATS_PASSWORD" "$URL/stats.json")
+          opened=$(curl -s -o page.json -w '%{http_code}' -u "owner:$STATS_PASSWORD" "$URL/stats.json")
           refused=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/ping" -d '{"id":"x"}')
-          if [ "$locked" = 401 ] && [ "$opened" = 200 ] && [ "$refused" = 400 ]; then
-            echo "::notice::User counter OK at $URL: locked without the password, opens with it, refuses bad counts."
+          badcrash=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/v1/crash" -d '{"id":"x","type":"crash","report":"x"}')
+          crashes=$(grep -c '"crashes"' page.json || true)
+          rm -f page.json
+          if [ "$locked" = 401 ] && [ "$opened" = 200 ] && [ "$refused" = 400 ] && [ "$badcrash" = 400 ] && [ "$crashes" = 1 ]; then
+            echo "::notice::User counter OK at $URL: locked without the password, opens with it, refuses bad counts and bad crash reports, lists crash reports."
           else
-            echo "::error::User counter check: without password $locked (want 401), with password $opened (want 200), bad count $refused (want 400)."
+            echo "::error::User counter check: without password $locked (want 401), with password $opened (want 200), bad count $refused (want 400), bad crash report $badcrash (want 400), crash list $crashes (want 1)."
           fi
 
   build:
