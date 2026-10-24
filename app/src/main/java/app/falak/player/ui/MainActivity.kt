@@ -194,6 +194,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.PROFILES -> ProfilesScreen(vm, state)
                                 Screen.REMOTE -> RemoteScreen(vm, state)
                                 Screen.PRAYER -> PrayerScreen(vm, state)
+                                Screen.MATCHES -> MatchCentreScreen(vm, state, onPlay = ::play)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -210,6 +211,28 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismiss = { app.falak.player.ProgramAlerts.dismiss() },
                         )
+                        // Back from a live channel: it carries on small in a corner (Settings → Mini player).
+                        val mini by MiniPlayerState.request.collectAsStateWithLifecycle()
+                        mini?.let { m ->
+                            if (m.playlistId != vm.playlist?.id) {
+                                // Another playlist opened meanwhile: its channel isn't this one's.
+                                LaunchedEffect(m) { MiniPlayerState.close() }
+                            } else {
+                                androidx.compose.runtime.key(m) {
+                                    MiniPlayer(
+                                        m,
+                                        onOpen = { openMini(m) },
+                                        // TVs: the remote goes back to the channel in the list.
+                                        onClose = {
+                                            MiniPlayerState.close()
+                                            if (tv) vm.focusId = m.channel.id
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        // One small picture at a time: the guide's preview takes over from the mini player.
+                        LaunchedEffect(vm.guidePreview) { if (vm.guidePreview != null) MiniPlayerState.close() }
                     }
                     // Left alone for a while on the lists: the ambient screen.
                     LaunchedEffect(Unit) {
@@ -217,7 +240,7 @@ class MainActivity : ComponentActivity() {
                             kotlinx.coroutines.delay(15_000)
                             val idle = android.os.SystemClock.elapsedRealtime() - lastInput
                             val calm = vm.screen in AMBIENT_SCREENS && !vm.choosingProfile && vm.guidePreview == null &&
-                                vm.listSheetFor == null && !vm.confirmExit
+                                vm.listSheetFor == null && !vm.confirmExit && MiniPlayerState.request.value == null
                             if (!ambient && vm.state.value.settings.ambient && idle >= AMBIENT_IDLE_MS && calm &&
                                 lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
                             ) {
@@ -260,6 +283,7 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(i) {
                             vm.resumePlayerAt = null
                             if (repo.playQueue.isNotEmpty()) {
+                                MiniPlayerState.close()
                                 fromPlayer = true
                                 startActivity(
                                     Intent(this@MainActivity, PlayerActivity::class.java)
@@ -344,7 +368,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.MATCHES -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
     }
@@ -413,7 +437,17 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
+    /** The mini player back to full screen, with the list it was zapping through. */
+    private fun openMini(m: MiniPlayerState.Request) {
+        MiniPlayerState.close()
+        vm.backToPlayer = null
+        repo.playQueue = m.list
+        fromPlayer = true
+        startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, m.index))
+    }
+
     private fun play(list: List<Channel>, channel: Channel) {
+        MiniPlayerState.close()
         vm.backToPlayer = null // something new is playing: no detour to go back to
         vm.prepareQueue(list, channel)
         val index = list.indexOf(channel).coerceAtLeast(0)

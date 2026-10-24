@@ -453,6 +453,26 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }
         }
+        item {
+            SwitchRow(
+                "Mini player",
+                "Back from a live channel keeps it playing small in a corner while you look around. " +
+                    (if (tvLayout) "OK on it goes back to full screen, Back closes it." else "Tap it for full screen; × closes it."),
+                s.miniPlayer,
+            ) { vm.updateSettings { it.copy(miniPlayer = !it.miniPlayer) } }
+        }
+        // Phones and tablets: sound in the background (a TV keeps the picture on screen anyway).
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            if (!remember(context) { detectTv(context) }) {
+                SwitchRow(
+                    "Listen mode",
+                    "The sound carries on when the screen turns off or you leave the app (radio, Quran, news, a match), " +
+                        "with play and pause on the lock screen. Coming back brings the picture back.",
+                    s.listenMode,
+                ) { vm.updateSettings { it.copy(listenMode = !it.listenMode) } }
+            }
+        }
         }
 
         SettingsPage.SOUND -> {
@@ -569,6 +589,23 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) {
                 vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
             }
+        }
+
+        item { SectionTitle("Tidy channel list") }
+        item {
+            SwitchRow(
+                "Clean channel names",
+                "“AR: MBC 1 FHD ᴴᴰ” shows as “MBC 1” with a small FHD mark. The guide, favorites and search work as before.",
+                s.cleanNames,
+            ) { vm.updateSettings { it.copy(cleanNames = !it.cleanNames) } }
+        }
+        item {
+            SwitchRow(
+                "Merge duplicate channels",
+                "A channel a group lists in several qualities shows once. The best one plays, and a lighter one " +
+                    "takes over by itself if it keeps stopping to load. Versions in other languages stay apart.",
+                s.mergeDuplicates,
+            ) { vm.updateSettings { it.copy(mergeDuplicates = !it.mergeDuplicates) } }
         }
 
         item { SectionTitle("Your playlists") }

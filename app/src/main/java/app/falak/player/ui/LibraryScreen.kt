@@ -74,6 +74,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.falak.player.R
 import app.falak.player.data.mine
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
@@ -472,6 +474,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             IconButton(onClick = { vm.screen = Screen.GUIDE }) {
                                 Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
                             }
+                            IconButton(onClick = { vm.screen = Screen.MATCHES }) {
+                                Icon(painterResource(R.drawable.ic_nav_matches), contentDescription = "Match centre", tint = Paper)
+                            }
                         }
                     }
                     if (vm.profilesWanted(state)) ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true }
@@ -827,6 +832,10 @@ private fun ChannelRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                // Tidy channel list: the quality the provider's name gave.
+                ch.tidyQuality?.let {
+                    Text("  $it", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.sp, color = Amber)
+                }
                 if (ch.hasCatchup) {
                     Text("  REPLAY", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.sp, color = Muted)
                 }

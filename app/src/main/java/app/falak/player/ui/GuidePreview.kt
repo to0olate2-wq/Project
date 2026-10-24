@@ -142,9 +142,16 @@ fun GuidePreviewPane(
     }
 }
 
+/** A channel playing small, without controls; a tap opens it (the guide's preview, the mini player). */
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
-private fun PreviewPicture(ch: Channel, userAgent: String, onOpen: () -> Unit, modifier: Modifier) {
+internal fun PreviewPicture(
+    ch: Channel,
+    userAgent: String,
+    onOpen: () -> Unit,
+    modifier: Modifier,
+    onPlayer: ((Player?) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val repo = remember { (context.applicationContext as FalakApp).repo }
     var status by remember { mutableStateOf(PreviewStatus.LOADING) }
@@ -172,7 +179,9 @@ private fun PreviewPicture(ch: Channel, userAgent: String, onOpen: () -> Unit, m
             }
         }
         exo.addListener(listener)
+        onPlayer?.invoke(exo)
         onDispose {
+            onPlayer?.invoke(null)
             exo.removeListener(listener)
             exo.release()
             repo.previewOpen = false

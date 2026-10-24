@@ -65,6 +65,20 @@ data class Channel(
         }.also { guideKey = it }
     val isSeriesFolder: Boolean get() = seriesId.isNotEmpty() && url.isEmpty()
     val hasCatchup: Boolean get() = kind == Kind.LIVE && catchupDays > 0
+
+    /** Tidy channel list: the quality the provider's name said ("FHD"), shown as a small mark. */
+    @kotlinx.serialization.Transient
+    var tidyQuality: String? = null
+        private set
+
+    /** A copy shown as [display] (Tidy channel list): the same guide, the old name's [quality] as a mark. */
+    fun tidied(display: String, quality: String?): Channel {
+        val key = epgKey
+        return copy(name = display).also {
+            it.guideKey = key
+            it.tidyQuality = quality
+        }
+    }
 }
 
 @Serializable
@@ -366,6 +380,14 @@ data class Settings(
     val askedNotify: Boolean = false,
     /** playlistId -> (channel guide key -> guide channel id chosen by hand; "" = no guide) */
     val guideOverrides: Map<String, Map<String, String>> = emptyMap(),
+    /** Tidy channel list: names without provider labels and quality tags ("AR: MBC 1 FHD" → "MBC 1"). */
+    val cleanNames: Boolean = false,
+    /** Tidy channel list: one entry for a channel a group lists in several qualities. */
+    val mergeDuplicates: Boolean = false,
+    /** Back from a live channel keeps it playing small in a corner of the lists. */
+    val miniPlayer: Boolean = true,
+    /** Phones: the sound carries on with the screen off or the app left (lock-screen controls). */
+    val listenMode: Boolean = false,
 )
 
 /** Watch progress of a movie or episode. */

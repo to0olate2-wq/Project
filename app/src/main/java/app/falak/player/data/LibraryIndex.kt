@@ -17,6 +17,12 @@ class LibraryIndex(
     val newSeries: List<Channel>,
     /** Home's "Trending now": films and series (see [Trending]). */
     val trending: List<Channel>,
+    /** The playlist as it came, before Tidy channel list (rebuilt from when the choice changes). */
+    val raw: List<Channel> = all,
+    /** Tidy channel list as it was built: names cleaned, duplicates merged. */
+    val tidy: Pair<Boolean, Boolean> = false to false,
+    /** Merged duplicates: a shown channel's versions, best quality first (see [Tidy]). */
+    val versions: Map<String, List<Channel>> = emptyMap(),
 ) {
     /** Search over every name, prepared on the first search (see [SearchIndex]). */
     val search: SearchIndex by lazy { SearchIndex(all) }
@@ -36,11 +42,13 @@ class LibraryIndex(
     companion object {
         val EMPTY = build(emptyList())
 
-        fun build(list: List<Channel>): LibraryIndex {
+        fun build(list: List<Channel>, cleanNames: Boolean = false, mergeDuplicates: Boolean = false): LibraryIndex {
+            val tidy = if (cleanNames || mergeDuplicates) Tidy.apply(list, cleanNames, mergeDuplicates) else null
+            val shown = tidy?.shown ?: list
             val live = ArrayList<Channel>()
             val movies = ArrayList<Channel>()
             val series = ArrayList<Channel>()
-            for (ch in list) {
+            for (ch in shown) {
                 when (ch.kind) {
                     Kind.LIVE -> live += ch
                     Kind.MOVIE -> movies += ch
@@ -50,8 +58,9 @@ class LibraryIndex(
             val movieGroups = movies.groupByTo(LinkedHashMap()) { it.group }
             val seriesGroups = series.groupByTo(LinkedHashMap()) { it.group }
             return LibraryIndex(
-                all = list,
-                byId = list.associateBy { it.id },
+                all = shown,
+                // Merged-away channels stay findable (favorites, recents, the guide point at them).
+                byId = (tidy?.all ?: list).associateBy { it.id },
                 live = live,
                 movies = movies,
                 series = series,
@@ -61,6 +70,9 @@ class LibraryIndex(
                 newMovies = movies.filter { it.added > 0 }.sortedByDescending { it.added }.take(40),
                 newSeries = series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }.take(40),
                 trending = Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000),
+                raw = list,
+                tidy = cleanNames to mergeDuplicates,
+                versions = tidy?.versions ?: emptyMap(),
             )
         }
     }

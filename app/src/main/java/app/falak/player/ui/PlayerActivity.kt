@@ -91,6 +91,7 @@ import app.falak.player.player.SniffingHlsExtractorFactory
 import app.falak.player.player.VlcPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import app.falak.player.data.mine
+import app.falak.player.data.Habits
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
@@ -230,6 +231,24 @@ class PlayerActivity : ComponentActivity() {
     /** The channel the list opens on when it isn't the main picture's (two-screen mode). */
     private var browserFocusId by mutableStateOf<String?>(null)
 
+    // ---- start over ----
+
+    /** A show already under way on a channel with replay: offered from its start for a few seconds. */
+    private var startOverOffer by mutableStateOf<Pair<Channel, app.falak.player.data.Program>?>(null)
+
+    /** The live list and place to go back to from a replay started with "From the start". */
+    private var liveBeforeStartOver: Pair<List<Channel>, Int>? = null
+    private val hideStartOver = Runnable { startOverOffer = null }
+    private lateinit var liveButton: TextView
+
+    // ---- Listen mode (phones): the sound carries on in the background ----
+
+    /** The sound is with ListenService while this player is off screen. */
+    private var listening = false
+
+    /** Handing the stream to another app: not a reason to listen on. */
+    private var handingOff = false
+
     // ---- audio and subtitle choices remembered per channel, film or series ----
     private val trackMemory by lazy { TrackMemory(this) }
     private var audioMemoryDone = false
@@ -238,6 +257,9 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The mini player (and Listen mode) let go of their stream before this one connects.
+        MiniPlayerState.close()
+        app.falak.player.ListenService.handBack("")
         queue = repo.playQueue
         if (queue.isEmpty()) {
             finish()
@@ -331,6 +353,8 @@ class PlayerActivity : ComponentActivity() {
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
         // Live TV: a second channel beside this one.
         twoButton = pill("Two screens", R.drawable.ic_pl_two) { startPickingSecond() }.apply { visibility = View.GONE }
+        // Watching a show from its start: back to the live channel.
+        liveButton = pill("Back to live", R.drawable.ic_nav_live) { backToLive() }.apply { visibility = View.GONE }
         // Add what's playing to Favorites without leaving the player.
         favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
@@ -349,7 +373,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -475,6 +499,12 @@ class PlayerActivity : ComponentActivity() {
                 FalakTheme(dark = true, layout = app.settings.layout) {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                         SkipIntroButton(skipIntroShown && upNext == null) { skipIntro() }
+                        val offer = startOverOffer
+                        StartOverButton(
+                            visible = offer != null && dual == null,
+                            title = offer?.second?.title.orEmpty(),
+                            minutes = offer?.let { ((System.currentTimeMillis() - it.second.start) / 60_000L).toInt() } ?: 0,
+                        ) { startOver() }
                         UpNextCard(upNext, upNextLabel, upNextSecs, onPlay = { playUpNext() }, onHide = { dismissUpNext() })
                         val prayer by PrayerAlerts.current.collectAsState()
                         PrayerBanner(prayer, paused = prayerPaused) { endPrayerPause(resume = false) }
@@ -532,6 +562,21 @@ class PlayerActivity : ComponentActivity() {
         root.addView(browserView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         setContentView(root)
+        // Back: from a show watched from its start, to live; otherwise out of the player (a live
+        // channel carrying on in the mini player).
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (liveBeforeStartOver != null) {
+                        backToLive()
+                        return
+                    }
+                    offerMini()
+                    finish()
+                }
+            },
+        )
         // A phone turned while the browser is open: fit the picture into the new free space.
         root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, oldR, ob ->
             if (r - l != oldR - ol || b - t != ob - ot) handler.post { applyVideoArea() }
@@ -543,6 +588,8 @@ class PlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Back from Listen mode's notification: onStart takes the sound back, nothing new to play.
+        if (intent.action == app.falak.player.ListenService.ACTION_BACK) return
         val q = repo.playQueue
         if (q.isEmpty()) return
         saveProgress()
@@ -555,6 +602,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        handingOff = false
+        // Back from Listen mode: the picture again, from where the sound got to.
+        if (listening) {
+            listening = false
+            val pos = app.falak.player.ListenService.handBack(currentUrl)
+            if (pos != null && queue.getOrNull(index)?.kind != Kind.LIVE) resumePositionMs = pos
+        }
         repo.playerOpen = true
         FreezeWatch.note("player opened")
         if (::playerView.isInitialized) initPlayer()
@@ -569,8 +623,15 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // The screen turned off: Listen mode carries the sound on.
+        if (!listening && !inPip && !screenOn()) startListening()
+    }
+
     override fun onStop() {
         super.onStop()
+        if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
         prayerJob?.cancel()
         alertJob?.cancel()
@@ -587,6 +648,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (listening) {
+            listening = false
+            app.falak.player.ListenService.handBack(currentUrl)
+        }
         handler.removeCallbacksAndMessages(null)
         if (isTvDevice) frameMatch.release()
         super.onDestroy()
@@ -857,7 +922,16 @@ class PlayerActivity : ComponentActivity() {
         autoSubtitlesDone = false
         audioMemoryDone = false
         textMemoryDone = false
+        wasReady = false
+        stalls.clear()
         twoButton.visibility = if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null) View.VISIBLE else View.GONE
+        // A replay of our own "From the start" keeps the way back to live; anything else forgets it.
+        if (!ch.id.startsWith("cu:")) liveBeforeStartOver = null
+        liveButton.visibility = if (liveBeforeStartOver != null) View.VISIBLE else View.GONE
+        offerStartOver(ch)
+        // Two minutes on a live channel count towards Home's "For this hour".
+        handler.removeCallbacks(noteHabit)
+        if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) handler.postDelayed(noteHabit, 120_000)
         if (dual != null) updateDualLabels()
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
@@ -976,9 +1050,17 @@ class PlayerActivity : ComponentActivity() {
             if (playbackState == Player.STATE_READY) {
                 retried = false
                 hideMessage()
+                wasReady = true
             }
+            // Stopping to load again and again: a lighter version, if Tidy channel list merged one.
+            if (playbackState == Player.STATE_BUFFERING && wasReady) onStall()
             if (playbackState == Player.STATE_ENDED) {
                 saveProgress()
+                // The show watched from its start has caught up with live: back to the channel.
+                if (liveBeforeStartOver != null) {
+                    handler.post { backToLive() }
+                    return
+                }
                 val ch = queue.getOrNull(index)
                 // Episodes: on to the next one (unless "Keep watching" was chosen).
                 if (ch != null && nextEpisode() != null && upNextDismissed != ch.id) {
@@ -1279,6 +1361,11 @@ class PlayerActivity : ComponentActivity() {
                 swallowUpKey = event.keyCode
                 return true
             }
+            if (startOverOffer != null && ok) {
+                startOver()
+                swallowUpKey = event.keyCode
+                return true
+            }
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
@@ -1398,6 +1485,24 @@ class PlayerActivity : ComponentActivity() {
         ambientOn = true
     }
 
+    /**
+     * Screenshot tests: "From the start" offered for the show on now; with [replaying], the show
+     * already playing from its start, the controls up with "Back to live".
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewStartOver(ch: Channel, replaying: Boolean) {
+        val now = System.currentTimeMillis()
+        if (replaying) {
+            startOverOffer = null
+            liveBeforeStartOver = queue to index
+            liveButton.visibility = View.VISIBLE
+            playerView.showController()
+        } else {
+            playerView.hideController()
+            startOverOffer = ch to app.falak.player.data.Program(now - 38 * 60_000L, now + 22 * 60_000L, "The Big Match", "")
+        }
+    }
+
     /** Screenshot tests: paused for a prayer, with its banner. */
     @androidx.annotation.VisibleForTesting
     internal fun previewPrayer() {
@@ -1460,6 +1565,8 @@ class PlayerActivity : ComponentActivity() {
         super.onUserLeaveHint()
         // Picture-in-picture shows one channel: the one being heard.
         if (dual != null) endDual(keepSecond = dualSecond)
+        // Listen mode (phones): the sound carries on in the background instead of a small window.
+        if (startListening()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             player?.isPlaying == true &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -1722,8 +1829,10 @@ class PlayerActivity : ComponentActivity() {
             .setDataAndType(Uri.parse(url), "video/*")
             .putExtra("title", ch.name)
         try {
+            handingOff = true
             startActivity(Intent.createChooser(intent, "Open with"))
         } catch (e: Exception) {
+            handingOff = false
             toast("No other video player is installed. VLC for Android is free.")
         }
     }
@@ -1958,7 +2067,7 @@ class PlayerActivity : ComponentActivity() {
     private var compactPills = false
 
     private fun pills(): List<TextView> =
-        listOf(menuButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
+        listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
 
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
@@ -2116,6 +2225,15 @@ class PlayerActivity : ComponentActivity() {
             backupTried.clear()
         }
         if (backupTried.size >= 4) return false
+        // Tidy channel list merged other versions of it: those first.
+        repo.currentIndex.versions[ch.id]?.firstOrNull { it.url != ch.url && it.url != currentUrl && it.url !in backupTried }?.let { v ->
+            backupTried += v.url
+            FreezeWatch.note("backup stream for a channel that failed")
+            showMessage("${ch.name} isn't playing\nTrying another version of it…")
+            retried = false
+            handler.post { playCurrent(showInfo = false, overrideUrl = v.url) }
+            return true
+        }
         val excluded = repo.excludedGroups
         val key = app.falak.player.data.sameChannelKey(ch)
         val rank = app.falak.player.data.qualityRank(ch)
@@ -2467,6 +2585,7 @@ class PlayerActivity : ComponentActivity() {
             if (idx.series.isNotEmpty()) add(MenuPlace("SERIES", "Series", Section.SERIES))
             add(MenuPlace("FAVORITES", "Favorites", Section.FAVORITES))
             if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
+            if (idx.live.isNotEmpty()) add(MenuPlace("MATCHES", "Match centre"))
             // Kids mode: no way out to grown-up pages from the player.
             if (!repo.kidsActive) {
                 add(MenuPlace("NOTICES", "What's new"))
@@ -2500,7 +2619,7 @@ class PlayerActivity : ComponentActivity() {
         FreezeWatch.note("player → $where")
         repo.pendingNav = where
         // Settings, the guide and What's new are a detour: Back there brings this back.
-        repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES")) index else null
+        repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES", "MATCHES")) index else null
         finish()
     }
 
@@ -3118,6 +3237,159 @@ class PlayerActivity : ComponentActivity() {
         dualChanged()
         dualHint.visibility = View.VISIBLE
         handler.removeCallbacks(hideDualHint)
+    }
+
+    // ---- a lighter version when the stream keeps stalling (merged duplicates) ----
+
+    private var wasReady = false
+    private val stalls = ArrayDeque<Long>()
+
+    private fun onStall() {
+        val ch = queue.getOrNull(index) ?: return
+        if (ch.kind != Kind.LIVE || dual != null) return
+        val versions = repo.currentIndex.versions[ch.id] ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        stalls.addLast(now)
+        while (stalls.isNotEmpty() && now - stalls.first() > 60_000L) stalls.removeFirst()
+        if (stalls.size < 3) return
+        fun base(u: String) = u.removeSuffix(".m3u8").removeSuffix(".ts")
+        val playing = versions.indexOfFirst { base(it.url) == base(currentUrl) }.coerceAtLeast(0)
+        val rank = app.falak.player.data.qualityRank(versions[playing])
+        val next = versions.drop(playing + 1).firstOrNull { app.falak.player.data.qualityRank(it) < rank } ?: return
+        stalls.clear()
+        wasReady = false
+        FreezeWatch.note("lighter version after stalls")
+        val label = next.tidyQuality ?: app.falak.player.data.Tidy.qualityLabel(next.name)
+        showMessage("Switching to a lighter version" + (label?.let { " ($it)" } ?: "") + " for smoother playback…")
+        retried = false
+        handler.post { playCurrent(showInfo = false, overrideUrl = next.url) }
+    }
+
+    // ---- start over ----
+
+    /** Live, with replay, and the show started 3+ minutes ago: offer it from the start for 12 seconds. */
+    private fun offerStartOver(ch: Channel) {
+        handler.removeCallbacks(hideStartOver)
+        startOverOffer = null
+        if (ch.kind != Kind.LIVE || !ch.hasCatchup || ch.id.startsWith("cu:") || inPip) return
+        val now = System.currentTimeMillis()
+        val prog = repo.epg.value[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop } ?: return
+        if (now - prog.start < 3 * 60_000L || !app.falak.player.data.Catchup.canReplay(ch, prog, now)) return
+        startOverOffer = ch to prog
+        handler.postDelayed(hideStartOver, 12_000)
+    }
+
+    /** The show on now, from its start (a replay); Back or "Back to live" returns to the channel. */
+    private fun startOver() {
+        val (ch, prog) = startOverOffer ?: return
+        startOverOffer = null
+        handler.removeCallbacks(hideStartOver)
+        val now = System.currentTimeMillis()
+        val url = try {
+            app.falak.player.data.Catchup.url(ch, prog, repo.openLibrary?.serverTz.orEmpty(), now)
+        } catch (e: Exception) {
+            null
+        }
+        if (url == null) {
+            toast("This programme can't be replayed")
+            return
+        }
+        val item = app.falak.player.data.Catchup.asItem(ch, prog, url)
+        saveProgress()
+        liveBeforeStartOver = queue to index
+        queue = listOf(item)
+        repo.playQueue = queue
+        index = 0
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        FreezeWatch.note("start over")
+        playCurrent(showInfo = true)
+    }
+
+    /** From a show watched from its start, back to the live channel and its list. */
+    private fun backToLive() {
+        val (list, at) = liveBeforeStartOver ?: return
+        liveBeforeStartOver = null
+        queue = list
+        repo.playQueue = list
+        index = at.coerceIn(0, (list.size - 1).coerceAtLeast(0))
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        playCurrent(showInfo = true)
+    }
+
+    // ---- Home's "For this hour" ----
+
+    /** The live channel still playing two minutes on: noted on this device (never sent anywhere). */
+    private val noteHabit = Runnable {
+        val ch = queue.getOrNull(index)
+        val pl = repo.currentPlaylist
+        if (ch != null && pl != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && player?.isPlaying == true) {
+            val key = repo.state.value.mine(pl.id)
+            val dir = filesDir
+            Thread { Habits.record(dir, key, ch.id) }.start()
+        }
+    }
+
+    // ---- Listen mode ----
+
+    private fun screenOn(): Boolean =
+        getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+
+    /**
+     * Phones with Listen mode on, leaving the player (Home, another app) or turning the screen off
+     * while something plays: the sound carries on in ListenService, and this player lets go of the
+     * stream. Coming back (onStart) takes it back. False when it doesn't apply.
+     */
+    private fun startListening(): Boolean {
+        if (listening) return true
+        val ch = queue.getOrNull(index) ?: return false
+        val p = player ?: return false
+        if (!repo.state.value.settings.listenMode || isTvDevice || inPip || dual != null || handingOff) return false
+        if (p.playerError != null || !p.playWhenReady || currentUrl.isBlank()) return false
+        val live = ch.kind == Kind.LIVE
+        val now = System.currentTimeMillis()
+        val onNow = if (live) repo.epg.value[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop }?.title.orEmpty() else ""
+        val language = exo?.currentTracks?.groups
+            ?.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language } }
+        val (ua, referrer) = headersFor(ch)
+        val item = app.falak.player.ListenService.Item(
+            url = currentUrl,
+            title = ch.name,
+            subtitle = onNow,
+            userAgent = ua,
+            referrer = referrer,
+            position = if (live) C.TIME_UNSET else p.currentPosition,
+            live = live,
+            audioLanguage = language,
+            index = index,
+        )
+        if (!app.falak.player.ListenService.start(this, item)) return false
+        listening = true
+        FreezeWatch.note("listen mode")
+        // The service connects once this player has let go (one connection at a time).
+        releasePlayer()
+        return true
+    }
+
+    // ---- mini player ----
+
+    /**
+     * Back from a live channel that is playing: it carries on small over the lists (Settings →
+     * Mini player). This player lets go of the stream first, as many providers allow one
+     * connection at a time.
+     */
+    private fun offerMini() {
+        val ch = queue.getOrNull(index) ?: return
+        val p = player ?: return
+        if (!repo.state.value.settings.miniPlayer || inPip || dual != null) return
+        if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:") || p.playerError != null || !p.playWhenReady) return
+        val list = queue
+        val at = index
+        val ua = headersFor(ch).first
+        releasePlayer()
+        MiniPlayerState.show(list, at, ua, repo.currentPlaylist?.id)
     }
 
     // ---- programme reminders ----

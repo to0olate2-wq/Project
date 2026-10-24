@@ -21,6 +21,13 @@ import androidx.test.core.app.ApplicationProvider
 import app.falak.player.FalakApp
 import app.falak.player.ProgramAlerts
 import app.falak.player.data.ProgramAlert
+import app.falak.player.data.FootballFeed
+import app.falak.player.data.FootballMatch
+import app.falak.player.data.FootballTeam
+import app.falak.player.data.Habits
+import app.falak.player.data.LeagueRound
+import app.falak.player.data.TableRow
+import app.falak.player.ui.MiniPlayerState
 import app.falak.player.data.Reminder
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
@@ -56,6 +63,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.Duration
+import java.util.Calendar
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE_LAND
 import app.falak.player.screens.ScreenshotBase.Companion.PHONE_TALL
@@ -89,13 +97,21 @@ abstract class ScreenshotBase {
         prayerMode: String = "off",
         liveOnly: Boolean = false,
         reminder: Boolean = false,
+        /** Football in the guide (and made-up scores) for the Match centre. */
+        matches: Boolean = false,
+        /** Channels watched around this time on earlier days, for Home's "For this hour". */
+        habits: Boolean = false,
+        /** Provider-style names and duplicates, with Tidy channel list on. */
+        messy: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
     ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder)
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder, habits, messy)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
-        app.repo.showGuideForTest(sampleGuide(vm.index.live))
+        val guide = sampleGuide(vm.index.live)
+        app.repo.showGuideForTest(if (matches) guide + matchGuide(vm.index.live) else guide)
+        if (matches) vm.showFootballForTest(sampleFeed())
         block(vm) { name -> capture(activity, name) }
     }
 
@@ -111,6 +127,8 @@ abstract class ScreenshotBase {
         dual: Boolean = false,
         heardSecond: Boolean = false,
         alert: Boolean = false,
+        /** "offer": "From the start" for the show on now; "replay": watching it from the start. */
+        startOver: String? = null,
         block: ((String) -> Unit) -> Unit,
     ) {
         seed(if (tv) "tv" else "phone")
@@ -141,6 +159,7 @@ abstract class ScreenshotBase {
         if (upNext) activity.previewUpNext(queue[3])
         if (ambient) activity.previewAmbient()
         if (prayer) activity.previewPrayer()
+        if (startOver != null) activity.previewStartOver(queue[2], replaying = startOver == "replay")
         block { name -> capture(activity, name) }
     }
 
@@ -158,12 +177,21 @@ abstract class ScreenshotBase {
         prayerMode: String = "off",
         liveOnly: Boolean = false,
         reminder: Boolean = false,
+        habits: Boolean = false,
+        messy: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
-        m3u.writeText(buildM3u(dir, liveOnly))
+        m3u.writeText(buildM3u(dir, liveOnly, messy))
         val p = Playlist("sample", "Home", SourceType.M3U_FILE, m3u.path)
-        writeCache(dir, liveOnly)
+        writeCache(dir, liveOnly, messy)
+        if (habits) {
+            // The same three channels at this time of day on each of the last three days.
+            val now = System.currentTimeMillis()
+            for (d in 1..3) for (name in listOf("Wild Earth", "Echo Hits", "Little Comet")) {
+                Habits.record(app.filesDir, p.id, liveId(name), now - d * 86_400_000L)
+            }
+        }
         app.repo.update { s ->
             s.copy(
                 playlists = listOf(p),
@@ -175,6 +203,7 @@ abstract class ScreenshotBase {
                     kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
                     profilesOn = profiles.isNotEmpty(),
                     prayerMode = prayerMode,
+                    cleanNames = messy, mergeDuplicates = messy,
                 ),
                 profiles = profiles.mapIndexed { i, name -> Profile("p$i", name, color = i) },
                 // Linked with two devices, sync paused (so nothing starts listening during the test).
@@ -263,6 +292,14 @@ abstract class ScreenshotBase {
         "Documentary" to listOf("Wild Earth", "Deep Blue", "Timeline", "Workshop"),
         "Music" to listOf("Echo Hits", "Velvet Lounge", "Cedar Classics"),
     )
+    /** Tidy channel list's test: one channel listed three ways, another in two qualities and a language. */
+    private val messyChannels = mapOf(
+        "News" to listOf("UK: Lantern News HD" to "lantern", "UK: Lantern News FHD ᴴᴰ" to "lantern", "|UK| Lantern News (Backup)" to "lantern"),
+        "Sports" to listOf(
+            "AR: Crescent Sports 4K" to "crescent", "AR: Crescent Sports SD" to "crescent", "AR: Crescent Sports (English)" to "crescent.en",
+        ),
+    )
+
     private val films = listOf(
         "The Long Harbour", "Northern Lights", "Paper Kites", "Glass Orchard",
         "Midnight Ferry", "Copper Valley", "Salt Road", "The Quiet Year",
@@ -278,7 +315,7 @@ abstract class ScreenshotBase {
      * The same library as the M3U, plus what an Xtream provider sends (when each film and series
      * was added, ratings, series), saved as the app's playlist cache: the app opens that copy.
      */
-    private fun writeCache(dir: File, liveOnly: Boolean) {
+    private fun writeCache(dir: File, liveOnly: Boolean, messy: Boolean = false) {
         val now = System.currentTimeMillis() / 1000
         val out = ArrayList<Channel>()
         for ((group, names) in liveGroups) for (name in names) {
@@ -288,6 +325,14 @@ abstract class ScreenshotBase {
                 id = stableId("$name|$url"), name = name, group = group, url = url,
                 logo = "file://" + File(dir, "logo-$id.png").path, tvgId = id,
             )
+            // A provider's way of listing one channel several times, after the group's first.
+            if (messy && name == names.first()) for ((messyName, key) in messyChannels[group].orEmpty()) {
+                val u = "http://127.0.0.1:1/live/${slug(messyName)}.m3u8"
+                out += Channel(
+                    id = stableId("$messyName|$u"), name = messyName, group = group, url = u,
+                    logo = "file://" + File(dir, "logo-$key.png").path, tvgId = key,
+                )
+            }
         }
         if (!liveOnly) {
             val ratings = listOf("7.8", "8.4", "6.9", "7.2", "8.1", "5.9", "7.5", "6.4")
@@ -316,7 +361,7 @@ abstract class ScreenshotBase {
     // A long provider-style group name: shelf and chip titles must stay on one line.
     private fun filmGroup(i: Int) = if (i % 2 == 0) "Drama" else "TOP MOVIES 4K 3840P DOLBY AUDIO (MULTI-SUBS)"
 
-    private fun buildM3u(dir: File, liveOnly: Boolean = false): String = buildString {
+    private fun buildM3u(dir: File, liveOnly: Boolean = false, messy: Boolean = false): String = buildString {
         append("#EXTM3U\n")
         var n = 0
         for ((group, names) in liveGroups) {
@@ -326,6 +371,11 @@ abstract class ScreenshotBase {
                 append("#EXTINF:-1 tvg-id=\"$id\" tvg-logo=\"file://${logo.path}\" group-title=\"$group\",$name\n")
                 append("http://127.0.0.1:1/live/$id.m3u8\n")
                 n++
+                if (messy && name == names.first()) for ((messyName, key) in messyChannels[group].orEmpty()) {
+                    val l = image(dir, "logo-$key.png", 240, 240, palette[(n + 3) % palette.size], initials(key.replaceFirstChar { it.uppercase() } + " TV"), round = true)
+                    append("#EXTINF:-1 tvg-id=\"$key\" tvg-logo=\"file://${l.path}\" group-title=\"$group\",$messyName\n")
+                    append("http://127.0.0.1:1/live/${slug(messyName)}.m3u8\n")
+                }
             }
         }
         if (!liveOnly) for ((i, title) in films.withIndex()) {
@@ -370,6 +420,87 @@ abstract class ScreenshotBase {
             }
             ch.epgKey to list
         }
+    }
+
+    /**
+     * Football on the sports channels: one match on two channels now (with a score in the made-up
+     * feed), two later today (one in Arabic) and one tomorrow. All names invented.
+     */
+    private fun matchGuide(live: List<Channel>): Map<String, List<Program>> {
+        val now = System.currentTimeMillis()
+        val min = 60_000L
+        val kick = now - 80 * min
+        val tomorrow = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val d = "A made-up programme for screenshots."
+        fun key(name: String) = live.first { it.name == name }.epgKey
+        val big = listOf(
+            Program(kick - 120 * min, kick, "Matchday Live", d),
+            Program(kick, kick + 120 * min, "Premier League: Harbor City v Northport", d),
+            Program(kick + 120 * min, now + 10 * 60 * min, "Highlights", d),
+        )
+        return mapOf(
+            key("Pulse Sports 1") to big,
+            key("Arena Live") to big,
+            key("Pulse Sports 2") to listOf(
+                Program(now - 60 * min, now + 100 * min, "Highlights", d),
+                Program(now + 100 * min, now + 220 * min, "Premier League: Riverside v Kingsbridge", d),
+                Program(now + 220 * min, now + 10 * 60 * min, "Weekend Live", d),
+            ),
+            key("Fairway Golf") to listOf(
+                Program(now - 30 * min, now + 150 * min, "Studio Session", d),
+                Program(now + 150 * min, now + 270 * min, "النخيل × الصقور", d),
+                Program(now + 270 * min, now + 10 * 60 * min, "Late Review", d),
+            ),
+            key("Racing Line") to listOf(
+                Program(now - 60 * min, tomorrow + 15 * 60 * min, "Racing Today", d),
+                Program(tomorrow + 15 * 60 * min, tomorrow + 17 * 60 * min, "Premier League: Eastfield v Harbor City", d),
+            ),
+        )
+    }
+
+    /** A made-up league: this round's matches (one live) and a table of twenty invented clubs. */
+    private fun sampleFeed(): FootballFeed {
+        val now = System.currentTimeMillis()
+        val min = 60_000L
+        val clubs = listOf(
+            "Harbor City" to "HAR", "Northport" to "NOR", "Riverside" to "RIV", "Kingsbridge" to "KIN", "Eastfield" to "EAS",
+            "Westmoor" to "WES", "Oakham Rovers" to "OAK", "Millbrook" to "MIL", "Stonegate" to "STO", "Ashford Town" to "ASH",
+            "Larkhill" to "LAR", "Brackenridge" to "BRA", "Fenwick" to "FEN", "Highcliffe" to "HIG", "Marston" to "MAR",
+            "Redwater" to "RED", "Thornbury" to "THO", "Wexley" to "WEX", "Coldharbour" to "COL", "Pinewood" to "PIN",
+        )
+        val team = clubs.associate { (name, tla) -> name to FootballTeam("$name FC", name, tla) }
+        fun match(id: Long, time: Long, status: String, home: String, away: String, h: Int? = null, a: Int? = null, minute: Int? = null) =
+            FootballMatch(
+                id = id, competition = "Premier League", code = "PL", time = time, status = status, minute = minute, matchday = 9,
+                home = team.getValue(home), away = team.getValue(away), homeScore = h, awayScore = a,
+            )
+        val live = match(1, now - 80 * min, "IN_PLAY", "Harbor City", "Northport", 2, 1, minute = 64)
+        val later = match(5, now + 100 * min, "TIMED", "Riverside", "Kingsbridge")
+        val round = listOf(
+            match(2, now - 27 * 60 * min, "FINISHED", "Westmoor", "Oakham Rovers", 0, 0),
+            match(3, now - 25 * 60 * min, "FINISHED", "Millbrook", "Stonegate", 3, 1),
+            match(4, now - 25 * 60 * min, "FINISHED", "Ashford Town", "Larkhill", 1, 2),
+            live,
+            later,
+            match(6, now + 26 * 60 * min, "TIMED", "Brackenridge", "Fenwick"),
+            match(7, now + 28 * 60 * min, "TIMED", "Highcliffe", "Marston"),
+        )
+        val points = listOf(23, 21, 19, 18, 16, 15, 14, 14, 13, 12, 11, 11, 10, 9, 8, 7, 6, 5, 4, 2)
+        val table = clubs.mapIndexed { i, (name, tla) ->
+            val won = points[i] / 3
+            val drawn = points[i] - won * 3
+            TableRow(
+                position = i + 1, name = "$name FC", short = name, tla = tla, played = 9, won = won, draw = drawn,
+                lost = 9 - won - drawn, goalDifference = 15 - i * 3 / 2, points = points[i], form = "W,D,W,L,W",
+            )
+        }
+        return FootballFeed(configured = true, at = now - 2 * min, today = listOf(live, later), pl = LeagueRound(9, round, table))
     }
 
     /** The id the M3U parser gives a sample live channel. */
@@ -618,7 +749,7 @@ class PhoneShelfScreens : ScreenshotBase() {
     // A very tall phone shows every Home row: Recently watched, Continue watching, Trending now,
     // New films, New series, then favorites.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneShelves() = mainScreens("phone", watching = true) { _, shoot -> shoot("phone-11-home-all-shelves") }
+    fun phoneShelves() = mainScreens("phone", watching = true, habits = true) { _, shoot -> shoot("phone-11-home-all-shelves") }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -890,4 +1021,104 @@ class TvTwoScreensSecondHeard : ScreenshotBase() {
 class PhoneTwoScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE)
     fun phoneTwoScreens() = player(tv = false, live = true, dual = true) { shoot -> shoot("phone-25-two-screens") }
+}
+
+// ---- 7.0: Match centre, start over, For this hour, tidy list, mini player ----
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvMatchCentreScreens : ScreenshotBase() {
+    // Matches in the guide (live first, with the score), then the league's round and table.
+    @Test @Config(qualifiers = TV)
+    fun tvMatchCentre() = mainScreens("tv", matches = true) { vm, shoot ->
+        vm.screen = Screen.MATCHES
+        shoot("tv-37-match-centre")
+        vm.matchTab = 1
+        shoot("tv-38-match-centre-league")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneMatchCentreScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneMatchCentre() = mainScreens("phone", matches = true) { vm, shoot ->
+        vm.screen = Screen.MATCHES
+        shoot("phone-26-match-centre")
+        vm.matchTab = 1
+        shoot("phone-27-match-centre-league")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvForThisHourScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV_TALL)
+    fun tvForThisHour() = mainScreens("tv", watching = true, habits = true) { _, shoot -> shoot("tv-39-home-for-this-hour") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvMiniPlayerScreens : ScreenshotBase() {
+    // Back from a live channel: it carries on small over the lists.
+    @Test @Config(qualifiers = TV)
+    fun tvMiniPlayer() = mainScreens("tv") { vm, shoot ->
+        val live = vm.index.live
+        MiniPlayerState.show(live, live.indexOfFirst { it.name == "Atlas News" }, "", "sample")
+        shoot("tv-40-mini-player")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneMiniPlayerScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneMiniPlayer() = mainScreens("phone") { vm, shoot ->
+        vm.section = Section.LIVE
+        val live = vm.index.live
+        MiniPlayerState.show(live, live.indexOfFirst { it.name == "Pulse Sports 1" }, "", "sample")
+        shoot("phone-28-mini-player")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvStartOverScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvStartOver() = player(tv = true, live = true, startOver = "offer") { shoot -> shoot("tv-41-start-over") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvBackToLiveScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvBackToLive() = player(tv = true, live = false, startOver = "replay") { shoot -> shoot("tv-42-back-to-live") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneStartOverScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneStartOver() = player(tv = false, live = true, startOver = "offer") { shoot -> shoot("phone-29-start-over") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvTidyScreens : ScreenshotBase() {
+    // Tidy channel list on: clean names with a quality mark, duplicates once.
+    @Test @Config(qualifiers = TV)
+    fun tvTidy() = mainScreens("tv", messy = true) { vm, shoot ->
+        vm.section = Section.LIVE
+        shoot("tv-43-tidy-live")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneTidyScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneTidy() = mainScreens("phone", messy = true) { vm, shoot ->
+        vm.section = Section.LIVE
+        shoot("phone-30-tidy-live")
+    }
 }

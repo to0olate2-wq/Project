@@ -214,6 +214,7 @@ fun ChannelCard(
                 Spacer(Modifier.width(5.dp))
                 Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.2.sp, color = Paper)
             }
+            ch.tidyQuality?.let { CardBadge(it, Amber, Modifier.align(Alignment.TopEnd).padding(7.dp)) }
             if (current != null) {
                 val length = (current.stop - current.start).coerceAtLeast(1L).toFloat()
                 EdgeProgress((now - current.start) / length, Modifier.align(Alignment.BottomCenter))

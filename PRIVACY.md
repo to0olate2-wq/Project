@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 24 October 2026 (version 6.9)_
+_Last updated: 24 October 2026 (version 7.0)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -13,7 +13,8 @@ playlists that you add yourself. It does not come with any channels, films or ot
   on your device, the app version, and whether it's a TV or a phone) and, after the app stops
   unexpectedly, a **crash report** with personal details taken out (see both sections below).
 - The app only connects to the servers **you** choose (your playlist provider, the TV guide
-  sources you add) and, if you turn it on, to OpenSubtitles.
+  sources you add), if you turn it on, to OpenSubtitles, and, while the Match centre is open, to
+  the developer's server for football scores (nothing about you is sent with that request).
 
 ## What is stored on your device
 
@@ -25,6 +26,9 @@ The app keeps these in its private storage on your device:
 - the TV guide sources you add and a copy of the guide data;
 - programme reminders and alert words you set, and the audio and subtitle tracks you picked for
   each channel, film or series (so they come back next time);
+- which live channels you watched for at least two minutes, and when (the last 600, from the past
+  two months at most), so Home can show *For this hour*: the channels you usually watch around
+  this time of day;
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
@@ -52,6 +56,12 @@ The app only makes network connections needed for what you ask it to do:
   to find and download subtitles. See the OpenSubtitles privacy policy.
 - **Trailers.** If you open a trailer, it opens in YouTube or your browser, under their own
   policies.
+- **Match centre scores** (only while the Match centre is open). The app asks the developer's
+  server (the same small program on Cloudflare as the user count, see below) for today's football
+  scores and the Premier League's matches and table, which that server gets from
+  football-data.org. The request carries nothing about you: no random number, no playlist, nothing
+  about what you watch. Cloudflare receives your IP address to deliver it; the server doesn't store
+  it. Which matches are on your channels is worked out on your device from your TV guide.
 - **Your own devices** (only while you use it). When you open *Your devices* and start
   sharing, the app serves a page on your home network, protected by a 6-digit code shown on
   screen, so your phone or computer can manage playlists or copy them to another device running
@@ -134,7 +144,10 @@ refresh finds new channels, films or series, or that a programme you asked to be
 about to start. Nothing is sent anywhere to do this; reminders are worked out on the device from
 your TV guide. On Android TV it
 uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
-row. The version downloaded from Google Play asks for nothing else: no location, contacts, camera, microphone or storage access.
+row. On phones and tablets with *Listen mode* turned on (it's off unless you choose it), it uses the
+foreground service (media playback) and wake lock permissions so the sound can carry on with the
+screen off, shown by a notification with play and pause. The version downloaded from Google Play
+asks for nothing else: no location, contacts, camera, microphone or storage access.
 
 ## Changes
 

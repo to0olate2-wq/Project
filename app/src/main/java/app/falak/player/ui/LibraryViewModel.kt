@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -22,6 +23,7 @@ import app.falak.player.data.Kind
 import app.falak.player.data.LibraryIndex
 import app.falak.player.data.SearchText
 import app.falak.player.data.Alerts
+import app.falak.player.data.FootballFeed
 import app.falak.player.data.Reminder
 import app.falak.player.data.ProgramAlert
 import app.falak.player.data.Playlist
@@ -44,7 +46,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, MATCHES }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
@@ -200,6 +202,54 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun clearRecentSearches() {
         recentSearches = emptyList()
         searchPrefs.edit().remove("recent").apply()
+    }
+
+    // ---- Match centre ----
+
+    /** Scores and the Premier League from the developer's counter (null until first asked). */
+    var football by mutableStateOf<FootballFeed?>(null)
+        private set
+    private var footballAsked = 0L
+    private var footballJob: Job? = null
+    private var footballForTest = false
+
+    /** The Match centre's tab: 0 = On TV, 1 = Premier League (kept while the app is open). */
+    var matchTab by mutableIntStateOf(0)
+
+    /** Fetches the scores (at most every 50 seconds unless [force]); quietly keeps the last ones on failure. */
+    fun loadFootball(force: Boolean = false) {
+        if (footballForTest) return
+        val base = app.falak.player.Stats.base
+        if (base.isEmpty()) {
+            football = FootballFeed(configured = false)
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (!force && now - footballAsked < 50_000) return
+        if (footballJob?.isActive == true) return
+        footballAsked = now
+        footballJob = viewModelScope.launch {
+            val feed = withContext(Dispatchers.IO) {
+                try {
+                    val request = okhttp3.Request.Builder().url("$base/v1/football").build()
+                    repo.http.newCall(request).execute().use { r ->
+                        if (!r.isSuccessful) null else FOOTBALL_JSON.decodeFromString(FootballFeed.serializer(), r.body?.string().orEmpty())
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (feed != null) football = feed else if (football == null) football = FootballFeed(configured = true, stale = true, error = "offline")
+        }
+    }
+
+    /** Screenshot tests: made-up scores, and nothing fetched. */
+    @androidx.annotation.VisibleForTesting
+    internal fun showFootballForTest(feed: FootballFeed) {
+        footballForTest = true
+        football = feed
     }
 
     // ---- programme reminders and alert words ----
@@ -452,7 +502,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 val kept = if (refresh) null else repo.openLibrary?.takeIf { it.playlistId == p.id }
                 if (kept != null) {
                     index = kept.index
-                    channels = kept.index.all
+                    channels = kept.index.raw
+                    retidyIfChanged()
                     providerEpg = kept.epgUrl
                     serverTz = kept.serverTz
                     loadedAt = kept.savedAt
@@ -502,7 +553,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Live channels' guide keys get worked out by the guide load that follows (off the main
         // thread), not here: the lists show as soon as the index is ready.
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list) }
+        val tidy = state.value.settings
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.cleanNames, tidy.mergeDuplicates) }
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index
@@ -545,8 +597,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (loadToken !== token || playlist?.id != p.id) return
         // Never while a film or channel plays (it would compete with the stream for memory and
         // bandwidth): wait until the player closes, then give the app a minute.
-        if (repo.playerOpen || repo.previewOpen) {
-            while (repo.playerOpen || repo.previewOpen) delay(10_000)
+        if (repo.playerOpen || repo.previewOpen || repo.listening) {
+            while (repo.playerOpen || repo.previewOpen || repo.listening) delay(10_000)
             delay(60_000)
             if (loadToken !== token || playlist?.id != p.id) return
         }
@@ -793,7 +845,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         val due = state.value.followed[p.id].orEmpty().filter { now - it.checkedAt > FOLLOW_CHECK_MS }.take(25)
         for (f in due) {
-            while (repo.playerOpen || repo.previewOpen) delay(30_000)
+            while (repo.playerOpen || repo.previewOpen || repo.listening) delay(30_000)
             if (playlist?.id != p.id) return
             val count = try {
                 repo.loadSeries(p, f.seriesId).seasons.sumOf { it.episodes.size }
@@ -884,6 +936,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             "SETTINGS" -> screen = Screen.SETTINGS
             "NOTICES" -> screen = Screen.NOTICES
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
+            "MATCHES" -> if (playlist != null) screen = Screen.MATCHES
             else -> {
                 val s = Section.entries.firstOrNull { it.name == where } ?: return
                 if (playlist == null) return
@@ -1236,7 +1289,35 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var retidyJob: Job? = null
+
+    /** Tidy channel list switched on or off: the lists are rebuilt from the playlist as it came. */
+    private fun retidyIfChanged() {
+        val s = state.value.settings
+        val want = s.cleanNames to s.mergeDuplicates
+        val old = index
+        if (old.raw.isEmpty() || old.tidy == want || retidyJob?.isActive == true) return
+        val p = playlist ?: return
+        retidyJob = viewModelScope.launch {
+            val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second) }
+            if (index !== old || playlist?.id != p.id) return@launch
+            index = built
+            if (repo.currentIndex === old) repo.currentIndex = built
+            repo.openLibrary?.takeIf { it.playlistId == p.id }?.let { kept ->
+                repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(kept.playlistId, built, kept.epgUrl, kept.serverTz, kept.savedAt)
+            }
+            // Switched again while building: once more with the latest choice.
+            retidyJob = null
+            retidyIfChanged()
+        }
+    }
+
     private fun followOutsideChanges() {
+        viewModelScope.launch {
+            state.collect { s ->
+                if ((s.settings.cleanNames to s.settings.mergeDuplicates) != index.tidy) retidyIfChanged()
+            }
+        }
         // Hiding or showing live groups (here or from the phone page) changes which channels get
         // a guide: reload it, from the saved copy when that already covers them.
         viewModelScope.launch {
@@ -1293,6 +1374,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+private val FOOTBALL_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
 private val KIDS_WORDS = listOf(
     "kid", "child", "cartoon", "toon", "anime", "animation", "animated", "family", "disney", "pixar",

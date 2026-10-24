@@ -18,7 +18,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "6.9"
+        versionName = "7.0"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -137,6 +137,8 @@ dependencies {
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
+    // Listen mode: play/pause on the lock screen and in the notification.
+    implementation("androidx.media3:media3-session:$media3")
     // FFmpeg audio decoder (Dolby AC-3/E-AC-3, DTS, MP2, TrueHD…) for devices without hardware decoders.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     // VLC engine: plays streams ExoPlayer can't, and shows teletext subtitles.

@@ -67,6 +67,9 @@ class Repository(private val context: Context) {
     /** The guide is playing a small preview (counts as playing for background work). */
     @Volatile var previewOpen = false
 
+    /** Listen mode is playing the sound in the background (counts as playing for background work). */
+    @Volatile var listening = false
+
     /** A page the player asked to open when it closed ("MOVIES", "SETTINGS"…), for the main screen. */
     @Volatile var pendingNav: String? = null
 

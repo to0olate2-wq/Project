@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -141,6 +142,46 @@ fun BoxScope.SkipIntroButton(visible: Boolean, onSkip: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Skip intro", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 16.sp else 15.sp, color = Color.White)
+            if (tv) KeyHint("OK", dark = false)
+        }
+    }
+}
+
+/**
+ * Tuned in to a show already under way on a channel with replay: "From the start" for a few
+ * seconds (OK on the remote, or a tap). [minutes]: how long ago it started.
+ */
+@Composable
+fun BoxScope.StartOverButton(visible: Boolean, title: String, minutes: Int, onStart: () -> Unit) {
+    val tv = isTv()
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(200)),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = if (tv) 40.dp else 16.dp, bottom = if (tv) 120.dp else 96.dp),
+    ) {
+        val pill = RoundedCornerShape(50)
+        Row(
+            Modifier
+                .clip(pill)
+                .background(Color(0xE6141210))
+                .border(1.5.dp, Color.White.copy(alpha = 0.85f), pill)
+                .clickable(onClick = onStart)
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("⟲  From the start", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 16.sp else 15.sp, color = Color.White)
+                Text(
+                    "$title · started $minutes min ago",
+                    fontFamily = Sans,
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 320.dp),
+                )
+            }
             if (tv) KeyHint("OK", dark = false)
         }
     }

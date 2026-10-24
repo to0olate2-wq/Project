@@ -1,4 +1,4 @@
-# The Player: user counter and crash reports
+# The Player: user counter, crash reports and Match centre feed
 
 A tiny Cloudflare Worker (`src/index.js`) that counts the devices using The Player: the app sends a
 random number made up on the device, the app version and TV or phone when it opens and every
@@ -27,6 +27,20 @@ them grouped by cause, newest first; open one to see its latest report. Kept 90 
    the app build after it points at it, and the run's summary shows the stats page address.
 
 Without these secrets nothing is deployed and the app counts nothing.
+
+## Match centre scores and the Premier League table (optional)
+
+The app's Match centre finds matches in your TV guide by itself. For scores and the Premier
+League table it asks this counter, which fetches them from football-data.org (shared by all
+users: at most once a minute, so the free plan's 10 requests a minute are plenty).
+
+1. Register at https://www.football-data.org/client/register (free). The key comes by email.
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+   `FOOTBALL_DATA_KEY` = that key.
+3. Run the build again. The run's summary says "Match centre feed: on, …".
+
+The free plan's scores can be a few minutes behind; their "Free w/ Livescores" plan (paid) makes
+them live with no change here. The key stays in Cloudflare and is never put in the app.
 
 ## Testing it on a computer
 

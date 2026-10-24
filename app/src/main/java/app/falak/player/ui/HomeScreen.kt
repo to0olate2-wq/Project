@@ -54,6 +54,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.falak.player.data.mine
+import app.falak.player.data.Habits
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Epg
@@ -124,6 +128,17 @@ fun HomeContent(
     val recentLive = remember(recentIds, index, locked) {
         recentIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) }.take(20)
     }
+    // The channels you usually watch around this time of day (learned on this device, see Habits).
+    val context = LocalContext.current
+    val quarter = now / (15 * 60_000L)
+    val forNowIds by produceState(emptyList<String>(), me, quarter) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { Habits.forNow(Habits.read(context.filesDir), me, System.currentTimeMillis()) }.getOrDefault(emptyList())
+        }
+    }
+    val forThisHour = remember(forNowIds, index, locked) {
+        forNowIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && ok(it) }
+    }
     val newMovies = remember(index, locked) { index.newMovies.filter(::ok) }
     val newSeries = remember(index, locked) { index.newSeries.filter(::ok) }
     val trending = remember(index, locked) { index.trending.filter(::ok) }
@@ -186,6 +201,11 @@ fun HomeContent(
             }
         }
         // What you watch.
+        if (forThisHour.isNotEmpty()) {
+            item(key = "forThisHour") {
+                LiveShelf("For this hour", forThisHour, epg, now, onPlay, onLongPress = sheet, onSeeAll = null)
+            }
+        }
         if (recentLive.isNotEmpty()) {
             item(key = "recentLive") {
                 LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
@@ -250,7 +270,7 @@ fun HomeContent(
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = !bigContinue && hero.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+        val empty = !bigContinue && hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
             trending.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {
