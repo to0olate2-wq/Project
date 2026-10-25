@@ -109,25 +109,66 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Wide backdrops for the Home feature carousel (Xtream movie details), by channel id. */
     val heroArt = androidx.compose.runtime.mutableStateMapOf<String, String>()
+
+    /** The next prayer for Home's greeting (Settings → Prayer times on); work it out off the main thread. */
+    fun nextPrayer(): Pair<Long, app.falak.player.data.PrayerTimes.Prayer>? =
+        runCatching { app.falak.player.PrayerAlerts.nextPrayer(getApplication(), repo) }.getOrNull()
+
+    /** The same films' details (plot, year, length), for the Films page's featured picture. */
+    val heroInfo = androidx.compose.runtime.mutableStateMapOf<String, app.falak.player.data.VodInfo>()
     private var heroJob: Job? = null
 
-    fun loadHeroArt(items: List<Channel>) {
+    /** Films waiting for their details, in the order asked (Home, then Films, ...). */
+    private val heroQueue = LinkedHashMap<String, Channel>()
+
+    /**
+     * Loads the details of these films (and, with [series], these series: a bigger request, so
+     * only for the one on show) in the background, one at a time, in the order asked.
+     */
+    fun loadHeroArt(items: List<Channel>, series: Boolean = false) {
         val p = playlist ?: return
-        val todo = items.filter { it.id.startsWith("m") && it.id !in heroArt }
-        if (todo.isEmpty() || heroJob?.isActive == true) return
+        for (ch in items) {
+            val wanted = ch.id.startsWith("m") || (series && ch.isSeriesFolder)
+            if (wanted && ch.id !in heroArt) heroQueue[ch.id] = ch
+        }
+        if (heroQueue.isEmpty() || heroJob?.isActive == true) return
         heroJob = viewModelScope.launch {
-            for (ch in todo) {
-                val art = try {
-                    repo.loadVodInfo(p, ch.id.removePrefix("m"))?.backdrop.orEmpty()
+            while (heroQueue.isNotEmpty() && playlist?.id == p.id) {
+                val ch = heroQueue.values.first()
+                heroQueue.remove(ch.id)
+                if (ch.id in heroArt) continue
+                val info = try {
+                    if (ch.isSeriesFolder) {
+                        repo.loadSeries(p, ch.seriesId).let { s ->
+                            app.falak.player.data.VodInfo(
+                                plot = s.plot, poster = s.cover, backdrop = s.backdrop, genre = s.genre, cast = s.cast,
+                                director = "", year = s.year, duration = "", rating = s.rating, trailer = "",
+                            )
+                        }
+                    } else {
+                        repo.loadVodInfo(p, ch.id.removePrefix("m"))
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    ""
+                    null
                 }
-                heroArt[ch.id] = art
+                if (info != null) heroInfo[ch.id] = info
+                heroArt[ch.id] = info?.backdrop.orEmpty()
             }
         }
     }
+
+    /**
+     * The Films or Series page's featured picture, drawn behind the top of the page (the bars
+     * too), and how much of it shows as the page scrolls past it (1 = all, 0 = gone).
+     */
+    var marqueeArt by mutableStateOf<MarqueeArt?>(null)
+    var marqueeFade by androidx.compose.runtime.mutableFloatStateOf(1f)
+
+    /** The Films and Series pages' scroll places, kept while the app is open. */
+    private val marqueeStates = HashMap<Section, LazyListState>()
+    fun marqueeStateFor(s: Section): LazyListState = marqueeStates.getOrPut(s) { LazyListState() }
 
     var loading by mutableStateOf(false)
         private set
@@ -534,7 +575,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (playlist?.id != p.id) {
             channels = emptyList()
             index = LibraryIndex.EMPTY
+            heroJob?.cancel()
             heroArt.clear()
+            heroInfo.clear()
+            heroQueue.clear()
+            marqueeStates.clear()
             group = null
             query = ""
             section = Section.HOME

@@ -111,7 +111,8 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.kidsActive, vm.playlist?.id, vm.index) {
         vm.playlist?.let { state.settings.hiddenGroups[it.id] }.orEmpty().toHashSet().apply { addAll(vm.kidsHidden(state.settings, vm.index)) }
     }
-    val group = vm.group
+    // A live group picked on the lists; not the lists' own filters (favorites, all films).
+    val group = vm.group?.takeUnless { it.startsWith("\u0000") }
     val all = vm.channels
     // Only channels that actually have programmes (empty rows were just noise); worked out off
     // the main thread so the guide opens at once even with thousands of channels.

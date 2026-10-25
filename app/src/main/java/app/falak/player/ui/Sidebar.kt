@@ -7,6 +7,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.runtime.rememberCoroutineScope
 import app.falak.player.data.mine
 import app.falak.player.data.AppState
@@ -103,6 +104,9 @@ import coil.compose.AsyncImage
 /** The filter chip that shows only favorites of the open section (not a real group name). */
 const val FAV_FILTER = "\u0000favorites"
 
+/** Every film (or series) of the section as a grid: "All" picked on the Films or Series page. */
+const val ALL_FILTER = "\u0000all"
+
 /** Poster cards show their group, rating and picture quality under the title (Sidebar look). */
 val LocalCardDetails = staticCompositionLocalOf { false }
 
@@ -197,7 +201,9 @@ fun SidebarFrame(
         }
         val openMenu: () -> Unit = { scope.launch { drawer.open() } }
         val main: @Composable (Modifier) -> Unit = { m ->
-            Column(m.padding(horizontal = if (tv) 28.dp else 16.dp)) {
+            // The Films and Series pages' picture goes behind the top bar too.
+            MarqueeStage(vm, m) {
+            Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp)) {
                 SidebarTopBar(
                     query = vm.query,
                     scope = section.label,
@@ -220,6 +226,7 @@ fun SidebarFrame(
                     onVoiceLang = { vm.switchVoiceLanguage() },
                 )
                 body(Modifier.fillMaxSize())
+            }
             }
         }
         CompositionLocalProvider(LocalCardDetails provides true) {
@@ -768,21 +775,29 @@ internal fun CountChip(label: String, count: Int?, selected: Boolean, onLongClic
 // ---------- big "Continue watching" cards ----------
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun ContinueRow(
     items: List<Channel>,
     art: Map<String, String>,
     progress: Map<String, Watch>,
     playlistId: String,
+    title: String = "Continue watching",
+    width: Dp? = null,
     onOpen: (Channel) -> Unit,
 ) {
     val tv = isTv()
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+    val scroller = LocalHomeScroller.current
+    Column(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
         Box(Modifier.padding(start = 4.dp, bottom = 10.dp)) {
-            Text("Continue watching", style = MaterialTheme.typography.titleLarge, color = Paper)
+            Text(title, style = MaterialTheme.typography.titleLarge, color = Paper)
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
-            items(items, key = { "cw:" + it.id }) { ch ->
-                ContinueCard(ch, art[ch.id], progress[progressKey(playlistId, ch.id)], if (tv) 320.dp else 270.dp) { onOpen(ch) }
+        // On a TV page that places whole rows itself (see HomeScroller), the row still scrolls
+        // sideways to the card the remote moves to.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
+                items(items, key = { "cw:" + it.id }) { ch ->
+                    ContinueCard(ch, art[ch.id], progress[progressKey(playlistId, ch.id)], width ?: if (tv) 320.dp else 270.dp) { onOpen(ch) }
+                }
             }
         }
     }

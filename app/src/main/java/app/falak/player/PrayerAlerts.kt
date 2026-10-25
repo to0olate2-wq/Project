@@ -71,7 +71,8 @@ object PrayerAlerts {
         return PrayerTimes.forDay(day, place.lat, place.lon, method, hanafi)
     }
 
-    private fun nextPrayer(context: Context, repo: Repository): Pair<Long, PrayerTimes.Prayer>? {
+    /** The next prayer where the user is (today's, or tomorrow's first): when, and which. */
+    fun nextPrayer(context: Context, repo: Repository): Pair<Long, PrayerTimes.Prayer>? {
         val now = System.currentTimeMillis()
         for (offset in 0..1) {
             val day = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset) }

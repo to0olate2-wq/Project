@@ -53,6 +53,7 @@ import app.falak.player.data.ServiceReport
 import app.falak.player.player.SleepTimer
 import app.falak.player.ui.forceVoiceForTest
 import app.falak.player.ui.LibraryViewModel
+import app.falak.player.ui.ALL_FILTER
 import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
@@ -245,6 +246,8 @@ abstract class ScreenshotBase {
         messy: Boolean = false,
         ramadan: Boolean = false,
     ): Playlist {
+        // Pictures decoded to ordinary bitmaps: the test's canvas can't draw hardware ones.
+        coil.Coil.setImageLoader(coil.ImageLoader.Builder(app).allowHardware(false).build())
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
         m3u.writeText(buildM3u(dir, liveOnly, messy))
@@ -588,6 +591,12 @@ class TvHomeScreens : ScreenshotBase() {
         shoot("tv-02-live")
         vm.section = Section.MOVIES
         shoot("tv-03-films")
+        // "All films": every film as a grid, as the Films page was before.
+        vm.group = ALL_FILTER
+        shoot("tv-03b-films-all")
+        vm.group = null
+        vm.section = Section.SERIES
+        shoot("tv-03c-series")
         vm.openDetails(vm.index.movies.first())
         shoot("tv-13-film-details")
         vm.screen = Screen.GUIDE
@@ -704,6 +713,9 @@ class PhoneSidebarLightScreens : ScreenshotBase() {
     fun phoneSidebarLand() = mainScreens("phone", theme = "light", look = "sidebar", watching = true) { vm, shoot ->
         vm.section = Section.LIVE
         shoot("phone-15-sidebar-live-landscape-light")
+        // A phone on its side has room for the Films page's picture behind the bars.
+        vm.section = Section.MOVIES
+        shoot("phone-15b-sidebar-films-landscape-light")
     }
 }
 
@@ -717,6 +729,8 @@ class PhoneHomeScreens : ScreenshotBase() {
         shoot("phone-01-home")
         vm.section = Section.LIVE
         shoot("phone-02-live")
+        vm.section = Section.MOVIES
+        shoot("phone-04-films")
         vm.openDetails(vm.index.movies.first())
         shoot("phone-03-film-details")
         vm.screen = Screen.PLAYLISTS

@@ -77,9 +77,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 
 /**
- * The start page: the slideshow, then what you watch (Recently watched channels, Continue
- * watching), what's popular and new (Trending now, New films, New series), then your own
- * favorites and lists. The provider's groups are on the Live, Films and Series pages.
+ * The start page: a greeting, the channel you'd most likely watch now and Tonight on your other
+ * channels (or, with no live channels, the slideshow), then Pick up where you left off, what you
+ * watch (For this hour, Recently watched), what's popular and new (Trending now, New films, New
+ * series), then your own favorites and lists. The provider's groups are on the Live, Films and
+ * Series pages.
  */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -90,7 +92,7 @@ fun HomeContent(
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
-    /** Sidebar look: big "Continue watching" cards take the slideshow's place when there are any. */
+    /** Sidebar look (a phone held upright shows Tonight as cards). */
     sidebar: Boolean = false,
 ) {
     val p = vm.playlist ?: return
@@ -155,8 +157,29 @@ fun HomeContent(
         val r = ramadan ?: return@remember null
         if (r.second is app.falak.player.data.Ramadan.Phase.Eid) null else app.falak.player.data.Ramadan.titles(index, r.first, locked)
     }
-    val bigContinue = sidebar && continueWatching.isNotEmpty()
-    LaunchedEffect(hero, bigContinue) { vm.loadHeroArt(if (bigContinue) continueWatching else hero) }
+    // The live card: the channel you usually watch at this time, else the last one you watched,
+    // a favorite, or one with something on (never from an adult group unless it's yours).
+    val guided = remember(index, epg, locked, quarter) {
+        index.live.asSequence()
+            .filter { ok(it) && !ADULT_GROUP.containsMatchIn(it.group) && Epg.current(epg[it.epgKey], now) != null }
+            .take(8)
+            .toList()
+    }
+    val pick = remember(forThisHour, recentLive, favLive, guided, index, locked) {
+        forThisHour.firstOrNull()?.let { NowPick(it, NowReason.HABIT) }
+            ?: recentLive.firstOrNull()?.let { NowPick(it, NowReason.RECENT) }
+            ?: favLive.firstOrNull()?.let { NowPick(it, NowReason.FAVORITE) }
+            ?: guided.firstOrNull()?.let { NowPick(it, NowReason.NONE) }
+            ?: index.live.firstOrNull { ok(it) && !ADULT_GROUP.containsMatchIn(it.group) }?.let { NowPick(it, NowReason.NONE) }
+    }
+    // Tonight: your other channels (favorites, recent, this hour's), then others with a guide.
+    val tonight = remember(pick, favLive, recentLive, forThisHour, guided, epg, quarter) {
+        val skip = pick?.channel?.id
+        val mine = (favLive + recentLive + forThisHour).distinctBy { it.id }.filter { it.id != skip }
+        val (on, off) = mine.partition { Epg.current(epg[it.epgKey], now) != null }
+        (on + off + guided.filter { g -> g.id != skip && mine.none { it.id == g.id } }).take(6)
+    }
+    LaunchedEffect(hero, continueWatching, pick == null) { vm.loadHeroArt((if (pick == null) hero else emptyList()) + continueWatching) }
 
     val openItem: (List<Channel>, Channel) -> Unit = { row, ch ->
         when {
@@ -167,7 +190,8 @@ fun HomeContent(
     }
     val seeAll: (Section, String?, Sort) -> Unit = { section, group, sort ->
         vm.section = section
-        vm.group = group
+        // Films and Series: every title as a grid, not their front page.
+        vm.group = group ?: if (section == Section.MOVIES || section == Section.SERIES) ALL_FILTER else null
         vm.sort = sort
     }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
@@ -183,27 +207,33 @@ fun HomeContent(
         LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
     ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    // TV: the slideshow always fits on screen whole, with the next row's title peeking below it.
-    val heroMax = if (tvHome) (maxHeight - 72.dp).coerceAtLeast(220.dp) else 10_000.dp
+    // TV: the greeting with the live card (or the slideshow) fits on screen whole, with the next
+    // row's title peeking below.
+    val greeting = 62.dp
+    val topMax = (maxHeight - greeting - (if (tvHome) 72.dp else 24.dp)).coerceAtLeast(220.dp)
     LazyColumn(
         Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
         state = vm.homeState,
         contentPadding = PaddingValues(bottom = 40.dp),
     ) {
-        if (bigContinue) {
-            item(key = "continueBig") {
-                ContinueRow(continueWatching, vm.heroArt, state.progress, me) { ch -> onPlay(listOf(ch), ch) }
-            }
-        }
-        if (hero.isNotEmpty() && !bigContinue) {
-            item(key = "hero") {
-                FeatureCarousel(
-                    items = hero,
-                    art = vm.heroArt,
-                    heightLimit = heroMax,
-                    onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
-                    onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
-                )
+        if (pick != null || hero.isNotEmpty()) {
+            item(key = "now") {
+                Column(Modifier.fillMaxWidth().pinToTop().padding(top = 4.dp)) {
+                    HomeGreeting(vm, state, now)
+                    Spacer(Modifier.height(12.dp))
+                    if (pick != null) {
+                        NowRow(vm, pick, tonight, epg, now, heightLimit = topMax, cards = sidebar && !tvHome, onPlay = onPlay, onLongPress = sheet)
+                    } else {
+                        FeatureCarousel(
+                            items = hero,
+                            art = vm.heroArt,
+                            heightLimit = if (tvHome) topMax else 10_000.dp,
+                            onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
+                            onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
+                            pin = false,
+                        )
+                    }
+                }
             }
         }
         if (ramadan != null) {
@@ -217,6 +247,18 @@ fun HomeContent(
                 }
             }
         }
+        // Films and episodes you started.
+        if (continueWatching.isNotEmpty()) {
+            item(key = "continue") {
+                Box(Modifier.padding(top = 16.dp)) {
+                    ContinueRow(
+                        continueWatching, vm.heroArt, state.progress, me,
+                        title = "Pick up where you left off",
+                        width = if (tvHome) 220.dp else 180.dp,
+                    ) { ch -> onPlay(listOf(ch), ch) }
+                }
+            }
+        }
         // What you watch.
         if (forThisHour.isNotEmpty()) {
             item(key = "forThisHour") {
@@ -226,13 +268,6 @@ fun HomeContent(
         if (recentLive.isNotEmpty()) {
             item(key = "recentLive") {
                 LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
-            }
-        }
-        if (continueWatching.isNotEmpty() && !bigContinue) {
-            item(key = "continue") {
-                Shelf("Continue watching") {
-                    items(continueWatching, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onPlay(listOf(ch), ch) }) }
-                }
             }
         }
         // What's popular and new.
@@ -287,7 +322,7 @@ fun HomeContent(
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = !bigContinue && hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+        val empty = pick == null && hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
             trending.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {
@@ -358,12 +393,14 @@ private const val SLIDE_MS = 7_000
  * swipeable. The buttons stay put while slides change, so TV-remote focus is never lost.
  */
 @Composable
-private fun FeatureCarousel(
+internal fun FeatureCarousel(
     items: List<Channel>,
     art: Map<String, String>,
     heightLimit: androidx.compose.ui.unit.Dp,
     onPrimary: (Channel) -> Unit,
     onDetails: (Channel) -> Unit,
+    /** Scrolls itself to the top of a TV page when it takes focus (off when inside a bigger block that does). */
+    pin: Boolean = true,
 ) {
     val size = items.size
     val start = remember(size) { if (size <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % size } }
@@ -383,7 +420,7 @@ private fun FeatureCarousel(
     val current = items[(pager.currentPage % size.coerceAtLeast(1)).coerceIn(0, items.lastIndex)]
     val context = LocalContext.current
 
-    BoxWithConstraints(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().then(if (pin) Modifier.pinToTop() else Modifier).padding(top = 6.dp)) {
         // Phone layout: a tall poster card; TV (and wide tablets): a wide cinema banner.
         val compact = !tv && maxWidth < 600.dp
         val height = (if (compact) (maxWidth * 1.15f).coerceIn(320.dp, 560.dp) else (maxWidth * 0.52f).coerceIn(250.dp, 440.dp))
