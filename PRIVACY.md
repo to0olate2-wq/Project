@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 25 October 2026 (version 7.2)_
+_Last updated: 25 October 2026 (version 7.3)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -59,6 +59,11 @@ The app only makes network connections needed for what you ask it to do:
   to find and download subtitles. See the OpenSubtitles privacy policy.
 - **Trailers.** If you open a trailer, it opens in YouTube or your browser, under their own
   policies.
+- **Auto captions** (off unless you turn them on for a channel). The channel's sound is turned
+  into captions on your device, as it plays; nothing you watch or hear is sent anywhere. The first
+  time, the app downloads the speech model it needs (about 71 MB, the Kroko-ASR model by Banafo)
+  from Hugging Face (huggingface.co), which, like any website, receives your IP address. You can
+  remove it in Settings → Sound & subtitles.
 - **Your own devices** (only while you use it). When you open *Your devices* and start
   sharing, the app serves a page on your home network, protected by a 6-digit code shown on
   screen, so your phone or computer can manage playlists or copy them to another device running

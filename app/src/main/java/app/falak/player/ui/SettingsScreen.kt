@@ -110,6 +110,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var guideSources by remember { mutableStateOf(false) }
     var guideShift by remember { mutableStateOf(false) }
     var editSubs by remember { mutableStateOf(false) }
+    var removeSpeech by remember { mutableStateOf(false) }
     var addAlertWord by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
@@ -568,6 +569,34 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 else "On" + if (s.osUser.isNotBlank()) " · signed in as ${s.osUser}" else " · not signed in (fewer downloads per day)",
             ) { editSubs = true }
         }
+        // Auto captions: the speech model's state; turned on per channel from the player's Subtitles button.
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            LaunchedEffect(Unit) { app.falak.player.player.SpeechModel.refresh(context) }
+            val speech by app.falak.player.player.SpeechModel.state.collectAsState()
+            val model = app.falak.player.player.SpeechModel
+            ClickRow(
+                "Auto captions (English · beta)",
+                when (val st = speech) {
+                    is app.falak.player.player.SpeechModel.State.Ready ->
+                        "Ready on this device (${model.SIZE_LABEL}). Turn them on for a live channel with its Subtitles button; " +
+                            "channels with captions of their own keep those. Select to remove the speech model. ${model.CREDIT}"
+                    is app.falak.player.player.SpeechModel.State.Downloading ->
+                        "Downloading the speech model… ${(st.fraction * 100).toInt()}%"
+                    is app.falak.player.player.SpeechModel.State.Failed ->
+                        "Couldn't download the speech model: ${st.message}. Select to try again."
+                    else ->
+                        "Captions for English channels that have none, made on this device: nothing is sent anywhere. " +
+                            "Turn them on with the Subtitles button on a live channel. Select to download the speech model now (${model.SIZE_LABEL})."
+                },
+            ) {
+                when (speech) {
+                    is app.falak.player.player.SpeechModel.State.Ready -> removeSpeech = true
+                    is app.falak.player.player.SpeechModel.State.Downloading -> Unit
+                    else -> model.download(context, (context.applicationContext as app.falak.player.FalakApp).repo.http)
+                }
+            }
+        }
         }
 
         SettingsPage.REMINDERS -> {
@@ -877,7 +906,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)
                 Text("The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 13.sp, color = Muted)
-                Text("Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL).", fontSize = 12.sp, lineHeight = 17.sp, color = Faint)
+                Text(
+                    "Uses ExoPlayer (Apache 2.0), LibVLC and FFmpeg (LGPL). Auto captions use sherpa-onnx (Apache 2.0) " +
+                        "and, once downloaded, the Kroko-ASR speech model by Banafo (CC BY-SA 4.0).",
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = Faint,
+                )
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "The Player doesn't include any channels or content: it plays the playlists you add. " +
@@ -925,6 +960,21 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
     if (addAlertWord) {
         AlertWordDialog(onDismiss = { addAlertWord = false }) { w -> if (!vm.hasAlertWord(w)) vm.toggleAlertWord(w) }
+    }
+    if (removeSpeech) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = { removeSpeech = false },
+            title = { Text("Remove the speech model?") },
+            text = { Text("Auto captions stop until it's downloaded again (${app.falak.player.player.SpeechModel.SIZE_LABEL}).") },
+            confirmButton = {
+                TextButton(onClick = {
+                    removeSpeech = false
+                    app.falak.player.player.SpeechModel.remove(context)
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removeSpeech = false }) { Text("Cancel") } },
+        )
     }
     if (editSubs) {
         var key by remember { mutableStateOf(s.osApiKey) }

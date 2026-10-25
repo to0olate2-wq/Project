@@ -123,6 +123,8 @@ abstract class ScreenshotBase {
         alert: Boolean = false,
         /** "offer": "From the start" for the show on now; "replay": watching it from the start. */
         startOver: String? = null,
+        /** Auto captions showing these words. */
+        autoCaption: String? = null,
         block: ((String) -> Unit) -> Unit,
     ) {
         seed(if (tv) "tv" else "phone")
@@ -154,6 +156,7 @@ abstract class ScreenshotBase {
         if (ambient) activity.previewAmbient()
         if (prayer) activity.previewPrayer()
         if (startOver != null) activity.previewStartOver(queue[2], replaying = startOver == "replay")
+        if (autoCaption != null) activity.previewAutoCaptions(autoCaption)
         block { name -> capture(activity, name) }
     }
 
@@ -1022,8 +1025,8 @@ private fun endingSoon(): Account {
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TvSubscriptionScreens : ScreenshotBase() {
-    // The reminder over the lists, then the account in Settings.
-    @Test @Config(qualifiers = TV)
+    // The reminder over the lists, then the account in Settings (tall, so the whole page shows).
+    @Test @Config(qualifiers = TV_TALL)
     fun tvSubscription() = mainScreens("tv", account = endingSoon()) { vm, shoot ->
         shoot("tv-44-subscription-ending")
         vm.screen = Screen.SETTINGS
@@ -1039,4 +1042,26 @@ class PhoneSubscriptionScreens : ScreenshotBase() {
     fun phoneSubscription() = mainScreens("phone", account = endingSoon()) { _, shoot ->
         shoot("phone-31-subscription-ending")
     }
+}
+
+// ---- 7.3: auto captions ----
+
+private val captionWords = app.falak.player.player.CaptionText.rollUp(
+    "Good evening, and welcome. We're going live now to the stadium, where the teams are coming out for the second half.",
+    42,
+    2,
+)!!
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvAutoCaptionsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvAutoCaptions() = player(tv = true, live = true, autoCaption = captionWords) { shoot -> shoot("tv-46-auto-captions") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneAutoCaptionsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneAutoCaptions() = player(tv = false, live = true, autoCaption = captionWords) { shoot -> shoot("phone-32-auto-captions") }
 }

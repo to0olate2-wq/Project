@@ -19,3 +19,7 @@
 # LibVLC: the native library creates and calls these Java classes by name.
 -keep class org.videolan.libvlc.** { *; }
 -dontwarn org.videolan.**
+
+# sherpa-onnx (auto captions): its native code reads these classes' fields by name.
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-dontwarn com.k2fsa.sherpa.onnx.**

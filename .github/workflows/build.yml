@@ -176,6 +176,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Check the speech model download
+        # Auto captions download this model on the device: is it there, whole, with the SHA-256 the app checks?
+        continue-on-error: true
+        run: |
+          base=https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06/resolve/main
+          for f in tokens.txt joiner.onnx decoder.onnx encoder.onnx; do
+            sha=$(curl -sI "$base/$f" | tr -d '\r' | awk 'tolower($1)=="x-linked-etag:" {print $2}' | tr -d '"')
+            code=$(curl -sL -o "/tmp/$f" -w '%{http_code}' "$base/$f")
+            size=$(stat -c %s "/tmp/$f" 2>/dev/null || echo 0)
+            got=$(sha256sum "/tmp/$f" | cut -d' ' -f1)
+            if [ -z "$sha" ]; then check="no SHA-256 given (not checked)"; elif [ "$sha" = "$got" ]; then check="SHA-256 matches"; else check="SHA-256 MISMATCH"; fi
+            echo "::notice::Speech model $f: HTTP $code, $size bytes, $check"
+            rm -f "/tmp/$f"
+          done
+
       - name: Draw the screens
         continue-on-error: true
         # A full run takes about 10 minutes; a stuck test is cut off here (the log's tail says which).

@@ -41,6 +41,8 @@ import app.falak.player.ProgramAlerts
 import app.falak.player.data.ProgramAlert
 import app.falak.player.player.TrackMatch
 import app.falak.player.player.TrackMemory
+import app.falak.player.player.LiveCaptions
+import app.falak.player.player.SpeechModel
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.res.ResourcesCompat
@@ -249,6 +251,22 @@ class PlayerActivity : ComponentActivity() {
     /** Handing the stream to another app: not a reason to listen on. */
     private var handingOff = false
 
+    // ---- Auto captions: English speech made into captions on this device ----
+
+    /** The speech engine (made when a channel with auto captions plays; let go when the player stops). */
+    private var liveCaptions: LiveCaptions? = null
+
+    /** The ExoPlayer was built hearing the sound for auto captions. */
+    private var exoCaptions = false
+
+    /** Auto captions are running for what's playing. */
+    private var autoCapsOn = false
+
+    /** A channel waiting for the speech model to arrive before its auto captions start. */
+    private var autoCapsPending: String? = null
+    private lateinit var autoCapsView: androidx.media3.ui.SubtitleView
+    private val clearAutoCaps = Runnable { if (::autoCapsView.isInitialized) autoCapsView.setCues(emptyList()) }
+
     // ---- audio and subtitle choices remembered per channel, film or series ----
     private val trackMemory by lazy { TrackMemory(this) }
     private var audioMemoryDone = false
@@ -288,6 +306,13 @@ class PlayerActivity : ComponentActivity() {
         aspect = repo.state.value.settings.aspect.coerceIn(0, 2)
         playerView.resizeMode = resizeModes[aspect]
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Auto captions show here: over the picture and under the controls, like the stream's own.
+        autoCapsView = androidx.media3.ui.SubtitleView(this)
+        (playerView.overlayFrameLayout ?: root).addView(
+            autoCapsView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        lifecycleScope.launch { SpeechModel.state.collect { onSpeechModel(it) } }
 
         bannerView = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -641,6 +666,9 @@ class PlayerActivity : ComponentActivity() {
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
+        // The speech engine's memory goes back too (it loads again when captions are next needed).
+        liveCaptions?.release()
+        liveCaptions = null
         // The screen goes back to its own refresh rate while the player isn't showing.
         if (isTvDevice) frameMatch.start(false)
         // Closing the picture-in-picture window stops the activity: finish so it doesn't linger.
@@ -681,15 +709,15 @@ class PlayerActivity : ComponentActivity() {
     private val isAutomatic: Boolean
         get() = sessionEngine == null && Engine.of(repo.state.value.settings.player) == null
 
-    private fun startEngine(e: Engine) {
+    private fun startEngine(e: Engine, captions: Boolean = false) {
         releaseEngine()
         engine = e
-        if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT)
+        if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT, captions = captions)
         setPillLabel(engineButton, e.short)
         applyDualVolume()
     }
 
-    private fun createExo(software: Boolean) {
+    private fun createExo(software: Boolean, captions: Boolean = false) {
         val s = repo.state.value.settings
         val audio = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
@@ -701,6 +729,8 @@ class PlayerActivity : ComponentActivity() {
         // Night sound stays in the chain whenever it's not off, so it can come on at sunset mid-film.
         val night = if (s.nightSound != "off") app.falak.player.player.NightSound().also { it.enabled = nightNow() } else null
         nightSound = night
+        // Auto captions hear the sound through a tap at the start of the chain.
+        val tap = if (captions) captionsEngine().newTap() else null
         val renderers = object : DefaultRenderersFactory(this) {
             // Volume levelling and night sound run inside the audio output, for every decoder (hardware or FFmpeg).
             override fun buildAudioSink(
@@ -709,12 +739,22 @@ class PlayerActivity : ComponentActivity() {
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink? {
                 val processors = listOfNotNull<androidx.media3.common.audio.AudioProcessor>(
+                    tap,
                     if (level) app.falak.player.player.VolumeLeveler() else null,
                     night,
                 )
                 if (processors.isEmpty()) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
-                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false) // both work on 16-bit sound
+                // With auto captions the sound is always decoded here, never passed on encoded to a
+                // sound system (Dolby to a soundbar), so the captions can hear it.
+                @Suppress("DEPRECATION")
+                val sink = if (tap != null) {
+                    androidx.media3.exoplayer.audio.DefaultAudioSink.Builder()
+                        .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                } else {
+                    androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                }
+                return sink
+                    .setEnableFloatOutput(false) // all of them work on 16-bit sound
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(processors.toTypedArray())
                     .build()
@@ -766,6 +806,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.player = ZapPlayer(p)
         applySubtitleStyle()
         exo = p
+        exoCaptions = captions
     }
 
     private fun createVlc() {
@@ -801,6 +842,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** Releases whichever engine is running (keeps the activity's views). */
     private fun releaseEngine() {
+        stopAutoCaptions()
+        exoCaptions = false
         playerView.player = null
         exo?.let {
             it.removeListener(listener)
@@ -838,7 +881,7 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
         sessionEngine = e
         retried = false
-        startEngine(e)
+        startEngine(e, captions = e != Engine.VLC && autoCaptionsChosen(ch))
         playCurrent(showInfo = false)
         toast("Playing with ${e.short}")
     }
@@ -863,7 +906,9 @@ class PlayerActivity : ComponentActivity() {
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val ch = queue.getOrNull(index) ?: return
         val wanted = desiredEngine(ch)
-        if (player == null || wanted != engine) startEngine(wanted)
+        // Auto captions chosen for this channel: the player is built hearing its sound.
+        val captions = wanted != Engine.VLC && dual == null && autoCaptionsChosen(ch)
+        if (player == null || wanted != engine || captions != exoCaptions) startEngine(wanted, captions)
         // A new stream: its data rate is measured afresh.
         rateSamples.clear()
         rateBps = 0
@@ -932,6 +977,7 @@ class PlayerActivity : ComponentActivity() {
         if (!ch.id.startsWith("cu:")) liveBeforeStartOver = null
         liveButton.visibility = if (liveBeforeStartOver != null) View.VISIBLE else View.GONE
         offerStartOver(ch)
+        if (captions) startAutoCaptions() else stopAutoCaptions()
         // Two minutes on a live channel count towards Home's "For this hour".
         handler.removeCallbacks(noteHabit)
         if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) handler.postDelayed(noteHabit, 120_000)
@@ -1599,6 +1645,8 @@ class PlayerActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
         playerView.useController = !isInPictureInPictureMode
         updateTimeViews()
+        // Captions are too small to read in the little window: they pause meanwhile.
+        if (isInPictureInPictureMode) stopAutoCaptions() else resumeAutoCaptions()
         if (isInPictureInPictureMode) {
             if (browserOpen) {
                 browserOpen = false
@@ -1718,7 +1766,8 @@ class PlayerActivity : ComponentActivity() {
         val out = ArrayList<TrackOption>()
         if (type == C.TRACK_TYPE_TEXT) {
             val anyOn = p.currentTracks.groups.any { it.type == type && it.isSelected }
-            out += TrackOption("Off", !anyOn, "off") {
+            out += TrackOption("Off", !anyOn && !autoCapsOn, "off") {
+                stopAutoCaptions()
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .clearOverridesOfType(type)
                     .setTrackTypeDisabled(type, true)
@@ -1752,6 +1801,15 @@ class PlayerActivity : ComponentActivity() {
                     wantVlcSubtitles = true
                     switchEngine(Engine.VLC)
                 }
+            }
+            // Auto captions: only for live channels without captions of their own.
+            if (autoCaptionsOffered() && countTracks(C.TRACK_TYPE_TEXT) == 0) {
+                val ready = SpeechModel.isReady(this)
+                out += TrackOption(
+                    "Auto captions (English · beta)" + if (ready) "" else "  · ${SpeechModel.SIZE_LABEL} download",
+                    autoCapsOn,
+                    if (ready) "auto" else null,
+                ) { chooseAutoCaptions() }
             }
         }
         return out
@@ -1895,7 +1953,9 @@ class PlayerActivity : ComponentActivity() {
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
         setPillLabel(audioButton, "Audio ($audio)")
-        ccButton.visibility = if (text > 0 || vod) View.VISIBLE else View.GONE
+        ccButton.visibility = if (text > 0 || vod || autoCaptionsOffered()) View.VISIBLE else View.GONE
+        // The channel turned out to have captions of its own: never auto captions on top of them.
+        if (autoCapsOn && text > 0) providerCaptionsTakeOver()
     }
 
     // ---- online subtitles (OpenSubtitles.com) ----
@@ -2497,9 +2557,10 @@ class PlayerActivity : ComponentActivity() {
 
     /** ExoPlayer's subtitles in the look chosen in Settings (unchanged when nothing was chosen). */
     private fun applySubtitleStyle() {
-        val sv = playerView.subtitleView ?: return
         val s = repo.state.value.settings
-        SubtitleStyle.applyTo(sv, s.subSize, s.subColor, s.subEdge)
+        playerView.subtitleView?.let { SubtitleStyle.applyTo(it, s.subSize, s.subColor, s.subEdge) }
+        // Auto captions look like the stream's own.
+        if (::autoCapsView.isInitialized) SubtitleStyle.applyTo(autoCapsView, s.subSize, s.subColor, s.subEdge)
     }
 
     // ---- night sound ----
@@ -2967,6 +3028,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun startDual(list: List<Channel>, at: Int) {
         if (dual != null) return
+        // One picture's captions over two pictures would only confuse: off in two-screen mode.
+        stopAutoCaptions()
         val d = DualPane(
             this,
             repo.http,
@@ -3358,6 +3421,163 @@ class PlayerActivity : ComponentActivity() {
             val dir = filesDir
             Thread { Habits.record(dir, key, ch.id) }.start()
         }
+    }
+
+    // ---- Auto captions ----
+
+    /** Auto captions can be offered for what's playing: a live channel, in ExoPlayer, one picture. */
+    private fun autoCaptionsOffered(): Boolean {
+        val ch = queue.getOrNull(index) ?: return false
+        return ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && exo != null && dual == null
+    }
+
+    /** Auto captions were chosen for [ch] (and the speech model is here). */
+    private fun autoCaptionsChosen(ch: Channel): Boolean {
+        if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) return false
+        val key = trackKey() ?: return false
+        return trackMemory.get(key)?.text == "auto" && SpeechModel.isReady(this)
+    }
+
+    /** The speech engine, made when first needed. */
+    private fun captionsEngine(): LiveCaptions =
+        liveCaptions ?: LiveCaptions(SpeechModel.dir(this), { showAutoCaption(it) }, { onAutoCaptionsProblem(it) })
+            .also { liveCaptions = it }
+
+    private fun startAutoCaptions() {
+        if (dual != null || inPip || !exoCaptions) return
+        // Captions of the channel's own already found: those, never auto captions.
+        if (countTracks(C.TRACK_TYPE_TEXT) > 0) {
+            providerCaptionsTakeOver()
+            return
+        }
+        captionsEngine().start()
+        autoCapsOn = true
+    }
+
+    private fun stopAutoCaptions() {
+        autoCapsOn = false
+        liveCaptions?.stop()
+        handler.removeCallbacks(clearAutoCaps)
+        if (::autoCapsView.isInitialized) autoCapsView.setCues(emptyList())
+    }
+
+    /** Back from the little window: captions again, if this channel has them on. */
+    private fun resumeAutoCaptions() {
+        val ch = queue.getOrNull(index) ?: return
+        if (!autoCapsOn && exoCaptions && autoCaptionsChosen(ch)) startAutoCaptions()
+    }
+
+    /** Subtitles → Auto captions: on for this channel (after the one-time download). */
+    private fun chooseAutoCaptions() {
+        val key = trackKey() ?: return
+        if (!SpeechModel.isReady(this)) {
+            askForSpeechModel(key)
+            return
+        }
+        trackMemory.setText(key, "auto")
+        // English only: say so when the stream says its sound is in another language.
+        val lang = exo?.currentTracks?.groups
+            ?.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language } }
+            ?.lowercase()
+        if (lang != null && lang != "und" && !lang.startsWith("en")) {
+            toast("Auto captions understand English only")
+        }
+        retried = false
+        playCurrent(showInfo = false)
+    }
+
+    private fun askForSpeechModel(key: String) {
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Auto captions (English)")
+            .setMessage(
+                "Captions for what's said on English channels, made on this device as the channel plays " +
+                    "(about a second behind the speech). Nothing you watch or hear is sent anywhere.\n\n" +
+                    "The first time, the speech model needs a one-time download (${SpeechModel.SIZE_LABEL}). " +
+                    "Channels with captions of their own keep those.",
+            )
+            .setPositiveButton("Download") { _, _ ->
+                autoCapsPending = key
+                SpeechModel.download(this, repo.http)
+                toast("Downloading the speech model. Keep watching: captions start when it's ready")
+            }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
+    /** The speech model arrived (or couldn't): start the captions that were waiting for it. */
+    private fun onSpeechModel(state: SpeechModel.State) {
+        val key = autoCapsPending ?: return
+        when (state) {
+            is SpeechModel.State.Ready -> {
+                autoCapsPending = null
+                trackMemory.setText(key, "auto")
+                if (key == trackKey() && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !isFinishing) {
+                    retried = false
+                    playCurrent(showInfo = false)
+                    toast("Auto captions are on for this channel")
+                }
+            }
+            is SpeechModel.State.Failed -> {
+                autoCapsPending = null
+                toast("Couldn't download the speech model: ${state.message}")
+            }
+            else -> Unit
+        }
+    }
+
+    /** The channel has captions of its own: those are shown, and auto captions stop. */
+    private fun providerCaptionsTakeOver() {
+        stopAutoCaptions()
+        val p = exo
+        val group = p?.currentTracks?.groups?.firstOrNull { g ->
+            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { g.isTrackSupported(it) && isReal(g.getTrackFormat(it)) }
+        }
+        if (p != null && group != null) {
+            val i = (0 until group.length).first { group.isTrackSupported(it) && isReal(group.getTrackFormat(it)) }
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                .build()
+            val f = group.getTrackFormat(i)
+            rememberTrack(C.TRACK_TYPE_TEXT, TrackMatch.valueFor(f.language, trackLabel(f)))
+            watchCaptions()
+            toast("This channel has its own captions, so those are shown instead of auto captions")
+        } else {
+            // Teletext only (VLC draws it): no auto captions here from now on either.
+            rememberTrack(C.TRACK_TYPE_TEXT, "off")
+            toast("This channel has its own subtitles: pick them with the Subtitles button")
+        }
+    }
+
+    /** Lines from the speech engine (null: clear). They fade after 6 seconds without new words. */
+    private fun showAutoCaption(text: String?) {
+        if (!::autoCapsView.isInitialized) return
+        handler.removeCallbacks(clearAutoCaps)
+        if (text == null || !autoCapsOn) {
+            autoCapsView.setCues(emptyList())
+            return
+        }
+        autoCapsView.setCues(listOf(androidx.media3.common.text.Cue.Builder().setText(text).build()))
+        handler.postDelayed(clearAutoCaps, 6_000)
+    }
+
+    private fun onAutoCaptionsProblem(problem: LiveCaptions.Problem) {
+        stopAutoCaptions()
+        toast(
+            when (problem) {
+                LiveCaptions.Problem.UNAVAILABLE -> "Auto captions can't run on this device"
+                LiveCaptions.Problem.TOO_SLOW -> "This device can't keep up with auto captions on this channel, so they're off for now"
+            },
+        )
+    }
+
+    /** Screenshot tests: auto captions over the picture. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewAutoCaptions(text: String) {
+        playerView.hideController()
+        autoCapsOn = true
+        showAutoCaption(text)
     }
 
     // ---- Listen mode ----
