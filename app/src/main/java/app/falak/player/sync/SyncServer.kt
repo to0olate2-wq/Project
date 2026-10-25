@@ -21,6 +21,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -90,7 +91,18 @@ class SyncServer(
 
     // ---------- HTTP ----------
 
-    private class Request(val method: String, val path: String, val query: Map<String, String>, val headers: Map<String, String>, val body: ByteArray)
+    private class Request(
+        val method: String,
+        val path: String,
+        val query: Map<String, String>,
+        val headers: Map<String, String>,
+        val body: ByteArray,
+        /** An upload's body, still unread: its handler writes it straight to storage ([length] bytes). */
+        val input: InputStream? = null,
+        val length: Long = 0,
+        /** The body was over [MAX_BODY] and wasn't read. */
+        val tooBig: Boolean = false,
+    )
 
     private fun serve(socket: Socket) {
         socket.use { s ->
@@ -102,6 +114,8 @@ class SyncServer(
                 route(req, out, s.inetAddress)
             } catch (e: Exception) {
                 // one bad request never stops the server
+            } catch (e: OutOfMemoryError) {
+                // nor crashes the app
             }
         }
     }
@@ -117,21 +131,24 @@ class SyncServer(
             val i = h.indexOf(':')
             if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
-        val length = headers["content-length"]?.toIntOrNull() ?: 0
-        if (length > MAX_BODY) throw IOException("Too big")
-        val body = ByteArray(length)
-        var read = 0
-        while (read < length) {
-            val n = input.read(body, read, length - read)
-            if (n < 0) break
-            read += n
-        }
+        val method = parts[0].uppercase()
         val target = parts[1]
         val path = target.substringBefore('?')
         val query = target.substringAfter('?', "").split('&').filter { it.contains('=') }.associate {
             URLDecoder.decode(it.substringBefore('='), "UTF-8") to URLDecoder.decode(it.substringAfter('='), "UTF-8")
         }
-        return Request(parts[0].uppercase(), path, query, headers, body)
+        val length = headers["content-length"]?.toLongOrNull() ?: 0L
+        // An M3U file goes to storage as it arrives (see uploadPlaylist), never whole into memory.
+        if (method == "POST" && path == UPLOAD_PATH) return Request(method, path, query, headers, ByteArray(0), input, length)
+        if (length > MAX_BODY) return Request(method, path, query, headers, ByteArray(0), tooBig = true)
+        val body = ByteArray(length.toInt())
+        var read = 0
+        while (read < body.size) {
+            val n = input.read(body, read, body.size - read)
+            if (n < 0) break
+            read += n
+        }
+        return Request(method, path, query, headers, body)
     }
 
     private fun readLine(input: InputStream): String? {
@@ -148,7 +165,8 @@ class SyncServer(
 
     private fun send(out: OutputStream, status: Int, type: String, body: ByteArray, extra: Map<String, String> = emptyMap()) {
         val reason = when (status) {
-            200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"; 429 -> "Too Many Requests"
+            200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"; 413 -> "Payload Too Large"
+            429 -> "Too Many Requests"; 507 -> "Insufficient Storage"
             else -> "Error"
         }
         val head = StringBuilder()
@@ -193,6 +211,7 @@ class SyncServer(
             return
         }
         val who = from.hostAddress ?: "another device"
+        if (req.tooBig) return error(out, 413, "That's too big to send this way")
         when ("${req.method} ${req.path}") {
             "GET /api/playlists" -> sendJson(out, 200, playlistsJson())
             "GET /api/bundle" -> {
@@ -217,6 +236,7 @@ class SyncServer(
                 sendJson(out, 200, buildJsonObject { put("message", result.describe()) }.toString())
             }
             "POST /api/playlists" -> addPlaylist(req, out, who)
+            "POST $UPLOAD_PATH" -> uploadPlaylist(req, out, who)
             "POST /api/link" -> {
                 // Another device running The Player links with this one: from now on they sync by themselves.
                 val o = body(req) ?: return error(out, 400, "Bad request")
@@ -263,15 +283,73 @@ class SyncServer(
         }
     }
 
+    /** The name given, or the next free "Playlist 3". */
+    private fun playlistName(given: String?): String = given.orEmpty().trim().ifBlank {
+        val existing = repo.state.value.playlists
+        var n = existing.size + 1
+        while (existing.any { it.name == "Playlist $n" }) n++
+        "Playlist $n"
+    }
+
+    /**
+     * An M3U file from the page, sent as it is and written to storage as it arrives: no copy in
+     * memory and no size limit but the free space, so big playlists go through on TV boxes too.
+     */
+    private fun uploadPlaylist(req: Request, out: OutputStream, who: String) {
+        val input = req.input ?: return error(out, 400, "Bad request")
+        val length = req.length
+        if (length <= 0L) return error(out, 400, "Choose an M3U file")
+        val id = UUID.randomUUID().toString()
+        val file = repo.importedM3u(id)
+        val free = file.parentFile?.usableSpace ?: Long.MAX_VALUE
+        if (free < length + SPARE_SPACE) {
+            return error(out, 507, "There isn't enough free space on the TV for this file (${length / (1024 * 1024)} MB)")
+        }
+        try {
+            file.outputStream().buffered(256 * 1024).use { o ->
+                val buf = ByteArray(64 * 1024)
+                var left = length
+                while (left > 0L) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) throw IOException("The file didn't arrive whole. Try again.")
+                    o.write(buf, 0, n)
+                    left -= n
+                }
+            }
+        } catch (e: IOException) {
+            file.delete()
+            return error(out, 400, "The file didn't arrive whole. Try again.")
+        }
+        if (!looksLikeM3u(file)) {
+            file.delete()
+            return error(out, 400, "That file isn't an M3U playlist")
+        }
+        val name = playlistName(req.query["name"])
+        val p = Playlist(id, name, SourceType.M3U_FILE, file.absolutePath, epgUrl = req.query["epg"].orEmpty().trim())
+        repo.update { s -> s.copy(playlists = s.playlists + p, lastPlaylistId = s.lastPlaylistId ?: p.id) }
+        onEvent("Added “$name” from $who")
+        sendJson(out, 200, playlistsJson())
+    }
+
+    /** Starts like an M3U playlist, or has a channel line near the start (the first megabyte). */
+    private fun looksLikeM3u(file: File): Boolean {
+        val head = ByteArray(1024 * 1024)
+        var got = 0
+        file.inputStream().use { i ->
+            while (got < head.size) {
+                val n = i.read(head, got, head.size - got)
+                if (n < 0) break
+                got += n
+            }
+        }
+        val text = String(head, 0, got, Charsets.UTF_8)
+        return text.removePrefix("\uFEFF").trimStart().startsWith("#EXTM3U", true) || text.contains("#EXTINF", true)
+    }
+
     private fun addPlaylist(req: Request, out: OutputStream, who: String) {
         val o = body(req) ?: return error(out, 400, "Bad request")
         val id = UUID.randomUUID().toString()
-        val existing = repo.state.value.playlists
-        val name = o.str("name").trim().ifBlank {
-            var n = existing.size + 1
-            while (existing.any { it.name == "Playlist $n" }) n++
-            "Playlist $n"
-        }
+        val name = playlistName(o.str("name"))
         val epg = o.str("epgUrl").trim()
         val p = when (o.str("type")) {
             "m3u" -> {
@@ -382,6 +460,10 @@ class SyncServer(
     companion object {
         const val PORT = 8765
         private const val MAX_BODY = 40 * 1024 * 1024
+        /** Where the page sends an M3U file as it is (see uploadPlaylist). */
+        private const val UPLOAD_PATH = "/api/playlists/upload"
+        /** Room left for the app after an upload. */
+        private const val SPARE_SPACE = 50L * 1024 * 1024
         private const val MAX_WRONG = 20
 
         /** This device's address on the home network (Wi-Fi or Ethernet), e.g. 192.168.1.23. */

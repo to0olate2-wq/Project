@@ -63,18 +63,36 @@ class XtreamApi(
         ""
     }
 
-    /** Every live channel, film and series. [reuse] keeps identical entries from a previous load. */
-    fun loadAll(reuse: Reuse = Reuse.NONE): List<Channel> {
+    /**
+     * Every live channel, film and series. [reuse] keeps identical entries from a previous load;
+     * [progress] hears how far it got. A list that fails part-way is read again (see [Downloads]).
+     */
+    fun loadAll(reuse: Reuse = Reuse.NONE, progress: ((LoadProgress) -> Unit)? = null): List<Channel> {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
 
+        fun add(ch: Channel) {
+            out += ch
+            if (progress != null && out.size % 1000 == 0) progress(LoadProgress(out.size))
+        }
+
+        /** One list (live channels, films or series), read again from the start if it fails part-way. */
+        fun section(action: String, onItem: (Map<String, String>) -> Unit) {
+            val mark = out.size
+            Downloads.withRetries(onRetry = { attempt ->
+                // Drop what the failed try added: the next one brings it all again.
+                while (out.size > mark) ids.remove(out.removeAt(out.size - 1).id)
+                progress?.invoke(LoadProgress(out.size, attempt))
+            }) { forEachObject(action, onItem) }
+        }
+
         val liveCats = categories("get_live_categories")
         val livePrefix = prefix("live")
-        forEachObject("get_live_streams") { o ->
+        section("get_live_streams") { o ->
             val sid = o["stream_id"].orEmpty()
             val id = "l$sid"
-            if (sid.isEmpty() || !ids.add(id)) return@forEachObject
-            out += reuse.of(Channel(
+            if (sid.isEmpty() || !ids.add(id)) return@section
+            add(reuse.of(Channel(
                 id = id,
                 name = o["name"].orEmpty().ifBlank { "Channel $sid" },
                 group = o["category_id"]?.let { liveCats[it] } ?: "Uncategorized",
@@ -85,19 +103,19 @@ class XtreamApi(
                 added = o["added"]?.toLongOrNull() ?: 0L,
                 catchupDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toIntOrNull() ?: 1).coerceAtLeast(1) else 0,
                 catchupType = if (o["tv_archive"] == "1") "xc" else "",
-            ))
+            )))
         }
 
         // Movies are optional: some servers time out here; keep live TV working regardless.
         try {
             val vodCats = categories("get_vod_categories")
             val vodPrefix = prefix("movie")
-            forEachObject("get_vod_streams") { o ->
+            section("get_vod_streams") { o ->
                 val sid = o["stream_id"].orEmpty()
                 val id = "m$sid"
-                if (sid.isEmpty() || !ids.add(id)) return@forEachObject
+                if (sid.isEmpty() || !ids.add(id)) return@section
                 val ext = o["container_extension"].orEmpty().ifBlank { "mp4" }
-                out += reuse.of(Channel(
+                add(reuse.of(Channel(
                     id = id,
                     name = o["name"].orEmpty().ifBlank { "Movie $sid" },
                     group = o["category_id"]?.let { vodCats[it] } ?: "Uncategorized",
@@ -106,7 +124,7 @@ class XtreamApi(
                     kind = Kind.MOVIE,
                     added = o["added"]?.toLongOrNull() ?: 0L,
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
-                ))
+                )))
             }
         } catch (e: Exception) {
             // ignore: films and series are optional (some servers time out or send broken lists)
@@ -115,11 +133,11 @@ class XtreamApi(
         // Series list; episodes are fetched when a series is opened.
         try {
             val seriesCats = categories("get_series_categories")
-            forEachObject("get_series") { o ->
+            section("get_series") { o ->
                 val sid = o["series_id"].orEmpty()
                 val id = "s$sid"
-                if (sid.isEmpty() || !ids.add(id)) return@forEachObject
-                out += reuse.of(Channel(
+                if (sid.isEmpty() || !ids.add(id)) return@section
+                add(reuse.of(Channel(
                     id = id,
                     name = o["name"].orEmpty().ifBlank { "Series $sid" },
                     group = o["category_id"]?.let { seriesCats[it] } ?: "Uncategorized",
@@ -129,7 +147,7 @@ class XtreamApi(
                     seriesId = sid,
                     added = o["last_modified"]?.toLongOrNull() ?: 0L,
                     rating = o["rating"].orEmpty().takeIf { it != "0" }.orEmpty(),
-                ))
+                )))
             }
         } catch (e: Exception) {
             // ignore: films and series are optional (some servers time out or send broken lists)
@@ -234,9 +252,11 @@ class XtreamApi(
     private fun categories(action: String): Map<String, String> {
         val map = HashMap<String, String>()
         try {
-            forEachObject(action) { o ->
-                val id = o["category_id"] ?: return@forEachObject
-                map[id] = o["category_name"].orEmpty().ifBlank { "Uncategorized" }
+            Downloads.withRetries(onRetry = { map.clear() }) {
+                forEachObject(action) { o ->
+                    val id = o["category_id"] ?: return@forEachObject
+                    map[id] = o["category_name"].orEmpty().ifBlank { "Uncategorized" }
+                }
             }
         } catch (e: Exception) {
             // categories are cosmetic
@@ -260,14 +280,14 @@ class XtreamApi(
 
     private fun <T> call(action: String?, extra: Map<String, String> = emptyMap(), read: (String) -> T): T =
         http.newCall(request(action, extra)).execute().use { res ->
-            if (!res.isSuccessful) throw IOException("Server returned HTTP ${res.code}")
+            if (!res.isSuccessful) throw HttpStatusException(res.code)
             read(res.body?.string().orEmpty())
         }
 
     /** Streams a JSON array of flat objects; nested values are skipped. */
     private fun forEachObject(action: String, onItem: (Map<String, String>) -> Unit) {
         http.newCall(request(action)).execute().use { res ->
-            if (!res.isSuccessful) throw IOException("Server returned HTTP ${res.code}")
+            if (!res.isSuccessful) throw HttpStatusException(res.code)
             val body = res.body ?: throw IOException("Empty response")
             JsonReader(body.charStream()).use { r ->
                 r.isLenient = true

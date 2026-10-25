@@ -23,6 +23,8 @@ import app.falak.player.data.GuideSuggestion
 import app.falak.player.data.suggestGuides
 import app.falak.player.data.Kind
 import app.falak.player.data.LibraryIndex
+import app.falak.player.data.LoadProgress
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.falak.player.data.SearchText
 import app.falak.player.data.Alerts
 import app.falak.player.data.Reminder
@@ -128,6 +130,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     var loading by mutableStateOf(false)
         private set
+
+    /** How far the playlist being loaded has got (written from the download's thread). */
+    val loadProgress = MutableStateFlow(LoadProgress())
     var error by mutableStateOf<String?>(null)
         private set
     var section by mutableStateOf(Section.HOME)
@@ -525,6 +530,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         playlist = p
         error = null
         loading = true
+        loadProgress.value = LoadProgress()
         repo.setLast(p.id)
         val token = Any()
         loadToken = token
@@ -553,7 +559,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // The saved copy shows at once; a fresh one is fetched only if it is missing or old.
                 val cached = if (refresh) null else repo.cachedChannels(p)
-                val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId)
+                val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId) { step ->
+                    if (loadToken === token) loadProgress.value = step
+                }
                 show(data, announce = refresh)
                 if (loadToken === token) loading = false
                 maybeStartLastChannel(p)

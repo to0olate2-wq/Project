@@ -117,4 +117,57 @@ class SyncTest {
             server.stop()
         }
     }
+
+    @Test
+    fun bigM3uFileFromThePhonePage() {
+        val repo = ApplicationProvider.getApplicationContext<FalakApp>().repo
+        val server = SyncServer(repo, "Test TV") {}
+        val port = server.start()
+        val http = OkHttpClient()
+        val base = "http://127.0.0.1:$port"
+        val before = repo.state.value.playlists.size
+        try {
+            // Over the old 40 MB limit: sent as it is and written straight to storage.
+            var entries = 0
+            val big = buildString {
+                append("\uFEFF#EXTM3U\n")
+                while (length < 42 * 1024 * 1024) {
+                    append("#EXTINF:-1 tvg-id=\"c$entries\" group-title=\"Group ${entries % 40}\",Channel $entries\nhttp://example.com/live/u/p/$entries.ts\n")
+                    entries++
+                }
+            }
+            val bytes = big.toByteArray()
+            http.newCall(
+                Request.Builder().url("$base/api/playlists/upload?name=Big%20one&epg=http%3A%2F%2Fexample.com%2Fepg.xml")
+                    .header("X-Code", server.code).post(bytes.toRequestBody("application/octet-stream".toMediaType())).build(),
+            ).execute().use { assertEquals(200, it.code) }
+            assertEquals(before + 1, repo.state.value.playlists.size)
+            val added = repo.state.value.playlists.first { it.name == "Big one" }
+            assertEquals(SourceType.M3U_FILE, added.type)
+            assertEquals("http://example.com/epg.xml", added.epgUrl)
+            val saved = java.io.File(added.url)
+            assertEquals(bytes.size.toLong(), saved.length())
+            assertEquals(entries, app.falak.player.data.M3uParser.parse(saved.bufferedReader()).channels.size)
+
+            // Not a playlist: refused, nothing kept.
+            http.newCall(
+                Request.Builder().url("$base/api/playlists/upload").header("X-Code", server.code)
+                    .post("hello".toRequestBody("text/plain".toMediaType())).build(),
+            ).execute().use {
+                assertEquals(400, it.code)
+                assertTrue(it.body!!.string().contains("isn't an M3U playlist"))
+            }
+            assertEquals(before + 1, repo.state.value.playlists.size)
+
+            // Wrong code: refused before anything is written.
+            http.newCall(
+                Request.Builder().url("$base/api/playlists/upload").header("X-Code", "nope")
+                    .post("#EXTM3U\n".toRequestBody("text/plain".toMediaType())).build(),
+            ).execute().use { assertEquals(403, it.code) }
+            assertEquals(before + 1, repo.state.value.playlists.size)
+            repo.removePlaylist(added.id)
+        } finally {
+            server.stop()
+        }
+    }
 }

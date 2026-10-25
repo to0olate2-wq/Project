@@ -8,8 +8,8 @@ class M3uResult(val channels: List<Channel>, val epgUrl: String)
 object M3uParser {
     private val attrRegex = Regex("([\\w-]+)\\s*=\\s*\"([^\"]*)\"")
 
-    /** [reuse] keeps identical entries from a previous load (see [Reuse]). */
-    fun parse(reader: BufferedReader, reuse: Reuse = Reuse.NONE): M3uResult {
+    /** [reuse] keeps identical entries from a previous load (see [Reuse]); [progress] gets the count every 1,000. */
+    fun parse(reader: BufferedReader, reuse: Reuse = Reuse.NONE, progress: ((Int) -> Unit)? = null): M3uResult {
         val out = ArrayList<Channel>()
         val ids = HashSet<String>()
         // Groups, user agents and catch-up types repeat on thousands of lines: keep one copy of each.
@@ -75,6 +75,7 @@ object M3uParser {
                             catchupType = cuType,
                             catchupSource = cu["catchup-source"].orEmpty(),
                         ))
+                        if (progress != null && out.size % 1000 == 0) progress(out.size)
                         attrs = emptyMap(); title = ""; extGroup = ""; ua = ""; ref = ""
                     }
                 }

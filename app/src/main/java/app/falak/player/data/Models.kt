@@ -192,12 +192,17 @@ fun sameChannelKey(ch: Channel): String = (countryOf(ch.name, ch.group) ?: "") +
 fun qualityRank(ch: Channel): Int {
     val s = ch.name.lowercase()
     return when {
-        Regex("\\b(4k|uhd|2160p?|3840p?)\\b").containsMatchIn(s) -> 4
-        Regex("\\b(fhd|1080p?)\\b").containsMatchIn(s) -> 3
-        Regex("\\b(sd|480p?|576p?|low)\\b").containsMatchIn(s) -> 1
+        RANK_4K.containsMatchIn(s) -> 4
+        RANK_FHD.containsMatchIn(s) -> 3
+        RANK_SD.containsMatchIn(s) -> 1
         else -> 2
     }
 }
+
+// Made once (a big playlist asks for thousands of names in a row).
+private val RANK_4K = Regex("\\b(4k|uhd|2160p?|3840p?)\\b")
+private val RANK_FHD = Regex("\\b(fhd|1080p?)\\b")
+private val RANK_SD = Regex("\\b(sd|480p?|576p?|low)\\b")
 
 /** Like [normName] but also ignores generic words such as "TV" and "Channel". */
 fun looseName(s: String): String = nameWords(s).filter { it !in GENERIC }.joinToString("")

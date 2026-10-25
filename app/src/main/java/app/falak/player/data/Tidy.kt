@@ -83,8 +83,8 @@ object Tidy {
         t = TAG_BRACKET.replace(t, " ")
         t = QUALITY_WORD.replace(t, " ")
         t = DECOR.replace(t, " ")
-        t = t.replace(Regex("\\(\\s*\\)|\\[\\s*]"), " ")
-            .replace(Regex("\\s+"), " ")
+        t = t.replace(EMPTY_BRACKETS, " ")
+            .replace(SPACES, " ")
             .trim()
             .trim('-', '–', '—', ':', '·', '|', ',', '.', '/')
             .trim()
@@ -98,7 +98,12 @@ object Tidy {
             4 -> "4K"
             3 -> "FHD"
             1 -> "SD"
-            else -> if (Regex("(?i)(?<![\\p{L}\\p{N}])(hd|720p)(?![\\p{L}\\p{N}])").containsMatchIn(s)) "HD" else null
+            else -> if (HD_WORD.containsMatchIn(s)) "HD" else null
         }
     }
+
+    // Made once: a big playlist runs every channel name through these.
+    private val EMPTY_BRACKETS = Regex("\\(\\s*\\)|\\[\\s*]")
+    private val SPACES = Regex("\\s+")
+    private val HD_WORD = Regex("(?i)(?<![\\p{L}\\p{N}])(hd|720p)(?![\\p{L}\\p{N}])")
 }

@@ -237,18 +237,31 @@ async function add() {
   const b = { type: mode, name: ${'$'}('name').value, epgUrl: ${'$'}('epg').value };
   if (mode === 'm3u') b.url = ${'$'}('url').value;
   if (mode === 'xtream') { b.url = ${'$'}('server').value; b.username = ${'$'}('user').value; b.password = ${'$'}('pass').value; }
-  if (mode === 'file') {
-    const f = ${'$'}('file').files[0];
-    if (!f) return show('addMsg', 'Choose an M3U file', true);
-    b.m3u = await f.text();
-  }
-  ${'$'}('addBtn').disabled = true; show('addMsg', mode === 'xtream' ? 'Signing in…' : 'Adding…');
+  const f = mode === 'file' ? ${'$'}('file').files[0] : null;
+  if (mode === 'file' && !f) return show('addMsg', 'Choose an M3U file', true);
+  ${'$'}('addBtn').disabled = true; show('addMsg', mode === 'xtream' ? 'Signing in…' : f ? 'Sending to the TV…' : 'Adding…');
   try {
-    render(await api('/api/playlists', b));
+    render(f ? await upload(f, b.name, b.epgUrl) : await api('/api/playlists', b));
     show('addMsg', 'Added. It\'s on the TV now.');
     ['name','url','server','user','pass','epg'].forEach(id => ${'$'}(id).value = ''); ${'$'}('file').value = '';
   } catch (e) { show('addMsg', e.message, true); }
   ${'$'}('addBtn').disabled = false;
+}
+// An M3U file goes as it is, however big (the TV writes it straight to storage), showing how much has gone.
+function upload(f, name, epg) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/playlists/upload?name=' + encodeURIComponent(name) + '&epg=' + encodeURIComponent(epg));
+    x.setRequestHeader('X-Code', code);
+    x.upload.onprogress = e => { if (e.lengthComputable && e.total) show('addMsg', 'Sending to the TV… ' + Math.floor(e.loaded * 100 / e.total) + '%'); };
+    x.onload = () => {
+      let d = {};
+      try { d = JSON.parse(x.responseText); } catch (err) {}
+      if (x.status === 200) resolve(d); else reject(new Error(d.error || ('Error ' + x.status)));
+    };
+    x.onerror = () => reject(new Error('The file didn\'t reach the TV. Keep this page on the same Wi-Fi as the TV and try again.'));
+    x.send(f);
+  });
 }
 async function rename(id, btn) {
   const cur = btn.closest('.row').dataset.name;

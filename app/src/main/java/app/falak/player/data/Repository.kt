@@ -31,6 +31,14 @@ class Repository(private val context: Context) {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    /**
+     * Playlist downloads: a busy provider can take well over a minute to start sending a big list
+     * (100,000 films), so these wait longer before giving up (and are tried again, see [Downloads]).
+     */
+    private val listHttp: OkHttpClient = http.newBuilder()
+        .readTimeout(120, TimeUnit.SECONDS)
+        .build()
+
     private val json = Json { ignoreUnknownKeys = true }
     private val stateFile = File(context.filesDir, "state.json")
     private val cacheDir = File(context.filesDir, "cache").apply { mkdirs() }
@@ -547,14 +555,28 @@ class Repository(private val context: Context) {
     // ---- loading ----
 
     suspend fun importFile(uri: Uri, id: String): String = withContext(Dispatchers.IO) {
-        val dest = File(importDir, "$id.m3u")
+        val dest = importedM3u(id)
         val input = context.contentResolver.openInputStream(uri) ?: throw IOException("Can't open that file")
-        input.use { i -> dest.outputStream().use { o -> i.copyTo(o) } }
+        try {
+            input.use { i -> dest.outputStream().use { o -> i.copyTo(o, 256 * 1024) } }
+        } catch (e: IOException) {
+            dest.delete()
+            throw if (importDir.usableSpace < 32L * 1024 * 1024) IOException("There isn't enough free space on this device for that file") else e
+        }
         dest.absolutePath
     }
 
+    /** Where an M3U file added to this device is kept (see [importFile], and the phone page's upload). */
+    fun importedM3u(id: String): File = File(importDir, "$id.m3u")
+
     suspend fun xtreamLogin(server: String, user: String, pass: String, ua: String) =
-        withContext(Dispatchers.IO) { XtreamApi(http, server, user, pass, ua).login() }
+        withContext(Dispatchers.IO) {
+            try {
+                XtreamApi(http, server, user, pass, ua).login()
+            } catch (e: IOException) {
+                throw Downloads.explain(e)
+            }
+        }
 
     /** The saved copy of a playlist, or null if there is none (or it can't be read). Fast. */
     suspend fun cachedChannels(p: Playlist): PlaylistCache? = withContext(Dispatchers.IO) {
@@ -585,21 +607,28 @@ class Repository(private val context: Context) {
      */
     suspend fun loadChannels(
         p: Playlist, refresh: Boolean, quietly: Boolean = false, keep: Map<String, Channel> = emptyMap(),
+        progress: ((LoadProgress) -> Unit)? = null,
     ): PlaylistCache =
         withContext(if (quietly) background else Dispatchers.IO) {
         if (!refresh) cachedChannels(p)?.let { return@withContext it }
         val reuse = Reuse.from(keep)
-        val result = when (p.type) {
-            SourceType.M3U_URL -> loadXtreamStyleLink(p, reuse) ?: downloadM3u(p, reuse)
-            SourceType.M3U_FILE -> {
-                val parsed = M3uParser.parse(File(p.url).bufferedReader(), reuse)
-                PlaylistCache(parsed.channels, parsed.epgUrl)
+        val counted: ((Int) -> Unit)? = progress?.let { report -> { n: Int -> report(LoadProgress(n)) } }
+        val loaded = try {
+            when (p.type) {
+                SourceType.M3U_URL -> loadXtreamStyleLink(p, reuse, progress) ?: downloadM3u(p, reuse, progress)
+                SourceType.M3U_FILE -> {
+                    val parsed = M3uParser.parse(File(p.url).bufferedReader(), reuse, counted)
+                    PlaylistCache(parsed.channels, parsed.epgUrl)
+                }
+                SourceType.XTREAM -> {
+                    val api = XtreamApi(listHttp, p.url, p.username, p.password, p.userAgent)
+                    PlaylistCache(api.loadAll(reuse, progress), api.epgUrl, api.serverTimezone())
+                }
             }
-            SourceType.XTREAM -> {
-                val api = XtreamApi(http, p.url, p.username, p.password, p.userAgent)
-                PlaylistCache(api.loadAll(reuse), api.epgUrl, api.serverTimezone())
-            }
-        }.copy(savedAt = System.currentTimeMillis())
+        } catch (e: IOException) {
+            throw Downloads.explain(e)
+        }
+        val result = loaded.copy(savedAt = System.currentTimeMillis())
         if (result.channels.isEmpty()) throw IOException("No channels found in this playlist")
         try {
             Store.writePlaylist(File(cacheDir, "${p.id}.bin"), result)
@@ -615,31 +644,40 @@ class Repository(private val context: Context) {
      * Many providers block get.php downloads (e.g. HTTP 884), so load those through the
      * Xtream API instead. Returns null when the link isn't that kind or the API doesn't answer.
      */
-    private fun loadXtreamStyleLink(p: Playlist, reuse: Reuse): PlaylistCache? {
+    private fun loadXtreamStyleLink(p: Playlist, reuse: Reuse, progress: ((LoadProgress) -> Unit)?): PlaylistCache? {
         val (server, user, pass) = XtreamApi.fromM3uLink(p.url) ?: return null
         return try {
-            val api = XtreamApi(http, server, user, pass, p.userAgent)
-            val list = api.loadAll(reuse)
+            val api = XtreamApi(listHttp, server, user, pass, p.userAgent)
+            val list = api.loadAll(reuse, progress)
             if (list.isEmpty()) null else PlaylistCache(list, api.epgUrl, api.serverTimezone())
         } catch (e: Exception) {
             null // fall back to downloading the M3U file
         }
     }
 
-    /** Downloads an M3U file, retrying with other common player User-Agents if the provider refuses. */
-    private fun downloadM3u(p: Playlist, reuse: Reuse): PlaylistCache {
+    /**
+     * Downloads an M3U file, retrying with other common player User-Agents if the provider refuses.
+     * A download that fails part-way starts again (see [Downloads]).
+     */
+    private fun downloadM3u(p: Playlist, reuse: Reuse, progress: ((LoadProgress) -> Unit)?): PlaylistCache {
         val agents = if (p.userAgent.isNotBlank()) listOf(p.userAgent) else FALLBACK_UAS
+        val counted: ((Int) -> Unit)? = progress?.let { report -> { n: Int -> report(LoadProgress(n)) } }
         var lastCode = 0
         for (ua in agents) {
             val req = Request.Builder().url(p.url.trim()).header("User-Agent", ua).build()
-            http.newCall(req).execute().use { res ->
-                if (res.isSuccessful) {
-                    val body = res.body ?: throw IOException("Empty playlist")
-                    val parsed = M3uParser.parse(body.charStream().buffered(), reuse)
-                    return PlaylistCache(parsed.channels, parsed.epgUrl)
+            val got = Downloads.withRetries(onRetry = { attempt -> progress?.invoke(LoadProgress(0, attempt)) }) {
+                listHttp.newCall(req).execute().use { res ->
+                    if (res.isSuccessful) {
+                        val body = res.body ?: throw IOException("Empty playlist")
+                        val parsed = M3uParser.parse(body.charStream().buffered(), reuse, counted)
+                        PlaylistCache(parsed.channels, parsed.epgUrl)
+                    } else {
+                        lastCode = res.code
+                        null
+                    }
                 }
-                lastCode = res.code
             }
+            if (got != null) return got
         }
         throw IOException(
             if (lastCode == 404) "Playlist not found (HTTP 404). Check the link."
@@ -943,7 +981,7 @@ class Repository(private val context: Context) {
 
     /** Saves the text of an M3U file sent from another device or a browser; returns its path. */
     fun saveImportedM3u(id: String, text: String): String {
-        val f = File(importDir, "$id.m3u")
+        val f = importedM3u(id)
         f.writeText(text)
         return f.absolutePath
     }

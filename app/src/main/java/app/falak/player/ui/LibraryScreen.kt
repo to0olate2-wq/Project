@@ -85,6 +85,7 @@ import app.falak.player.data.mine
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
+import app.falak.player.data.Downloads
 import app.falak.player.data.DEFAULT_LIST
 import app.falak.player.data.Epg
 import app.falak.player.data.Kind
@@ -303,10 +304,20 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
 
             when {
                 vm.loading && index.all.isEmpty() -> Centered {
+                    val step by vm.loadProgress.collectAsStateWithLifecycle()
                     CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
                     Spacer(Modifier.height(14.dp))
                     Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
-                    Text("Big playlists take a moment the first time.", fontSize = 13.sp, lineHeight = 19.sp, color = Muted)
+                    Text(
+                        when {
+                            // The provider's server failed part-way: say so, rather than seem stuck.
+                            step.retry > 0 -> "Your provider's server is slow to answer. Trying again (${step.retry} of ${Downloads.TRIES})…"
+                            step.count > 0 -> "${countLabel(step.count)} so far"
+                            else -> "Big playlists take a moment the first time."
+                        },
+                        fontSize = 13.sp, lineHeight = 19.sp, color = Muted, textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
                 }
                 vm.error != null && index.all.isEmpty() -> Centered {
                     Text("Something went wrong", fontFamily = Serif, fontSize = 20.sp, color = Paper)
