@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package app.falak.player.ui
 
 import androidx.compose.animation.AnimatedContent
