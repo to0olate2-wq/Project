@@ -325,6 +325,10 @@ data class Settings(
     val subColor: String = "white",
     /** Behind the subtitle text: "box" (dark band) or "outline" (dark edge round the letters). */
     val subEdge: String = "box",
+    /** Auto captions: where they sit, "bottom" (where the stream's own go), "raised" (clear of news tickers) or "top". */
+    val autoCapsPosition: String = "bottom",
+    /** Auto captions: how many lines show at once (1 to 3). */
+    val autoCapsLines: Int = 2,
     /** TVs: switch the screen's refresh rate to the video's frame rate: "off", "vod" (films and series) or "all". */
     val frameRate: String = "vod",
     /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */

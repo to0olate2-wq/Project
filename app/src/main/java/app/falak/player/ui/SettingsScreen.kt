@@ -78,6 +78,8 @@ import app.falak.player.R
 import kotlinx.coroutines.delay
 import app.falak.player.player.FrameRateMatch
 import app.falak.player.player.SubtitleStyle
+import app.falak.player.player.CaptionLayout
+import app.falak.player.player.CaptionText
 import androidx.compose.foundation.layout.aspectRatio
 
 /** Public privacy policy (also linked from the Google Play listing). */
@@ -969,7 +971,58 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
             }
         }
-        item { Note("Used by both video players, from the next video you open.") }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Auto captions", style = MaterialTheme.typography.titleMedium, color = Paper)
+                Text(
+                    "Where captions made on this device sit, and how many lines show at once. They take the same space as a channel's own captions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+        }
+        item {
+            val position = CaptionLayout.position(s.autoCapsPosition)
+            val lines = CaptionLayout.lines(s.autoCapsLines)
+            SubtitlePreview(
+                s.subSize,
+                s.subColor,
+                s.subEdge,
+                lines = CaptionText.rollUp(CaptionLayout.SAMPLE, CaptionLayout.MAX_LINE_CHARS, lines).orEmpty().split('\n'),
+                position = position,
+            )
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Position", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text("Raised keeps them clear of news tickers along the bottom", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    val position = CaptionLayout.position(s.autoCapsPosition)
+                    CaptionLayout.POSITIONS.forEach { (key, label) ->
+                        TagChip(label, position == key) { vm.updateSettings { it.copy(autoCapsPosition = key) } }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Lines", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    val lines = CaptionLayout.lines(s.autoCapsLines)
+                    CaptionLayout.LINES.forEach { n ->
+                        TagChip("$n", lines == n) { vm.updateSettings { it.copy(autoCapsLines = n) } }
+                    }
+                }
+            }
+        }
+        item {
+            Note(
+                "Used by both video players from the next video you open. While watching, Subtitles → Caption style " +
+                    "changes it on the picture as you pick.",
+            )
+        }
         }
 
         SettingsPage.ABOUT -> {
@@ -1153,9 +1206,18 @@ internal fun Note(text: String) {
     Text(text, fontSize = 13.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
 }
 
-/** A still "video" with a line of subtitles in the chosen look, sized as the player would. */
+/**
+ * A still "video" with subtitles in the chosen look, sized as the player would: [lines] of them,
+ * at [position] (auto captions' places; the stream's own subtitles are at the bottom).
+ */
 @Composable
-private fun SubtitlePreview(step: Int, color: String, edge: String) {
+private fun SubtitlePreview(
+    step: Int,
+    color: String,
+    edge: String,
+    lines: List<String> = listOf(CaptionLayout.STREAM_SAMPLE),
+    position: String = "bottom",
+) {
     val shape = RoundedCornerShape(12.dp)
     Box(
         Modifier
@@ -1187,27 +1249,35 @@ private fun SubtitlePreview(step: Int, color: String, edge: String) {
             // The players draw subtitles at about 1/19 of the picture height.
             val textSize = (maxHeight.value * 0.0533f * SubtitleStyle.scale(step)).coerceAtLeast(9f).sp
             val fg = androidx.compose.ui.graphics.Color(SubtitleStyle.textColor(color))
-            val sample = "Subtitles will look like this"
             val base = androidx.compose.ui.text.TextStyle(fontSize = textSize, lineHeight = textSize * 1.25f, fontWeight = FontWeight.Medium)
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = maxHeight * 0.08f)) {
-                if (edge == "outline") {
-                    Text(
-                        sample,
-                        style = base.copy(
-                            color = androidx.compose.ui.graphics.Color.Black,
-                            drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = textSize.value * 0.35f, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-                        ),
-                    )
-                    Text(sample, style = base.copy(color = fg))
-                } else {
-                    Text(
-                        sample,
-                        style = base.copy(color = fg),
-                        // As it comes, the player's own solid band; a chosen look, the 70 % band.
-                        modifier = Modifier
-                            .background(if (SubtitleStyle.isDefault(step, color, edge)) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color(SubtitleStyle.BOX))
-                            .padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
+            val place = when (CaptionLayout.position(position)) {
+                "top" -> Modifier.align(Alignment.TopCenter).padding(top = maxHeight * CaptionLayout.TOP_LINE)
+                "raised" -> Modifier.align(Alignment.BottomCenter).padding(bottom = maxHeight * (1f - CaptionLayout.RAISED_LINE))
+                else -> Modifier.align(Alignment.BottomCenter).padding(bottom = maxHeight * 0.08f)
+            }
+            Column(place, horizontalAlignment = Alignment.CenterHorizontally) {
+                for (line in lines) {
+                    Box {
+                        if (edge == "outline") {
+                            Text(
+                                line,
+                                style = base.copy(
+                                    color = androidx.compose.ui.graphics.Color.Black,
+                                    drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = textSize.value * 0.35f, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+                                ),
+                            )
+                            Text(line, style = base.copy(color = fg))
+                        } else {
+                            Text(
+                                line,
+                                style = base.copy(color = fg),
+                                // As it comes, the player's own solid band; a chosen look, the 70 % band.
+                                modifier = Modifier
+                                    .background(if (SubtitleStyle.isDefault(step, color, edge)) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color(SubtitleStyle.BOX))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp),
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -84,6 +84,9 @@ import androidx.media3.ui.DefaultTrackNameProvider
 import androidx.media3.ui.PlayerView
 import app.falak.player.player.FrameRateMatch
 import app.falak.player.player.SubtitleStyle
+import app.falak.player.player.CaptionLayout
+import app.falak.player.player.CaptionText
+import app.falak.player.data.Settings
 import app.falak.player.R
 import app.falak.player.player.CaptionSniffer
 import app.falak.player.player.Captions
@@ -167,7 +170,7 @@ class PlayerActivity : ComponentActivity() {
     private var currentChannelId by mutableStateOf<String?>(null)
     /** The key that opened/closed the browser: its release must not reach the newly shown views. */
     private var swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
-    private val hideBrowserView = Runnable { if (!browserOpen && !menuOpen) browserView.visibility = View.GONE }
+    private val hideBrowserView = Runnable { if (!browserOpen && !menuOpen && !styleOpen) browserView.visibility = View.GONE }
     private val trackNames by lazy { DefaultTrackNameProvider(resources) }
     private var autoSubtitlesDone = false
     private var bannerFor: Channel? = null
@@ -267,7 +270,32 @@ class PlayerActivity : ComponentActivity() {
     /** A channel waiting for the speech model to arrive before its auto captions start. */
     private var autoCapsPending: String? = null
     private lateinit var autoCapsView: androidx.media3.ui.SubtitleView
-    private val clearAutoCaps = Runnable { if (::autoCapsView.isInitialized) autoCapsView.setCues(emptyList()) }
+
+    /** What auto captions say now, all of it ([renderAutoCaption] fits it to the lines chosen); null: nothing. */
+    private var autoCapsText: String? = null
+    private val clearAutoCaps = Runnable {
+        autoCapsText = null
+        renderAutoCaption()
+    }
+
+    /** Measures auto captions' lines as they'll be drawn (the size and typeface of the captions). */
+    private val capsPaint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+    /** How wide a line of auto captions may be, in pixels (0: not known yet). */
+    private var capsLineWidth = 0f
+    private val refitCaptions = Runnable { fitCaptions() }
+
+    /** The stream's own captions have words on screen. */
+    private var streamCuesShowing = false
+
+    /** The caption style panel is over the picture. */
+    private var styleOpen by mutableStateOf(false)
+
+    /** Auto captions' place and lines are in the panel. */
+    private var styleAuto by mutableStateOf(false)
+
+    /** A line under the panel's title (null: none). */
+    private var styleNote by mutableStateOf<String?>(null)
 
     // ---- audio and subtitle choices remembered per channel, film or series ----
     private val trackMemory by lazy { TrackMemory(this) }
@@ -318,12 +346,30 @@ class PlayerActivity : ComponentActivity() {
         aspect = repo.state.value.settings.aspect.coerceIn(0, 2)
         playerView.resizeMode = resizeModes[aspect]
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        // Auto captions show here: over the picture and under the controls, like the stream's own.
+        // Auto captions take the very space of the stream's own: the same box as the picture
+        // (letterboxed or pillarboxed with it), just above the stream's captions, under the controls.
         autoCapsView = androidx.media3.ui.SubtitleView(this)
-        (playerView.overlayFrameLayout ?: root).addView(
-            autoCapsView,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
-        )
+        val streamCaptions = playerView.subtitleView
+        val pictureBox = streamCaptions?.parent as? ViewGroup
+        if (streamCaptions != null && pictureBox != null) {
+            pictureBox.addView(
+                autoCapsView,
+                pictureBox.indexOfChild(streamCaptions) + 1,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+        } else {
+            (playerView.overlayFrameLayout ?: root).addView(
+                autoCapsView,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+        }
+        // Whenever the picture's box moves or changes size (turning the phone, Fit/Fill/Zoom, the
+        // channel list beside it), both kinds of captions are fitted to it again.
+        (autoCapsView.parent as? View)?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            handler.removeCallbacks(refitCaptions)
+            handler.post(refitCaptions)
+        }
+        applySubtitleStyle()
         lifecycleScope.launch { SpeechModel.state.collect { onSpeechModel(it) } }
 
         bannerView = TextView(this).apply {
@@ -595,6 +641,14 @@ class PlayerActivity : ComponentActivity() {
                         onPick = { leaveTo(it) },
                         onClose = { closeMenu() },
                     )
+                    CaptionStylePanel(
+                        open = styleOpen,
+                        settings = app.settings,
+                        autoCaptions = styleAuto,
+                        note = styleNote,
+                        onChange = { changeCaptionStyle(it) },
+                        onClose = { closeCaptionStyle() },
+                    )
                 }
             }
         }
@@ -823,6 +877,7 @@ class PlayerActivity : ComponentActivity() {
         p.playWhenReady = true
         playerView.videoSurfaceView?.visibility = View.VISIBLE
         playerView.player = ZapPlayer(p)
+        streamCuesShowing = false
         applySubtitleStyle()
         exo = p
         exoCaptions = captions
@@ -1179,6 +1234,12 @@ class PlayerActivity : ComponentActivity() {
                 captionsSeen = true
                 handler.removeCallbacks(captionWatch)
             }
+            // The caption style panel's sample steps aside while the stream's own words show.
+            val showing = cueGroup.cues.isNotEmpty()
+            if (showing != streamCuesShowing) {
+                streamCuesShowing = showing
+                if (styleOpen) renderAutoCaption()
+            }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
@@ -1396,7 +1457,7 @@ class PlayerActivity : ComponentActivity() {
             return true
         }
         // Stopped by the sleep timer: OK carries on.
-        if (sleptByTimer && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && !menuOpen && !browserOpen &&
+        if (sleptByTimer && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && !menuOpen && !browserOpen && !styleOpen &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
         ) {
             wakeFromSleep()
@@ -1421,6 +1482,20 @@ class PlayerActivity : ComponentActivity() {
                 return true
             }
             return super.dispatchKeyEvent(event)
+        }
+        // So does the caption style panel; arrows past its edge stay in it (the remote's focus
+        // never wanders off to the hidden controls).
+        if (styleOpen) {
+            if (event.action == KeyEvent.ACTION_DOWN &&
+                (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
+            ) {
+                closeCaptionStyle()
+                swallowUpKey = event.keyCode
+                return true
+            }
+            return super.dispatchKeyEvent(event) || event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN || event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
         }
         if (browserOpen && event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE)
@@ -1712,6 +1787,11 @@ class PlayerActivity : ComponentActivity() {
                 applyVideoArea()
                 browserView.visibility = View.GONE
             }
+            if (styleOpen) {
+                styleOpen = false
+                browserView.visibility = View.GONE
+                renderAutoCaption()
+            }
             bannerView.visibility = View.GONE
             hideMessage()
         } else if (lifecycle.currentState == Lifecycle.State.CREATED) {
@@ -1987,6 +2067,10 @@ class PlayerActivity : ComponentActivity() {
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         if (type == C.TRACK_TYPE_TEXT && vod) {
             options += TrackOption("🔎  Find subtitles online…", false) { searchOnlineSubtitles() }
+        }
+        // The captions' look (and auto captions' place and lines), changed as you watch.
+        if (type == C.TRACK_TYPE_TEXT) {
+            options += TrackOption("Aa  Caption style…", false) { showCaptionStyle() }
         }
         if ((real <= 0 && !(type == C.TRACK_TYPE_TEXT && vod)) || (type == C.TRACK_TYPE_AUDIO && real == 1)) {
             val what = if (type == C.TRACK_TYPE_AUDIO) "Only one audio track" else "No subtitles"
@@ -2558,7 +2642,7 @@ class PlayerActivity : ComponentActivity() {
     private fun ambientTick() {
         val p = player
         val resting = p != null && !p.playWhenReady && p.playbackState != Player.STATE_IDLE && p.playbackState != Player.STATE_ENDED &&
-            !browserOpen && !menuOpen && upNext == null && !inPip
+            !browserOpen && !menuOpen && !styleOpen && upNext == null && !inPip
         pausedSecs = if (resting) pausedSecs + 1 else 0
         if (!ambientOn && pausedSecs >= AMBIENT_PAUSED_S && repo.state.value.settings.ambient) {
             val idx = repo.currentIndex
@@ -2613,12 +2697,49 @@ class PlayerActivity : ComponentActivity() {
 
     private fun settingsFrameRate(): String = repo.state.value.settings.frameRate
 
-    /** ExoPlayer's subtitles in the look chosen in Settings (unchanged when nothing was chosen). */
+    /** ExoPlayer's subtitles and auto captions in the look chosen (unchanged when nothing was chosen). */
     private fun applySubtitleStyle() {
         val s = repo.state.value.settings
         playerView.subtitleView?.let { SubtitleStyle.applyTo(it, s.subSize, s.subColor, s.subEdge) }
         // Auto captions look like the stream's own.
         if (::autoCapsView.isInitialized) SubtitleStyle.applyTo(autoCapsView, s.subSize, s.subColor, s.subEdge)
+        fitCaptions()
+    }
+
+    /**
+     * Both kinds of captions fitted to the picture's box (see [CaptionLayout]): kept on the part
+     * that's on screen and given one size, and auto captions' lines measured at that size.
+     */
+    private fun fitCaptions() {
+        if (!::autoCapsView.isInitialized) return
+        val box = autoCapsView.parent as? View ?: return
+        val outer = box.parent as? View ?: return
+        if (box.width <= 0 || box.height <= 0 || outer.width <= 0 || outer.height <= 0) return
+        val pad = CaptionLayout.padding(box.left, box.top, box.right, box.bottom, outer.width, outer.height)
+        val w = box.width - pad[0] - pad[2]
+        val h = box.height - pad[1] - pad[3]
+        if (w <= 0 || h <= 0) return
+        val s = repo.state.value.settings
+        val asItComes = SubtitleStyle.isDefault(s.subSize, s.subColor, s.subEdge)
+        // As it comes, the size and typeface are the ones set in the system's caption settings.
+        val system = getSystemService(android.view.accessibility.CaptioningManager::class.java)?.takeIf { it.isEnabled }
+        val scale = if (asItComes) system?.fontScale ?: 1f else SubtitleStyle.scale(s.subSize)
+        val px = CaptionLayout.textPx(w, h, scale)
+        for (v in listOfNotNull(playerView.subtitleView?.takeIf { it.parent === box }, autoCapsView)) {
+            if (v.paddingLeft != pad[0] || v.paddingTop != pad[1] || v.paddingRight != pad[2] || v.paddingBottom != pad[3]) {
+                v.setPadding(pad[0], pad[1], pad[2], pad[3])
+            }
+            v.setFixedTextSize(TypedValue.COMPLEX_UNIT_PX, px)
+        }
+        val typeface = if (asItComes) {
+            system?.let { runCatching { androidx.media3.ui.CaptionStyleCompat.createFromCaptionStyle(it.userStyle).typeface }.getOrNull() }
+        } else {
+            Typeface.DEFAULT
+        }
+        capsPaint.typeface = typeface ?: Typeface.DEFAULT
+        capsPaint.textSize = px
+        capsLineWidth = CaptionLayout.lineWidth(w, px)
+        renderAutoCaption()
     }
 
     // ---- night sound ----
@@ -3759,7 +3880,8 @@ class PlayerActivity : ComponentActivity() {
         autoCapsOn = false
         liveCaptions?.stop()
         handler.removeCallbacks(clearAutoCaps)
-        if (::autoCapsView.isInitialized) autoCapsView.setCues(emptyList())
+        autoCapsText = null
+        renderAutoCaption()
     }
 
     /** Back from the little window: captions again, if this channel has them on. */
@@ -3851,16 +3973,88 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Lines from the speech engine (null: clear). They fade after 6 seconds without new words. */
+    /** Words from the speech engine (null: clear). They fade after 6 seconds without new words. */
     private fun showAutoCaption(text: String?) {
         if (!::autoCapsView.isInitialized) return
         handler.removeCallbacks(clearAutoCaps)
-        if (text == null || !autoCapsOn) {
+        autoCapsText = text?.takeIf { autoCapsOn }
+        renderAutoCaption()
+        if (autoCapsText != null) handler.postDelayed(clearAutoCaps, 6_000)
+    }
+
+    /**
+     * Auto captions on screen as chosen: as many lines as fit the picture's width (never more than
+     * the lines chosen), in their place. While the caption style panel is open and nothing is
+     * being said, its sample shows instead.
+     */
+    private fun renderAutoCaption() {
+        if (!::autoCapsView.isInitialized) return
+        if (styleOpen) styleAuto = autoCaptionsInPanel()
+        val s = repo.state.value.settings
+        val live = autoCapsText?.takeIf { autoCapsOn }
+        val sample = if (live == null && styleOpen) captionSample() else null
+        val text = live ?: sample?.first
+        val auto = live != null || sample?.second == true
+        val width = capsLineWidth * 0.97f
+        val shown = text?.let {
+            CaptionText.rollUp(it, if (auto) CaptionLayout.lines(s.autoCapsLines) else 1) { line ->
+                line.length <= CaptionLayout.MAX_LINE_CHARS && (width <= 0f || capsPaint.measureText(line) <= width)
+            }
+        }
+        if (shown == null) {
             autoCapsView.setCues(emptyList())
             return
         }
-        autoCapsView.setCues(listOf(androidx.media3.common.text.Cue.Builder().setText(text).build()))
-        handler.postDelayed(clearAutoCaps, 6_000)
+        val cue = androidx.media3.common.text.Cue.Builder().setText(shown)
+        if (auto) {
+            CaptionLayout.line(CaptionLayout.position(s.autoCapsPosition))?.let { (line, anchor) ->
+                cue.setLine(line, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION).setLineAnchor(anchor)
+            }
+        }
+        autoCapsView.setCues(listOf(cue.build()))
+    }
+
+    /** The caption style panel shows auto captions' place and lines: they're on, or could be for this channel. */
+    private fun autoCaptionsInPanel(): Boolean =
+        autoCapsOn || (autoCaptionsOffered() && countTracks(C.TRACK_TYPE_TEXT) == 0)
+
+    /** The panel's sample while nothing is said: its words, and whether it's auto captions'; null: none. */
+    private fun captionSample(): Pair<String, Boolean>? = when {
+        autoCaptionsInPanel() -> CaptionLayout.SAMPLE to true
+        // VLC draws the stream's captions itself, and the stream's own words are the best sample.
+        vlc != null || streamCuesShowing -> null
+        else -> CaptionLayout.STREAM_SAMPLE to false
+    }
+
+    // ---- Caption style: the look of captions (and auto captions' place and lines), as you watch ----
+
+    private fun showCaptionStyle() {
+        if (inPip || styleOpen || menuOpen || browserOpen) return
+        handler.removeCallbacks(hideBrowserView)
+        playerView.hideController()
+        playerView.useController = false
+        bannerView.visibility = View.GONE
+        styleAuto = autoCaptionsInPanel()
+        styleNote = if (vlc != null) "This stream plays in VLC: its subtitles take the new look from the next video." else null
+        browserView.visibility = View.VISIBLE
+        styleOpen = true
+        browserView.requestFocus()
+        renderAutoCaption()
+    }
+
+    private fun closeCaptionStyle() {
+        if (!styleOpen) return
+        styleOpen = false
+        handler.postDelayed(hideBrowserView, 300)
+        playerView.useController = !inPip
+        playerView.requestFocus()
+        renderAutoCaption()
+    }
+
+    /** A change in the panel: saved, and on screen at once. */
+    private fun changeCaptionStyle(change: (Settings) -> Settings) {
+        repo.updateSettings(change)
+        applySubtitleStyle()
     }
 
     private fun onAutoCaptionsProblem(problem: LiveCaptions.Problem) {
@@ -3880,6 +4074,36 @@ class PlayerActivity : ComponentActivity() {
         autoCapsOn = true
         showAutoCaption(text)
     }
+
+    /** Screenshot tests: the caption style panel. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewCaptionStyle() = showCaptionStyle()
+
+    /** Screenshot tests: a pick in the caption style panel. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewCaptionChange(change: (Settings) -> Settings) = changeCaptionStyle(change)
+
+    /** Screenshot tests: a picture of this shape ([ratio]: width / height), in the Fit/Fill/Zoom mode [aspectMode]. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewPicture(ratio: Float, aspectMode: Int = 0) {
+        aspect = aspectMode
+        playerView.resizeMode = resizeModes[aspect]
+        playerView.findViewById<AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)?.setAspectRatio(ratio)
+    }
+
+    /** Screenshot tests: the stream's own captions saying [text]. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewStreamCaptions(text: String) {
+        playerView.hideController()
+        streamCuesShowing = text.isNotEmpty()
+        playerView.subtitleView?.setCues(
+            if (text.isEmpty()) emptyList() else listOf(androidx.media3.common.text.Cue.Builder().setText(text).build()),
+        )
+    }
+
+    /** Tests: the two caption views (the stream's, auto captions'). */
+    @androidx.annotation.VisibleForTesting
+    internal fun captionViews(): Pair<androidx.media3.ui.SubtitleView?, androidx.media3.ui.SubtitleView> = playerView.subtitleView to autoCapsView
 
     // ---- Listen mode ----
 

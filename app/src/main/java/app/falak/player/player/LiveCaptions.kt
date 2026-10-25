@@ -18,8 +18,9 @@ import java.util.concurrent.TimeUnit
  *
  * [newTap] goes into ExoPlayer's audio processors: it passes the sound on untouched and keeps a
  * mono copy. Recognition runs on a thread of its own, about a second behind the speech. [onText]
- * gets the lines to show (null: nothing to show), on the main thread; [onProblem] says when it
- * can't work here (the speech engine doesn't run on this device, or it can't keep up).
+ * gets the words to show (see [CaptionText]; null: nothing to show), on the main thread;
+ * [onProblem] says when it can't work here (the speech engine doesn't run on this device, or it
+ * can't keep up).
  */
 class LiveCaptions(
     private val modelDir: File,
@@ -255,10 +256,11 @@ object Downmix {
 }
 
 /**
- * What to show, broadcast style: the last two lines of the words heard, the line before kept
- * until new words push it up.
+ * What to show, broadcast style: the words heard, the line said before kept until new words push
+ * it up. [partial] and [finish] give all of it; [rollUp] fits it to the screen (the last lines,
+ * each as wide as fits), so the player can fit it again when the lines or the size change.
  */
-class CaptionText(private val lineChars: Int = 42, private val lines: Int = 2) {
+class CaptionText {
     private var before = ""
     private var current = ""
 
@@ -267,7 +269,7 @@ class CaptionText(private val lineChars: Int = 42, private val lines: Int = 2) {
         current = ""
     }
 
-    /** The words so far in the line being spoken; null when nothing changed on screen. */
+    /** The words so far in the line being spoken (with the line before); null when there are none. */
     fun partial(text: String): String? {
         current = text
         return shown()
@@ -280,24 +282,38 @@ class CaptionText(private val lineChars: Int = 42, private val lines: Int = 2) {
         return shown()
     }
 
-    private fun shown(): String? = rollUp("$before $current", lineChars, lines)
+    private fun shown(): String? = words("$before $current").joinToString(" ").ifEmpty { null }
 
     companion object {
+        private fun words(text: String) = text.split(' ', '\n', '\t').filter { it.isNotEmpty() }
+
         /** [text]'s words wrapped at [lineChars], the last [lines] lines; null when there are none. */
-        fun rollUp(text: String, lineChars: Int, lines: Int): String? {
-            val words = text.split(' ', '\n', '\t').filter { it.isNotEmpty() }
+        fun rollUp(text: String, lineChars: Int, lines: Int): String? = rollUp(text, lines) { it.length <= lineChars }
+
+        /**
+         * [text]'s words wrapped into lines that [fits] (a word too long for a line still gets one),
+         * the last [lines] of them; null when there are none.
+         */
+        fun rollUp(text: String, lines: Int, fits: (String) -> Boolean): String? {
+            val words = words(text)
             if (words.isEmpty()) return null
-            val out = ArrayList<StringBuilder>()
+            val out = ArrayList<String>()
+            var line = ""
             for (w in words) {
-                val line = out.lastOrNull()
-                if (line == null || (line.isNotEmpty() && line.length + 1 + w.length > lineChars)) {
-                    out += StringBuilder(w)
+                if (line.isEmpty()) {
+                    line = w
                 } else {
-                    if (line.isNotEmpty()) line.append(' ')
-                    line.append(w)
+                    val longer = "$line $w"
+                    if (fits(longer)) {
+                        line = longer
+                    } else {
+                        out += line
+                        line = w
+                    }
                 }
             }
-            return out.takeLast(lines).joinToString("\n")
+            out += line
+            return out.takeLast(lines.coerceAtLeast(1)).joinToString("\n")
         }
     }
 }

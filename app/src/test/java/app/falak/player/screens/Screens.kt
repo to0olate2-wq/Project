@@ -40,6 +40,8 @@ import app.falak.player.data.KIDS_PROFILE
 import app.falak.player.data.Profile
 import app.falak.player.data.SyncPeer
 import app.falak.player.data.Watch
+import app.falak.player.data.Settings
+import app.falak.player.player.CaptionLayout
 import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
 import app.falak.player.RamadanNow
@@ -169,6 +171,34 @@ abstract class ScreenshotBase {
         if (autoCaption != null) activity.previewAutoCaptions(autoCaption)
         block { name -> capture(activity, name) }
     }
+
+    /**
+     * The player on a live channel with a stand-in picture, for tests that take it step by step
+     * ([block] gets the player and a camera); [settings]: changed before it opens.
+     */
+    protected fun playerSteps(
+        tv: Boolean,
+        settings: ((Settings) -> Settings)? = null,
+        block: (PlayerActivity, (String) -> Unit) -> Unit,
+    ) = watched {
+        seed(if (tv) "tv" else "phone")
+        if (settings != null) app.repo.updateSettings(settings)
+        val channels = sampleChannels()
+        val queue = channels.filter { it.kind == Kind.LIVE }
+        val repo = app.repo
+        repo.playQueue = queue
+        repo.currentPlaylist = repo.state.value.playlists.first()
+        repo.currentIndex = LibraryIndex.build(channels)
+        val intent = Intent(app, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, 2)
+        val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
+        idle(500)
+        activity.previewControls(StandIn(true, queue[2].name))
+        idle(300)
+        block(activity) { name -> capture(activity, name) }
+    }
+
+    /** Lets the player lay itself out (after the picture's shape changed). */
+    protected fun settle() = idle(400)
 
     /**
      * A screen test that hangs (it happens now and then on CI) writes where every thread is after
@@ -1255,5 +1285,118 @@ class TvSleepTimerScreens : ScreenshotBase() {
     fun tvSleepTimer() {
         SleepTimer.after(30, android.os.SystemClock.elapsedRealtime())
         player(tv = true, live = true) { shoot -> shoot("tv-54-player-sleep-timer") }
+    }
+}
+
+// ---- 7.6: caption style (look, auto captions' place and lines), in the same space as the stream's own ----
+
+/** Both caption views: in the picture's box, with the same bounds and padding (so the same space). */
+private fun assertSameSpace(activity: PlayerActivity) {
+    val (stream, auto) = activity.captionViews()
+    checkNotNull(stream) { "No stream captions view" }
+    check(stream.parent === auto.parent) { "Auto captions aren't in the picture's box" }
+    check(stream.left == auto.left && stream.top == auto.top && stream.width == auto.width && stream.height == auto.height) {
+        "Different boxes: stream ${stream.left},${stream.top} ${stream.width}x${stream.height}, auto ${auto.left},${auto.top} ${auto.width}x${auto.height}"
+    }
+    check(
+        stream.paddingLeft == auto.paddingLeft && stream.paddingTop == auto.paddingTop &&
+            stream.paddingRight == auto.paddingRight && stream.paddingBottom == auto.paddingBottom,
+    ) { "Different padding" }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvCaptionStyleScreens : ScreenshotBase() {
+    // Subtitles → Caption style over auto captions: the panel at the top, captions at the bottom;
+    // with auto captions at the top (three lines), the panel moves to the bottom.
+    @Test @Config(qualifiers = TV)
+    fun tvCaptionStyle() = playerSteps(tv = true) { activity, shoot ->
+        activity.previewPicture(16f / 9f)
+        settle()
+        activity.previewAutoCaptions(CaptionLayout.SAMPLE)
+        activity.previewCaptionStyle()
+        shoot("tv-55-caption-style")
+        activity.previewCaptionChange { it.copy(autoCapsPosition = "top", autoCapsLines = 3, subColor = "yellow") }
+        activity.previewAutoCaptions(CaptionLayout.SAMPLE)
+        shoot("tv-56-caption-style-top")
+    }
+
+    // A 4:3 picture (pillarboxed): the stream's own captions, then auto captions, in the same space.
+    @Test @Config(qualifiers = TV)
+    fun tvCaptionsSameSpace() = playerSteps(tv = true) { activity, shoot ->
+        activity.previewPicture(4f / 3f)
+        settle()
+        activity.previewStreamCaptions("We're going live now to the stadium,\nwhere the teams are coming out.")
+        assertSameSpace(activity)
+        shoot("tv-57-captions-4x3-stream")
+        activity.previewStreamCaptions("")
+        activity.previewAutoCaptions("We're going live now to the stadium, where the teams are coming out.")
+        assertSameSpace(activity)
+        shoot("tv-58-captions-4x3-auto")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneCaptionStyleScreens : ScreenshotBase() {
+    // The most room captions can take (Raised, three lines, Extra large): still clear of the panel.
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneCaptionStyle() = playerSteps(
+        tv = false,
+        settings = { it.copy(autoCapsPosition = "raised", autoCapsLines = 3, subSize = 3) },
+    ) { activity, shoot ->
+        activity.previewPicture(16f / 9f)
+        settle()
+        activity.previewAutoCaptions(CaptionLayout.SAMPLE)
+        activity.previewCaptionStyle()
+        shoot("phone-37-caption-style")
+    }
+
+    // A small phone on its side (640 × 360): the same, the panel two rows high.
+    @Test @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun smallPhoneCaptionStyle() = playerSteps(
+        tv = false,
+        settings = { it.copy(autoCapsPosition = "raised", autoCapsLines = 3, subSize = 3) },
+    ) { activity, shoot ->
+        activity.previewPicture(16f / 9f)
+        settle()
+        activity.previewAutoCaptions(CaptionLayout.SAMPLE)
+        activity.previewCaptionStyle()
+        shoot("phone-41-caption-style-small")
+    }
+
+    // Held upright: the panel fits above the picture.
+    @Test @Config(qualifiers = PHONE)
+    fun phonePortraitCaptionStyle() = playerSteps(tv = false) { activity, shoot ->
+        activity.previewPicture(16f / 9f)
+        settle()
+        activity.previewAutoCaptions(CaptionLayout.SAMPLE)
+        activity.previewCaptionStyle()
+        shoot("phone-38-caption-style-portrait")
+    }
+
+    // Zoom fills the screen and crops the picture: captions stay on the part that's on screen.
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneZoomCaptions() = playerSteps(tv = false) { activity, shoot ->
+        activity.previewPicture(16f / 9f, aspectMode = 2)
+        settle()
+        activity.previewStreamCaptions("We're going live now to the stadium,\nwhere the teams are coming out.")
+        assertSameSpace(activity)
+        val (stream, _) = activity.captionViews()
+        check(stream!!.paddingBottom > 0) { "Zoom: captions not kept on screen" }
+        shoot("phone-39-captions-zoom")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneCaptionSettingsScreens : ScreenshotBase() {
+    // Settings → Subtitle style, with auto captions' place and lines.
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneCaptionSettings() = mainScreens("phone") { vm, shoot ->
+        vm.updateSettings { it.copy(autoCapsPosition = "raised", autoCapsLines = 3) }
+        vm.screen = Screen.SETTINGS
+        vm.settingsPage = SettingsPage.SUBTITLE_STYLE
+        shoot("phone-40-settings-caption-style")
     }
 }
