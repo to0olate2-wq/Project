@@ -1,3 +1,7 @@
+// ("java" in this script is the Java extension, so these come in by name.)
+import java.net.URI
+import java.security.MessageDigest
+
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -126,9 +130,9 @@ val sherpaOnnxAar: File = file("libs/sherpa-onnx-2.0.0.aar").also { aar ->
     if (!aar.exists()) {
         aar.parentFile.mkdirs()
         val part = File(aar.path + ".part")
-        java.net.URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-2.0.0.aar")
+        URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-2.0.0.aar")
             .toURL().openStream().use { input -> part.outputStream().use { input.copyTo(it) } }
-        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(part.readBytes())
+        val sha = MessageDigest.getInstance("SHA-256").digest(part.readBytes())
             .joinToString("") { "%02x".format(it) }
         check(sha == "f0f8716982d27cb4ce695e3934018b1342d9d3d6fdb6ef1f1658fe8bad50b4fc") {
             part.delete()
