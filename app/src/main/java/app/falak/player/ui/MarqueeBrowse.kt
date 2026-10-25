@@ -104,6 +104,7 @@ fun MarqueeStage(vm: LibraryViewModel, modifier: Modifier = Modifier, content: @
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
         val info = remember(height) { MarqueeStageInfo(height) { top[0] } }
+        println("DEBUG stage vm=${System.identityHashCode(vm)} art=${vm.marqueeArt != null} h=$height")
         vm.marqueeArt?.let { art ->
             MarqueeBackdrop(art, { vm.marqueeFade }, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
         }
@@ -234,9 +235,14 @@ fun MarqueeBrowse(
             val owner = remember { Any() }
             val info = vm.heroInfo[item.id]
             val art = MarqueeArt(owner, vm.heroArt[item.id]?.takeIf { it.isNotBlank() }, item.logo.ifBlank { null })
-            LaunchedEffect(art.backdrop, art.poster) { vm.marqueeArt = art }
+            LaunchedEffect(art.backdrop, art.poster) {
+                println("DEBUG set art vm=${System.identityHashCode(vm)} owner=${System.identityHashCode(owner)}")
+                vm.marqueeArt = art
+            }
             DisposableEffect(owner) {
+                println("DEBUG effect start owner=${System.identityHashCode(owner)}")
                 onDispose {
+                    println("DEBUG dispose owner=${System.identityHashCode(owner)} match=${vm.marqueeArt?.owner === owner}")
                     if (vm.marqueeArt?.owner === owner) {
                         vm.marqueeArt = null
                         vm.marqueeFade = 1f
