@@ -393,6 +393,19 @@ data class Settings(
     val miniPlayer: Boolean = true,
     /** Phones: the sound carries on with the screen off or the app left (lock-screen controls). */
     val listenMode: Boolean = false,
+    /** Voice search listens for "ar" or "en"; "" = the device's language. */
+    val voiceLang: String = "",
+    /** Kids profile: minutes of watching a day; 0 = no limit (see KidsTime). */
+    val kidsDailyMinutes: Int = 0,
+    /** Kids profile: bedtime, in minutes after midnight; -1 = none. Until [kidsWakeUp]. */
+    val kidsBedtime: Int = -1,
+    val kidsWakeUp: Int = 7 * 60,
+    /** Ramadan mode: "auto" (on during Ramadan) or "off". */
+    val ramadanMode: String = "auto",
+    /** Ramadan dates moved by hand, by Hijri year: "1448" → "2027-02-07|2027-03-08" (see Ramadan.encode). */
+    val ramadanDates: Map<String, String> = emptyMap(),
+    /** Phones: a notification this many minutes before Imsak during Ramadan; 0 = none. */
+    val suhoorReminder: Int = 0,
 )
 
 /** Watch progress of a movie or episode. */

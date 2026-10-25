@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
                             (if (vm.group != null) " · one group" else "") + " · ${s.look} look · " + if (tvNow) "TV" else "phone",
                     )
                 }
+                androidx.compose.runtime.CompositionLocalProvider(LocalVoiceSearch provides voiceSearch) {
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
@@ -241,6 +242,15 @@ class MainActivity : ComponentActivity() {
                         }
                         // One small picture at a time: the guide's preview takes over from the mini player.
                         LaunchedEffect(vm.guidePreview) { if (vm.guidePreview != null) MiniPlayerState.close() }
+                        // Kids screen time up, or bedtime: its page, over everything (nothing plays meanwhile).
+                        val kidsBlock by app.falak.player.data.KidsClock.blocked.collectAsStateWithLifecycle()
+                        kidsBlock?.takeIf { vm.kidsActive }?.let { b ->
+                            LaunchedEffect(b) {
+                                MiniPlayerState.close()
+                                vm.guidePreview = null
+                            }
+                            KidsTimePage(b, state) { app.falak.player.data.KidsClock.dismiss() }
+                        }
                     }
                     // Left alone for a while on the lists: the ambient screen.
                     LaunchedEffect(Unit) {
@@ -303,6 +313,7 @@ class MainActivity : ComponentActivity() {
                     UpdateDialogs(vm)
                     LaunchedEffect(Unit) { vm.checkForUpdates(manual = false) }
                 }
+                }
             }
         }
     }
@@ -340,6 +351,30 @@ class MainActivity : ComponentActivity() {
         handleOpen(intent)
     }
 
+    // ---- voice search ----
+
+    private val voiceLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        val heard = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (!heard.isNullOrEmpty()) vm.heardSearch(heard)
+    }
+
+    /** Starts voice search, or null on devices without a speech recognizer (some TV boxes). */
+    private val voiceSearch: (() -> Unit)? by lazy {
+        val probe = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        val there = forceVoiceForTest || packageManager.queryIntentActivities(probe, 0).isNotEmpty()
+        if (there) ::startVoiceSearch else null
+    }
+
+    private fun startVoiceSearch() {
+        if (vm.playlist == null) return
+        val lang = VoiceSearch.language(vm.state.value.settings.voiceLang)
+        try {
+            voiceLauncher.launch(VoiceSearch.intent(lang))
+        } catch (e: android.content.ActivityNotFoundException) {
+            // The recognizer went away (disabled since): nothing to do.
+        }
+    }
+
     /** Android 13+: ask once whether "New in your playlist" notifications may be shown. */
     private val notifyPermission = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
 
@@ -366,6 +401,8 @@ class MainActivity : ComponentActivity() {
             vm.backToPlayer = back
         }
         FreezeWatch.note(if (fromPlayer) "back from the player" else "app in front")
+        // Ramadan's Suhoor reminder (phones): planned again whenever the app is opened.
+        app.falak.player.SuhoorAlarm.plan(this, repo)
         vm.onReturnFromPlayer()
         // Leaving a film or channel must not start a playlist reload: only a return to the app
         // from elsewhere (it may have sat in the background for hours) checks for a stale playlist.
@@ -400,6 +437,12 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (ambient) {
             if (event.action == android.view.KeyEvent.ACTION_UP) leaveAmbient()
+            return true
+        }
+        // The remote's search (microphone) key, when Android passes it to the app: voice search.
+        val speak = voiceSearch
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_SEARCH && speak != null && vm.playlist != null) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) speak()
             return true
         }
         return super.dispatchKeyEvent(event)
@@ -455,6 +498,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun play(list: List<Channel>, channel: Channel) {
+        // Kids screen time used up, or bedtime: its page instead of the player.
+        if (vm.kidsActive) {
+            app.falak.player.data.KidsClock.state(this, vm.state.value.settings).block?.let {
+                app.falak.player.data.KidsClock.stop(it)
+                return
+            }
+        }
         MiniPlayerState.close()
         vm.backToPlayer = null // something new is playing: no detour to go back to
         vm.prepareQueue(list, channel)
@@ -762,3 +812,7 @@ private fun Field(
 
 /** Pages the ambient screen may come up over (not Settings, the guide's preview or pages being typed in). */
 private val AMBIENT_SCREENS = setOf(Screen.LIBRARY, Screen.SERIES, Screen.DETAILS, Screen.NOTICES, Screen.PLAYLISTS)
+
+/** Screenshot tests: show voice search as if the device had a speech recognizer. */
+@androidx.annotation.VisibleForTesting
+internal var forceVoiceForTest = false

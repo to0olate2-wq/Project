@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 25 October 2026 (version 7.3)_
+_Last updated: 25 October 2026 (version 7.5)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -32,6 +32,13 @@ The app keeps these in its private storage on your device:
   reports them (read from the same provider, with the same login), so Settings can show them, the
   app can remind you before the subscription ends, and a channel refused because every connection
   is in use can be explained;
+- for the *Service report*: how live channels played on this device over the last two weeks
+  (how long they took to start, how often they stopped to load, the names of channels that
+  wouldn't play, and the hours of the day this happened), so Settings can show how your provider
+  performs;
+- with kids mode on, how long the Kids profile has watched today and any time a grown-up added,
+  for the daily limit and bedtime;
+- Ramadan dates you moved by hand, and your voice search language;
 - the PIN for locked groups, if you set one;
 - your OpenSubtitles API key, username and password, if you enter them;
 - a short technical record if the app stops unexpectedly, so the next start doesn't reopen what
@@ -79,8 +86,12 @@ The app only makes network connections needed for what you ask it to do:
   series. Phones pair with a code shown on the TV; the TV keeps only a fingerprint of each
   phone's key. Nothing goes through the Internet or to the developer. Remove a phone in
   Settings → Phone remote.
-- **Prayer times** (off by default). Worked out on the device from its time zone; nothing is
+- **Prayer times** (off by default) and **Ramadan mode** (during Ramadan, unless switched off).
+  Worked out on the device from its time zone and Android's own Hijri calendar; nothing is
   looked up online.
+- **Voice search** (only when you press the microphone). What you say is turned into text by your
+  device's speech service (usually Google's, under its own privacy policy); The Player only
+  receives the text and searches your playlist with it. The app itself never records sound.
 - **Android TV home screen.** On Android TV, films and episodes you've started appear in the
   system's Continue watching / Play next row. That list stays on the TV; it never includes hidden,
   locked or adult groups, or anything while kids mode is on.
@@ -143,7 +154,8 @@ The app uses the Internet permission to load your playlists, guides and streams,
 state permission, which the video engine uses to adapt playback to your connection. On Android 13
 and later it may ask to show notifications: they only tell you, on your device, when a playlist
 refresh finds new channels, films or series, that a programme you asked to be reminded of is
-about to start, or (phones and tablets) that your subscription ends in a week or tomorrow. Nothing is sent anywhere to do this; reminders are worked out on the device from
+about to start, (phones and tablets) that your subscription ends in a week or tomorrow, or,
+during Ramadan with the Suhoor reminder on, that Imsak is near. Nothing is sent anywhere to do this; reminders are worked out on the device from
 your TV guide. On Android TV it
 uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
 row. On phones and tablets with *Listen mode* turned on (it's off unless you choose it), it uses the

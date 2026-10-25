@@ -162,7 +162,8 @@ jobs:
   # Draws the main screens with sample data (Robolectric) and publishes them to the
   # "screenshots" branch, for reviewing layout without a device. Never blocks a release.
   screens:
-    runs-on: ubuntu-latest
+    # Pinned: since ubuntu-latest moved to Ubuntu 26, the screen tests sometimes hang there.
+    runs-on: ubuntu-24.04
     continue-on-error: true
     # A stuck screen test must not hold a runner for hours.
     timeout-minutes: 30
@@ -201,17 +202,22 @@ jobs:
           chmod +x gradlew
           ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
+      # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".
       - name: Publish to the screenshots branch
-        if: always() && github.ref == 'refs/heads/main'
+        if: always()
+        env:
+          TARGET: ${{ github.ref == 'refs/heads/main' && 'screenshots' || format('screenshots-{0}', github.ref_name) }}
         run: |
           mkdir -p /tmp/screens
           cp app/build/screens/*.png /tmp/screens/ 2>/dev/null || true
+          # Where a hung test was stuck (see ScreenshotBase.watched).
+          cp app/build/screens/hang-*.txt /tmp/screens/ 2>/dev/null || true
           # Compile errors first, then the end of the run (the last test started is the one that stuck).
           { grep -E "^e: |^w: .*screens" screens.log | head -40; echo "----- last lines -----"; grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | tail -120; } > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
           cd /tmp/screens
           git init -q
-          git checkout -q -b screenshots
+          git checkout -q -b "$TARGET"
           git add -A
           git -c user.name="CI" -c user.email="ci@users.noreply.github.com" commit -q -m "Screens for build ${{ github.run_number }} (${{ github.sha }})"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" screenshots
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "$TARGET"

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -69,6 +70,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.runtime.key
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
@@ -111,6 +113,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var guideShift by remember { mutableStateOf(false) }
     var editSubs by remember { mutableStateOf(false) }
     var removeSpeech by remember { mutableStateOf(false) }
+    var serviceReport by remember { mutableStateOf(false) }
     var addAlertWord by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
@@ -667,6 +670,24 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     ClickRow("Subscription", line) { vm.checkAccount(force = true) }
                 }
             }
+            // Provider report card: how the service has done on this device this week.
+            item {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                // A small file (two weeks of hourly figures), read when the page opens.
+                val report = remember(p.id, serviceReport) {
+                    runCatching {
+                        app.falak.player.data.ServiceReport.summary(
+                            app.falak.player.data.ServiceLogStore.read(context.filesDir, p.id),
+                            System.currentTimeMillis(),
+                        )
+                    }.getOrNull()
+                }
+                ClickRow(
+                    "Service report",
+                    report?.let { app.falak.player.data.ServiceReport.line(it) } ?: "How your provider has done this week",
+                    focusAt("service"),
+                ) { serviceReport = true }
+            }
         }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
@@ -816,6 +837,56 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         arrow = true,
                     ) { guarded { go("kids") { vm.screen = Screen.KIDS } } }
                 }
+                // Screen time: a daily limit and a bedtime (changing them needs the PIN).
+                item {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val used = remember(page) { (app.falak.player.data.KidsClock.usedMs(context) / 60_000L).toInt() }
+                    Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                        Text("Watching time a day", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                        Text(
+                            (if (s.kidsDailyMinutes > 0) "When it's used up, what's on finishes if it ends soon, then playing stops until tomorrow. " else "") +
+                                "Today: ${app.falak.player.data.KidsTime.duration(used)} watched in the Kids profile",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ChipFlow {
+                            listOf(0 to "No limit", 30 to "30 min", 60 to "1 h", 90 to "1 h 30", 120 to "2 h", 180 to "3 h").forEach { (m, label) ->
+                                TagChip(label, s.kidsDailyMinutes == m) { guarded { vm.updateSettings { it.copy(kidsDailyMinutes = m) } } }
+                            }
+                        }
+                    }
+                }
+                item {
+                    val fmt = rememberTimeFormat()
+                    fun at(minute: Int) = app.falak.player.data.PrayerTimes.label(minute, fmt)
+                    Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                        Text("Bedtime", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                        Text(
+                            if (s.kidsBedtime < 0) "The Kids profile can watch at any time of day"
+                            else "Nothing plays in the Kids profile from ${at(s.kidsBedtime)} until ${at(s.kidsWakeUp)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ChipFlow {
+                            TagChip("None", s.kidsBedtime < 0) { guarded { vm.updateSettings { it.copy(kidsBedtime = -1) } } }
+                            listOf(19, 20, 21, 22).forEach { h ->
+                                TagChip(at(h * 60), s.kidsBedtime == h * 60) { guarded { vm.updateSettings { it.copy(kidsBedtime = h * 60) } } }
+                            }
+                        }
+                        if (s.kidsBedtime >= 0) {
+                            Spacer(Modifier.height(10.dp))
+                            Text("Until", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(6.dp))
+                            ChipFlow {
+                                listOf(6, 7, 8).forEach { h ->
+                                    TagChip(at(h * 60), s.kidsWakeUp == h * 60) { guarded { vm.updateSettings { it.copy(kidsWakeUp = h * 60) } } }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         }
@@ -960,6 +1031,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
     if (addAlertWord) {
         AlertWordDialog(onDismiss = { addAlertWord = false }) { w -> if (!vm.hasAlertWord(w)) vm.toggleAlertWord(w) }
+    }
+    if (serviceReport && p != null) {
+        ServiceReportDialog(p) { serviceReport = false }
     }
     if (removeSpeech) {
         val context = androidx.compose.ui.platform.LocalContext.current
@@ -1618,6 +1692,87 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, modifi
                 uncheckedBorderColor = Faint,
             ),
         )
+    }
+}
+
+/** The provider report card in full: the week's figures, the slow times, the channels that didn't play. */
+@Composable
+internal fun ServiceReportDialog(p: app.falak.player.data.Playlist, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var round by remember { mutableStateOf(0) }
+    val s = remember(p.id, round) {
+        app.falak.player.data.ServiceReport.summary(app.falak.player.data.ServiceLogStore.read(context.filesDir, p.id), System.currentTimeMillis())
+    }
+    val is24 = remember(context) { android.text.format.DateFormat.is24HourFormat(context) }
+    val hour: (Int) -> String = { h ->
+        if (is24) String.format(java.util.Locale.US, "%02d:00", h) else "${if (h % 12 == 0) 12 else h % 12} ${if (h < 12) "AM" else "PM"}"
+    }
+    val r = app.falak.player.data.ServiceReport
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Service report") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "${p.name} · live TV on this device over the last ${r.DAYS} days. Worked out here from what you watched; nothing is sent anywhere.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                s.verdict?.let { v ->
+                    Text(
+                        v.label,
+                        fontFamily = Serif,
+                        fontSize = 24.sp,
+                        color = when (v) {
+                            app.falak.player.data.ServiceReport.Verdict.GOOD -> Color(0xFF5FB97A)
+                            app.falak.player.data.ServiceReport.Verdict.FAIR -> Amber
+                            app.falak.player.data.ServiceReport.Verdict.POOR -> Signal
+                        },
+                    )
+                }
+                ReportLine("Watched", if (s.watchedMs > 0) r.duration(s.watchedMs) else "Nothing yet")
+                ReportLine(
+                    "Channels start in",
+                    s.averageStartMs?.let { "${r.seconds(it)} on average (${s.starts} starts)" } ?: "Not enough channels started yet",
+                )
+                ReportLine(
+                    "Buffering",
+                    s.stallsPerHour?.let { "${r.rate(it)} stops an hour watched" } ?: "Not enough watched yet",
+                )
+                ReportLine(
+                    "Slow times",
+                    if (s.slowHours.isEmpty()) {
+                        if (s.stallsPerHour == null) "Not enough watched yet" else "None stand out"
+                    } else {
+                        s.slowHours.joinToString(", ") { r.hoursLabel(it, hour) } +
+                            (s.slowFactor?.let { f -> " (${r.rate(f)}× more buffering)" } ?: "")
+                    },
+                )
+                ReportLine(
+                    "Didn't play",
+                    when (s.failedChannels.size) {
+                        0 -> "Every channel played"
+                        else -> s.failedChannels.take(5).joinToString(", ") { (name, n) -> if (n > 1) "$name ($n×)" else name } +
+                            if (s.failedChannels.size > 5) " and ${s.failedChannels.size - 5} more" else ""
+                    },
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = {
+                app.falak.player.data.ServiceLogStore.clear(context.filesDir, p.id)
+                round++
+            }) { Text("Start afresh") }
+        },
+    )
+}
+
+@Composable
+private fun ReportLine(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = Paper)
     }
 }
 

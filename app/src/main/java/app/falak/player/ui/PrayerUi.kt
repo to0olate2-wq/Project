@@ -212,6 +212,7 @@ fun PrayerScreen(vm: LibraryViewModel, state: AppState) {
                     TagChip(label, s.prayerAsr == key) { vm.updateSettings { it.copy(prayerAsr = key) } }
                 }
             }
+            RamadanSettings(vm)
             Spacer(Modifier.height(28.dp))
         }
     }

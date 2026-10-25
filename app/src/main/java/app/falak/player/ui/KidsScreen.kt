@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -269,5 +271,116 @@ private fun GroupPickerPage(
                 Rule()
             }
         }
+    }
+}
+
+/**
+ * Kids screen time is up, or it's bedtime: a friendly page over the lists (playing stays off).
+ * OK closes it; a grown-up's PIN adds time or lifts bedtime for tonight.
+ */
+@Composable
+fun KidsTimePage(block: app.falak.player.data.KidsTime.Block, state: AppState, onClose: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val s = state.settings
+    val fmt = rememberTimeFormat()
+    var askPin by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    val bedtime = block == app.falak.player.data.KidsTime.Block.BEDTIME
+    val watchedMinutes = remember(block) {
+        maxOf(s.kidsDailyMinutes, (app.falak.player.data.KidsClock.usedMs(context) / 60_000L).toInt())
+    }
+    val ok = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        repeat(8) {
+            kotlinx.coroutines.delay(60)
+            if (runCatching { ok.requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+    }
+    BackHandler { onClose() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Ink)
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp).widthIn(max = 520.dp)) {
+            Box(Modifier.size(72.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0x332F6FE4)), contentAlignment = Alignment.Center) {
+                Icon(
+                    androidx.compose.ui.res.painterResource(app.falak.player.R.drawable.ic_pl_sleep),
+                    contentDescription = null,
+                    tint = Color(0xFFF2C14E),
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Text(
+                if (bedtime) "It's bedtime" else "That's all for today",
+                fontFamily = Serif,
+                fontSize = 30.sp,
+                color = Paper,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (bedtime) {
+                    "Sleep well! Watching starts again at ${app.falak.player.data.PrayerTimes.label(s.kidsWakeUp, fmt)}."
+                } else {
+                    "You've watched ${app.falak.player.data.KidsTime.duration(watchedMinutes)} today. See you tomorrow!"
+                },
+                fontFamily = Sans,
+                fontSize = 16.sp,
+                lineHeight = 23.sp,
+                color = Muted,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(26.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PaperButton("OK", modifier = Modifier.focusRequester(ok)) { onClose() }
+                GhostButton(if (bedtime) "Grown-up: allow tonight" else "Grown-up: more time") { askPin = true }
+            }
+        }
+    }
+    if (askPin) {
+        PinDialog(
+            title = "Enter the PIN",
+            onDismiss = { askPin = false },
+            onSubmit = { pin ->
+                val right = pin == s.pin
+                if (right) {
+                    askPin = false
+                    if (bedtime) {
+                        app.falak.player.data.KidsClock.liftBedtime(context, s)
+                        onClose()
+                    } else {
+                        choosing = true
+                    }
+                }
+                right
+            },
+        )
+    }
+    if (choosing) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { choosing = false },
+            title = { Text("More time today") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(15 to "15 more minutes", 30 to "30 more minutes", 60 to "1 more hour").forEach { (m, label) ->
+                        androidx.compose.material3.TextButton(onClick = {
+                            choosing = false
+                            app.falak.player.data.KidsClock.addTime(context, m)
+                            onClose()
+                        }) { Text(label) }
+                    }
+                    androidx.compose.material3.TextButton(onClick = {
+                        choosing = false
+                        app.falak.player.data.KidsClock.unlimitedToday(context)
+                        onClose()
+                    }) { Text("No limit today") }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { choosing = false }) { Text("Cancel") } },
+        )
     }
 }

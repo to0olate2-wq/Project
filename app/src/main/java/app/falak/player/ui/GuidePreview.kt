@@ -187,6 +187,19 @@ internal fun PreviewPicture(
             repo.previewOpen = false
         }
     }
+    // The Kids profile: this counts as watching too, and stops when time is up or it's bedtime.
+    LaunchedEffect(exo) {
+        while (true) {
+            kotlinx.coroutines.delay(1_000)
+            if (!repo.kidsActive) continue
+            if (exo.isPlaying) app.falak.player.data.KidsClock.watched(context, 1_000L)
+            val block = app.falak.player.data.KidsClock.state(context, repo.state.value.settings).block ?: continue
+            exo.stop()
+            app.falak.player.data.KidsClock.flush(context)
+            app.falak.player.data.KidsClock.stop(block)
+            break
+        }
+    }
     // Sent to the background (Home pressed, full player opened): stop the sound and the download.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, exo) {

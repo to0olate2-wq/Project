@@ -214,6 +214,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
+    // The search box opened: names' sounds get worked out meanwhile, for searches in the other script.
+    val searchOpen = searching || vm.searchFocused || vm.query.isNotEmpty()
+    LaunchedEffect(searchOpen, index) { if (searchOpen) withContext(Dispatchers.Default) { index.search.warmSounds() } }
     // A search typed elsewhere (the phone remote) opens the search here too.
     LaunchedEffect(vm.query.isNotEmpty()) { if (vm.query.isNotEmpty()) searching = true }
     // The sidebar look's search bar is always there: "searching" just means something is typed.
@@ -504,8 +507,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 NavTabs(sections, section, onSelect = { s -> vm.section = s; vm.group = null }, large = tv)
             }
 
+            // Voice search heard something: the search row opens with it.
+            LaunchedEffect(vm.voiceHeard) { if (vm.voiceHeard > 0 && vm.query.isNotEmpty()) searching = true }
             AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                SearchField(vm.query, section.label) { vm.query = it }
+                SearchField(vm.query, section.label, VoiceSearch.language(state.settings.voiceLang), { vm.switchVoiceLanguage() }) { vm.query = it }
             }
             Body(Modifier.fillMaxSize())
         }
@@ -550,7 +555,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
 }
 
 @Composable
-private fun SearchField(value: String, scope: String, onChange: (String) -> Unit) {
+private fun SearchField(value: String, scope: String, voiceLang: String, onVoiceLang: () -> Unit, onChange: (String) -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Row(
@@ -576,6 +581,7 @@ private fun SearchField(value: String, scope: String, onChange: (String) -> Unit
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
         }
+        if (value.isEmpty()) LocalVoiceSearch.current?.let { speak -> VoiceButtons(voiceLang, speak, onVoiceLang) }
     }
 }
 

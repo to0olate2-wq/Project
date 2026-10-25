@@ -216,6 +216,8 @@ fun SidebarFrame(
                     },
                     kids = vm.kidsActive,
                     onSearchFocus = { vm.searchFocused = it },
+                    voiceLang = VoiceSearch.language(state.settings.voiceLang),
+                    onVoiceLang = { vm.switchVoiceLanguage() },
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -523,6 +525,9 @@ fun SidebarTopBar(
     kids: Boolean = false,
     /** The search box gained or lost the focus. */
     onSearchFocus: (Boolean) -> Unit = {},
+    /** Voice search's language ("ar" / "en"), and switching it. */
+    voiceLang: String = "en",
+    onVoiceLang: () -> Unit = {},
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -568,6 +573,8 @@ fun SidebarTopBar(
                     Icon(Icons.Outlined.Close, contentDescription = "Clear search", tint = Muted, modifier = Modifier.size(18.dp))
                 }
             }
+            // The microphone while the box is empty (typed text keeps the room).
+            if (query.isEmpty()) LocalVoiceSearch.current?.let { speak -> VoiceButtons(voiceLang, speak, onVoiceLang) }
         }
         Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))

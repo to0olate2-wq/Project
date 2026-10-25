@@ -149,6 +149,12 @@ fun HomeContent(
         (newMovies.filter(::featured).take(4) + newSeries.filter(::featured).take(2))
             .ifEmpty { (index.movies.asSequence() + index.series.asSequence()).filter(::featured).take(5).toList() }
     }
+    // Ramadan mode: where today stands, and the provider's Ramadan series.
+    val ramadan = rememberRamadan()
+    val ramadanTitles = remember(ramadan?.first, ramadan?.second is app.falak.player.data.Ramadan.Phase.Eid, index, locked) {
+        val r = ramadan ?: return@remember null
+        if (r.second is app.falak.player.data.Ramadan.Phase.Eid) null else app.falak.player.data.Ramadan.titles(index, r.first, locked)
+    }
     val bigContinue = sidebar && continueWatching.isNotEmpty()
     LaunchedEffect(hero, bigContinue) { vm.loadHeroArt(if (bigContinue) continueWatching else hero) }
 
@@ -198,6 +204,17 @@ fun HomeContent(
                     onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
                     onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
                 )
+            }
+        }
+        if (ramadan != null) {
+            item(key = "ramadan") { RamadanCard(ramadan.second) }
+        }
+        ramadanTitles?.takeIf { it.first.isNotEmpty() }?.let { (list, group) ->
+            item(key = "ramadanTitles") {
+                val section = if (list.first().kind == Kind.SERIES) Section.SERIES else Section.MOVIES
+                Shelf("Ramadan series", onSeeAll = { seeAll(section, group, Sort.NEWEST) }) {
+                    items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
+                }
             }
         }
         // What you watch.

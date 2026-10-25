@@ -272,6 +272,7 @@ class Repository(private val context: Context) {
         File(cacheDir, "$id.guide.json").delete()
         File(cacheDir, "$id.guide.bin").delete()
         File(importDir, "$id.m3u").delete()
+        ServiceLogStore.clear(context.filesDir, id)
     }
 
     fun setLast(id: String) {

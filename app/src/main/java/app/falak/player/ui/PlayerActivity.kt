@@ -42,6 +42,7 @@ import app.falak.player.data.ProgramAlert
 import app.falak.player.player.TrackMatch
 import app.falak.player.player.TrackMemory
 import app.falak.player.player.LiveCaptions
+import app.falak.player.player.SleepTimer
 import app.falak.player.player.SpeechModel
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -137,6 +138,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
     private lateinit var speedButton: TextView
+    private lateinit var sleepButton: TextView
     private lateinit var favButton: TextView
     private lateinit var menuButton: TextView
     private lateinit var browserView: ComposeView
@@ -278,12 +280,22 @@ class PlayerActivity : ComponentActivity() {
         // The mini player (and Listen mode) let go of their stream before this one connects.
         MiniPlayerState.close()
         app.falak.player.ListenService.handBack("")
+        // A sleep timer that ran out while nothing was playing is over.
+        if (SleepTimer.due(android.os.SystemClock.elapsedRealtime())) SleepTimer.cancel()
         queue = repo.playQueue
         if (queue.isEmpty()) {
             finish()
             return
         }
         index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
+        // Kids screen time used up, or bedtime: nothing plays (the main screen says why).
+        if (repo.kidsActive) {
+            app.falak.player.data.KidsClock.state(this, repo.state.value.settings).block?.let {
+                app.falak.player.data.KidsClock.stop(it)
+                finish()
+                return
+            }
+        }
         tvLayout = when (repo.state.value.settings.layout) {
             "tv" -> true
             "phone" -> false
@@ -391,6 +403,8 @@ class PlayerActivity : ComponentActivity() {
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
         // Films and episodes only (live TV always plays at normal speed).
         speedButton = pill(speedLabel(speed), R.drawable.ic_pl_speed) { showSpeedDialog() }.apply { visibility = View.GONE }
+        // Stop after a while, or at the end of what's on (the sound fades out over the last minute).
+        sleepButton = pill(SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime()), R.drawable.ic_pl_sleep) { showSleepDialog() }
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -398,7 +412,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -663,6 +677,11 @@ class PlayerActivity : ComponentActivity() {
         // Two-screen mode ends when the player leaves the screen.
         if (dual != null) endDual(keepSecond = false, replay = false)
         handler.removeCallbacks(rateTick)
+        if (repo.kidsActive) app.falak.player.data.KidsClock.flush(this)
+        // The service report's figures so far, to the file (off the main thread).
+        flushWatched()
+        val dir = filesDir
+        Thread { app.falak.player.data.ServiceLogStore.save(dir) }.start()
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
@@ -905,6 +924,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val ch = queue.getOrNull(index) ?: return
+        serviceStarting(ch)
         val wanted = desiredEngine(ch)
         // Auto captions chosen for this channel: the player is built hearing its sound.
         val captions = wanted != Engine.VLC && dual == null && autoCaptionsChosen(ch)
@@ -964,6 +984,13 @@ class PlayerActivity : ComponentActivity() {
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
 
+        // Playing again after the sleep timer stopped it; "at the end of this episode" was for another one.
+        if (sleptByTimer) {
+            sleptByTimer = false
+            playerView.keepScreenOn = true
+        }
+        if (SleepTimer.mode == SleepTimer.Mode.END_OF_ITEM && !SleepTimer.stopsAfter(ch.id)) SleepTimer.cancel()
+        updateSleepButton()
         // A fresh caption watcher for every item.
         sniffer = CaptionSniffer { onCaptionsChanged() }
         autoSubtitlesDone = false
@@ -1090,6 +1117,7 @@ class PlayerActivity : ComponentActivity() {
             }
             // Same channel listed elsewhere in the playlist (another group or quality)?
             if (tryBackup(ch)) return
+            serviceFailed(ch)
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
             val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
@@ -1102,11 +1130,30 @@ class PlayerActivity : ComponentActivity() {
                 hideMessage()
                 wasReady = true
                 failedUrl = null
+                // Carried on after the sleep timer stopped it (the play button).
+                if (sleptByTimer) {
+                    sleptByTimer = false
+                    playerView.keepScreenOn = true
+                }
+                serviceReady()
             }
             // Stopping to load again and again: a lighter version, if Tidy channel list merged one.
-            if (playbackState == Player.STATE_BUFFERING && wasReady) onStall()
+            if (playbackState == Player.STATE_BUFFERING && wasReady) {
+                serviceStall()
+                onStall()
+            }
             if (playbackState == Player.STATE_ENDED) {
                 saveProgress()
+                // Sleep timer "at the end of this": nothing more plays.
+                if (SleepTimer.stopsAfter(queue.getOrNull(index)?.id)) {
+                    handler.post { sleepStop() }
+                    return
+                }
+                // Kids' time ran out while this was on: it has finished, so that's all.
+                kidsFinishing?.let { b ->
+                    handler.post { kidsStop(b) }
+                    return
+                }
                 // The show watched from its start has caught up with live: back to the channel.
                 if (liveBeforeStartOver != null) {
                     handler.post { backToLive() }
@@ -1121,7 +1168,10 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
-            if (reason == Player.DISCONTINUITY_REASON_SEEK) learnIntro(oldPosition.positionMs, newPosition.positionMs)
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                lastSeekAt = android.os.SystemClock.elapsedRealtime()
+                learnIntro(oldPosition.positionMs, newPosition.positionMs)
+            }
         }
 
         override fun onCues(cueGroup: CueGroup) {
@@ -1343,6 +1393,14 @@ class PlayerActivity : ComponentActivity() {
         if (!::playerView.isInitialized) return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_UP && event.keyCode == swallowUpKey) {
             swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
+            return true
+        }
+        // Stopped by the sleep timer: OK carries on.
+        if (sleptByTimer && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && !menuOpen && !browserOpen &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) {
+            wakeFromSleep()
+            swallowUpKey = event.keyCode
             return true
         }
         // The ambient screen: any key just brings the picture back.
@@ -2388,7 +2446,7 @@ class PlayerActivity : ComponentActivity() {
         val next = nextEpisode()
         val ended = p.playbackState == Player.STATE_ENDED
         val credits = dur > 5 * 60_000 && dur - pos <= UP_NEXT_MS
-        if (next == null || upNextDismissed == ch.id || !(ended || credits)) {
+        if (next == null || upNextDismissed == ch.id || SleepTimer.stopsAfter(ch.id) || kidsFinishing != null || !(ended || credits)) {
             if (upNext != null) {
                 upNext = null
                 upNextSecs = null
@@ -2605,6 +2663,9 @@ class PlayerActivity : ComponentActivity() {
             val shown = bannerFor
             if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
             seriesTick()
+            sleepTick()
+            serviceTick()
+            kidsTick()
             ambientTick()
             // Once a minute: night sound follows sunset and sunrise while something plays.
             if (++nightChecks % 60 == 0) nightSound?.enabled = nightNow()
@@ -3332,6 +3393,246 @@ class PlayerActivity : ComponentActivity() {
         handler.post { playCurrent(showInfo = false, overrideUrl = next.url) }
     }
 
+    // ---- service report (Settings → Playlists & TV guide) ----
+
+    /** When the live channel being started was chosen (elapsedRealtime); 0 once it plays or fails. */
+    private var serviceStartAt = 0L
+    private var serviceStartFor: String? = null
+    /** Live TV watched since it was last written down. */
+    private var serviceWatchedMs = 0L
+    private var serviceTicks = 0
+    private var lastSeekAt = 0L
+
+    /** Live channels only: films and episodes start and stop to load differently (seeking, big files). */
+    private fun countsForService(ch: Channel?): Boolean = ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null
+
+    private fun serviceLog(change: (app.falak.player.data.ServiceLog) -> app.falak.player.data.ServiceLog) {
+        val id = repo.currentPlaylist?.id ?: return
+        app.falak.player.data.ServiceLogStore.update(filesDir, id, change)
+    }
+
+    private fun serviceStarting(ch: Channel) {
+        if (!countsForService(ch)) {
+            serviceStartAt = 0L
+            return
+        }
+        // Tried again in another format or from a backup copy: still the same start.
+        if (ch.id != serviceStartFor || serviceStartAt == 0L) {
+            serviceStartFor = ch.id
+            serviceStartAt = android.os.SystemClock.elapsedRealtime()
+        }
+    }
+
+    private fun serviceReady() {
+        val at = serviceStartAt
+        if (at == 0L) return
+        serviceStartAt = 0L
+        val took = android.os.SystemClock.elapsedRealtime() - at
+        if (took in 0L..60_000L) serviceLog { app.falak.player.data.ServiceReport.add(it, System.currentTimeMillis(), startMs = took) }
+    }
+
+    private fun serviceStall() {
+        if (!countsForService(queue.getOrNull(index))) return
+        if (android.os.SystemClock.elapsedRealtime() - lastSeekAt < 3_000L) return
+        serviceLog { app.falak.player.data.ServiceReport.add(it, System.currentTimeMillis(), stalls = 1) }
+    }
+
+    private fun serviceFailed(ch: Channel) {
+        serviceStartAt = 0L
+        if (!countsForService(ch)) return
+        serviceLog { app.falak.player.data.ServiceReport.add(it, System.currentTimeMillis(), failed = ch.name) }
+    }
+
+    /** Once a second: live TV watched, written down every minute (and to the file every 5). */
+    private fun serviceTick() {
+        if (player?.isPlaying == true && countsForService(queue.getOrNull(index))) serviceWatchedMs += 1_000L
+        serviceTicks++
+        if (serviceTicks % 60 == 0) flushWatched()
+        if (serviceTicks % 300 == 0) {
+            val dir = filesDir
+            Thread { app.falak.player.data.ServiceLogStore.save(dir) }.start()
+        }
+    }
+
+    private fun flushWatched() {
+        val ms = serviceWatchedMs
+        if (ms <= 0L) return
+        serviceWatchedMs = 0L
+        serviceLog { app.falak.player.data.ServiceReport.add(it, System.currentTimeMillis(), watchedMs = ms) }
+    }
+
+    // ---- kids screen time ----
+
+    /** Kids' time ran out but what's on ends soon: it finishes, then this stops playing. */
+    private var kidsFinishing: app.falak.player.data.KidsTime.Block? = null
+    /** For a live programme: when it ends (epoch ms); 0 = when the film or episode ends. */
+    private var kidsFinishAt = 0L
+    private var kidsWarned = false
+
+    /** Once a second in the Kids profile: time watched, "10 minutes left", and time up or bedtime. */
+    private fun kidsTick() {
+        if (!repo.kidsActive) return
+        val p = player
+        if (p?.isPlaying == true) app.falak.player.data.KidsClock.watched(this, 1_000L)
+        val st = app.falak.player.data.KidsClock.state(this, repo.state.value.settings)
+        val left = st.minutesLeft
+        if (left != null && left in 1..10 && !kidsWarned && st.block == null) {
+            kidsWarned = true
+            android.widget.Toast.makeText(this, if (left == 1) "1 minute of watching left today" else "$left minutes of watching left today", android.widget.Toast.LENGTH_LONG).show()
+        }
+        val block = st.block ?: return
+        val waiting = kidsFinishing
+        if (waiting != null) {
+            if (kidsFinishAt > 0L && System.currentTimeMillis() >= kidsFinishAt) kidsStop(waiting)
+            return
+        }
+        // What's on ends soon: it finishes first.
+        val ch = queue.getOrNull(index)
+        val wall = System.currentTimeMillis()
+        if (ch != null && p != null) {
+            if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) {
+                val rest = p.duration - p.currentPosition
+                if (p.duration > 0 && rest in 0L..app.falak.player.data.KidsTime.GRACE_MS) {
+                    kidsFinishing = block
+                    kidsFinishAt = 0L
+                    android.widget.Toast.makeText(this, "That's all after this one", android.widget.Toast.LENGTH_LONG).show()
+                    return
+                }
+            } else {
+                val prog = repo.epg.value[ch.epgKey]?.firstOrNull { wall >= it.start && wall < it.stop }
+                if (prog != null && prog.stop - wall in 0L..app.falak.player.data.KidsTime.GRACE_MS) {
+                    kidsFinishing = block
+                    kidsFinishAt = prog.stop
+                    android.widget.Toast.makeText(this, "That's all after “${prog.title}”", android.widget.Toast.LENGTH_LONG).show()
+                    return
+                }
+            }
+        }
+        kidsStop(block)
+    }
+
+    private fun kidsStop(block: app.falak.player.data.KidsTime.Block) {
+        kidsFinishing = null
+        FreezeWatch.note("kids screen time: stopped")
+        app.falak.player.data.KidsClock.flush(this)
+        saveProgress()
+        app.falak.player.data.KidsClock.stop(block)
+        finish()
+    }
+
+    // ---- sleep timer ----
+
+    /** Stopped by the sleep timer: the message is up and OK carries on. */
+    private var sleptByTimer = false
+
+    /** The fade's volume as last set (1 = full). */
+    private var sleepVolume = 1f
+
+    private fun updateSleepButton() {
+        if (!::sleepButton.isInitialized) return
+        val label = SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime())
+        if (sleepButton.text?.toString() != label) setPillLabel(sleepButton, label)
+    }
+
+    private fun showSleepDialog() {
+        val ch = queue.getOrNull(index) ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val choices = ArrayList<Pair<String, () -> Unit>>()
+        if (SleepTimer.isOn) choices += "Off" to { SleepTimer.cancel() }
+        val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+        if (!live) {
+            val what = when (ch.kind) {
+                Kind.SERIES -> "episode"
+                Kind.MOVIE -> "film"
+                else -> "programme"
+            }
+            choices += "At the end of this $what" to { SleepTimer.endOf(ch.id, "End of this $what") }
+        } else {
+            // The programme on now, from the guide: stop when it ends.
+            val wall = System.currentTimeMillis()
+            val prog = repo.epg.value[ch.epgKey]?.firstOrNull { wall >= it.start && wall < it.stop }
+            if (prog != null && prog.stop - wall in 2 * 60_000L..6 * 3_600_000L) {
+                choices += "At the end of “${prog.title}” (${time(prog.stop)})" to {
+                    SleepTimer.at(android.os.SystemClock.elapsedRealtime() + (prog.stop - System.currentTimeMillis()), "End of the programme")
+                }
+            }
+        }
+        for (m in listOf(15, 30, 45, 60, 90, 120)) {
+            val label = when (m) {
+                60 -> "In 1 hour"
+                90 -> "In 1½ hours"
+                120 -> "In 2 hours"
+                else -> "In $m minutes"
+            }
+            choices += label to { SleepTimer.after(m, android.os.SystemClock.elapsedRealtime()) }
+        }
+        val title = when (SleepTimer.mode) {
+            SleepTimer.Mode.OFF -> "Sleep timer"
+            SleepTimer.Mode.END_OF_ITEM -> "Sleep timer · ${SleepTimer.label}"
+            SleepTimer.Mode.AT_TIME -> "Sleep timer · stops at ${time(System.currentTimeMillis() + (SleepTimer.remaining(now) ?: 0L))}"
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(title)
+            .setItems(choices.map { it.first }.toTypedArray()) { d, which ->
+                d.dismiss()
+                choices[which].second()
+                if (dual == null && !SleepTimer.isOn) setSleepVolume(1f)
+                updateSleepButton()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Once a second: the button's time left, the fade over the last minute, and the stop. */
+    private fun sleepTick() {
+        updateSleepButton()
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!SleepTimer.isOn) {
+            if (dual == null) setSleepVolume(1f)
+            return
+        }
+        // Set every second while it runs: a new stream (or player) starts at full volume.
+        if (dual == null) setSleepVolume(SleepTimer.volume(now), always = true)
+        if (SleepTimer.due(now)) sleepStop()
+    }
+
+    private fun setSleepVolume(v: Float, always: Boolean = false) {
+        if (v == sleepVolume && !always) return
+        sleepVolume = v
+        exo?.volume = v
+        vlc?.setLevel(v)
+    }
+
+    /** Time's up: what plays stops (a live channel lets go of its connection) and the screen may sleep. */
+    private fun sleepStop() {
+        SleepTimer.cancel()
+        FreezeWatch.note("sleep timer stopped playback")
+        saveProgress()
+        val ch = queue.getOrNull(index)
+        val p = player
+        if (ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) p?.stop() else p?.pause()
+        stopAutoCaptions()
+        if (dual == null) setSleepVolume(1f)
+        sleptByTimer = true
+        playerView.keepScreenOn = false
+        playerView.hideController()
+        showMessage("Stopped by the sleep timer\n${if (tvLayout) "OK" else "Play"} carries on")
+        updateSleepButton()
+    }
+
+    private fun wakeFromSleep() {
+        sleptByTimer = false
+        playerView.keepScreenOn = true
+        hideMessage()
+        val ch = queue.getOrNull(index) ?: return
+        if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) {
+            playCurrent(showInfo = true)
+        } else {
+            player?.play()
+            resumeAutoCaptions()
+        }
+    }
+
     // ---- start over ----
 
     /** Live, with replay, and the show started 3+ minutes ago: offer it from the start for 12 seconds. */
@@ -3595,7 +3896,7 @@ class PlayerActivity : ComponentActivity() {
         if (isFinishing) return false
         val ch = queue.getOrNull(index) ?: return false
         val p = player ?: return false
-        if (!repo.state.value.settings.listenMode || isTvDevice || inPip || dual != null || handingOff) return false
+        if (!repo.state.value.settings.listenMode || isTvDevice || inPip || dual != null || handingOff || repo.kidsActive) return false
         if (p.playerError != null || !p.playWhenReady || currentUrl.isBlank()) return false
         val live = ch.kind == Kind.LIVE
         val now = System.currentTimeMillis()

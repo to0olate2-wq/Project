@@ -42,6 +42,14 @@ import app.falak.player.data.SyncPeer
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
+import app.falak.player.RamadanNow
+import app.falak.player.data.KidsClock
+import app.falak.player.data.KidsTime
+import app.falak.player.data.Ramadan
+import app.falak.player.data.ServiceLogStore
+import app.falak.player.data.ServiceReport
+import app.falak.player.player.SleepTimer
+import app.falak.player.ui.forceVoiceForTest
 import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
@@ -98,9 +106,11 @@ abstract class ScreenshotBase {
         messy: Boolean = false,
         /** An Xtream account as the provider would report it (Subscription watch). */
         account: Account? = null,
+        /** A group of this year's Ramadan series (Ramadan mode's shelf). */
+        ramadan: Boolean = false,
         block: (LibraryViewModel, (String) -> Unit) -> Unit,
-    ) {
-        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder, habits, messy)
+    ) = watched {
+        seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder, habits, messy, ramadan)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
         waitFor { vm.index.all.isNotEmpty() }
@@ -126,7 +136,7 @@ abstract class ScreenshotBase {
         /** Auto captions showing these words. */
         autoCaption: String? = null,
         block: ((String) -> Unit) -> Unit,
-    ) {
+    ) = watched {
         seed(if (tv) "tv" else "phone")
         val channels = sampleChannels()
         val queue = channels.filter { it.kind == (if (live) Kind.LIVE else Kind.MOVIE) }
@@ -160,6 +170,33 @@ abstract class ScreenshotBase {
         block { name -> capture(activity, name) }
     }
 
+    /**
+     * A screen test that hangs (it happens now and then on CI) writes where every thread is after
+     * two and a half minutes, as hang-<test>.txt beside the pictures, to find out why.
+     */
+    private fun watched(block: () -> Unit) {
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        val name = javaClass.simpleName
+        Thread {
+            try {
+                Thread.sleep(150_000)
+            } catch (e: InterruptedException) {
+                return@Thread
+            }
+            if (done.get()) return@Thread
+            val dir = File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
+            val text = Thread.getAllStackTraces().entries.joinToString("\n\n") { (t, stack) ->
+                "${t.name} (${t.state})\n" + stack.joinToString("\n") { "    at $it" }
+            }
+            runCatching { File(dir, "hang-$name.txt").writeText(text) }
+        }.apply { isDaemon = true }.start()
+        try {
+            block()
+        } finally {
+            done.set(true)
+        }
+    }
+
     /** Saves sample playlist + settings, as if the user had set the app up. */
     private fun seed(
         layout: String,
@@ -176,12 +213,13 @@ abstract class ScreenshotBase {
         reminder: Boolean = false,
         habits: Boolean = false,
         messy: Boolean = false,
+        ramadan: Boolean = false,
     ): Playlist {
         val dir = File(app.filesDir, "sample").apply { mkdirs() }
         val m3u = File(dir, "sample.m3u")
         m3u.writeText(buildM3u(dir, liveOnly, messy))
         val p = Playlist("sample", "Home", SourceType.M3U_FILE, m3u.path)
-        writeCache(dir, liveOnly, messy)
+        writeCache(dir, liveOnly, messy, ramadan)
         if (habits) {
             // The same three channels at this time of day on each of the last three days.
             val now = System.currentTimeMillis()
@@ -307,12 +345,13 @@ abstract class ScreenshotBase {
     )
 
     private val seriesTitles = listOf("Harbour Lights", "The Orchard Years", "Signal Point", "Winter Court")
+    private val ramadanSeries = listOf("Desert Lanterns", "قمر الحارة", "The Spice Road", "دروب الرمال", "Night Market")
 
     /**
      * The same library as the M3U, plus what an Xtream provider sends (when each film and series
      * was added, ratings, series), saved as the app's playlist cache: the app opens that copy.
      */
-    private fun writeCache(dir: File, liveOnly: Boolean, messy: Boolean = false) {
+    private fun writeCache(dir: File, liveOnly: Boolean, messy: Boolean = false, ramadan: Boolean = false) {
         val now = System.currentTimeMillis() / 1000
         val out = ArrayList<Channel>()
         for ((group, names) in liveGroups) for (name in names) {
@@ -348,6 +387,15 @@ abstract class ScreenshotBase {
                     id = "series-$i", name = title, group = if (i % 2 == 0) "Drama Series" else "Family", url = "",
                     logo = "file://${poster.path}", kind = Kind.SERIES, seriesId = "${100 + i}",
                     added = now - (1 + i * 5) * 86_400L, rating = seriesRatings[i],
+                )
+            }
+            // Ramadan mode: a provider's group of this year's Ramadan series (made-up titles).
+            if (ramadan) for ((i, title) in ramadanSeries.withIndex()) {
+                val poster = image(dir, "ramadan-$i.png", 300, 450, palette[(i + 2) % palette.size], title, round = false)
+                out += Channel(
+                    id = "ramadan-$i", name = title, group = "مسلسلات رمضان 2027", url = "",
+                    logo = "file://${poster.path}", kind = Kind.SERIES, seriesId = "${200 + i}",
+                    added = now - i * 3_600L,
                 )
             }
         }
@@ -1064,4 +1112,148 @@ class TvAutoCaptionsScreens : ScreenshotBase() {
 class PhoneAutoCaptionsScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_LAND)
     fun phoneAutoCaptions() = player(tv = false, live = true, autoCaption = captionWords) { shoot -> shoot("phone-32-auto-captions") }
+}
+
+// ---- 7.5: search across scripts, Ramadan mode, kids screen time, service report, sleep timer ----
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvArabicSearchScreens : ScreenshotBase() {
+    // Typed (or said) in Arabic, found in Latin letters; the microphone and its language in the box.
+    @Test @Config(qualifiers = TV)
+    fun tvArabicSearch() {
+        forceVoiceForTest = true
+        mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
+            vm.query = "بولس سبورت"
+            shoot("tv-47-search-arabic")
+        }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneArabicSearchScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneArabicSearch() {
+        forceVoiceForTest = true
+        mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
+            vm.query = "وايلد ايرث"
+            shoot("phone-33-search-arabic")
+        }
+    }
+}
+
+/** An afternoon in Ramadan 2027 (the 12th day), where the test runs. */
+private fun ramadanAfternoon(): Long = java.util.Calendar.getInstance().apply {
+    clear()
+    set(2027, java.util.Calendar.FEBRUARY, 19, 13, 0)
+}.timeInMillis
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvRamadanScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV_TALL)
+    fun tvRamadan() {
+        RamadanNow.nowForTest = ramadanAfternoon()
+        mainScreens("tv", watching = true, ramadan = true) { vm, shoot ->
+            shoot("tv-48-home-ramadan")
+            vm.screen = Screen.PRAYER
+            // The first day moved a day earlier by hand (the moon seen the night before).
+            vm.updateSettings { it.copy(ramadanDates = mapOf("1448" to Ramadan.encode(20270207, 20270308))) }
+            shoot("tv-49-prayer-ramadan")
+        }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneRamadanScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneRamadan() {
+        RamadanNow.nowForTest = ramadanAfternoon()
+        mainScreens("phone", look = "sidebar", ramadan = true) { _, shoot -> shoot("phone-34-home-ramadan") }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvRamadanAmbientScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvRamadanAmbient() {
+        RamadanNow.nowForTest = ramadanAfternoon()
+        player(tv = true, live = false, ambient = true) { shoot -> shoot("tv-50-ambient-ramadan") }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvKidsTimeScreens : ScreenshotBase() {
+    // Time used up, then bedtime: the page over the kids' lists (a grown-up's PIN adds time).
+    @Test @Config(qualifiers = TV)
+    fun tvKidsTime() = mainScreens("tv", kids = listOf("Kids"), kidsOn = true) { vm, shoot ->
+        vm.updateSettings { it.copy(kidsDailyMinutes = 90, kidsBedtime = 20 * 60) }
+        vm.chooseProfile(KIDS_PROFILE)
+        KidsClock.stop(KidsTime.Block.TIME_UP)
+        shoot("tv-51-kids-time-up")
+        KidsClock.stop(KidsTime.Block.BEDTIME)
+        shoot("tv-52-kids-bedtime")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneKidsTimeScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneKidsTime() = mainScreens("phone", kids = listOf("Kids"), kidsOn = true) { vm, shoot ->
+        vm.updateSettings { it.copy(kidsDailyMinutes = 90, kidsBedtime = 20 * 60) }
+        vm.chooseProfile("")
+        // Settings → Profiles & parental control, with the screen-time rows.
+        vm.unlocked = true
+        vm.screen = Screen.SETTINGS
+        vm.settingsPage = SettingsPage.FAMILY
+        shoot("phone-35-settings-kids-time")
+        vm.screen = Screen.LIBRARY
+        vm.chooseProfile(KIDS_PROFILE)
+        KidsClock.stop(KidsTime.Block.TIME_UP)
+        shoot("phone-36-kids-time-up")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvServiceReportScreens : ScreenshotBase() {
+    // A week of live TV on this device: the line in Settings, then the report in full.
+    @Test @Config(qualifiers = TV_TALL)
+    fun tvServiceReport() = mainScreens("tv") { vm, shoot ->
+        val r = ServiceReport
+        val day = 86_400_000L
+        val now = System.currentTimeMillis()
+        val evening = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 21); set(java.util.Calendar.MINUTE, 10) }.timeInMillis
+        val afternoon = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 15); set(java.util.Calendar.MINUTE, 10) }.timeInMillis
+        ServiceLogStore.update(app.filesDir, "sample") { log0 ->
+            var log = log0
+            for (d in 1..5) {
+                log = r.add(log, afternoon - d * day, watchedMs = 90 * 60_000L, stalls = if (d == 3) 1 else 0)
+                repeat(6) { log = r.add(log, afternoon - d * day, startMs = 1_100L + it * 120L) }
+                log = r.add(log, evening - d * day, watchedMs = 60 * 60_000L, stalls = 5)
+            }
+            log = r.add(log, evening - day, failed = "Racing Line")
+            log = r.add(log, evening - 2 * day, failed = "Racing Line")
+            r.add(log, now - 3 * day, failed = "Deep Blue")
+        }
+        vm.screen = Screen.SETTINGS
+        vm.settingsPage = SettingsPage.PLAYLISTS
+        shoot("tv-53-settings-service-report")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSleepTimerScreens : ScreenshotBase() {
+    // The player's Sleep button with a timer running.
+    @Test @Config(qualifiers = TV)
+    fun tvSleepTimer() {
+        SleepTimer.after(30, android.os.SystemClock.elapsedRealtime())
+        player(tv = true, live = true) { shoot -> shoot("tv-54-player-sleep-timer") }
+    }
 }

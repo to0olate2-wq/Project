@@ -35,6 +35,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
+import app.falak.player.player.SleepTimer
 import app.falak.player.ui.PlayerActivity
 
 /**
@@ -112,6 +113,8 @@ class ListenService : Service() {
 
     private fun play(i: Item) {
         release()
+        // A sleep timer that ran out before the sound got here is over.
+        if (SleepTimer.due(android.os.SystemClock.elapsedRealtime())) SleepTimer.cancel()
         item = i
         failures = 0
         val app = application as FalakApp
@@ -164,6 +167,26 @@ class ListenService : Service() {
         }.getOrNull()
         goForeground(notification())
         app.repo.listening = true
+        handler.post(sleepTick)
+    }
+
+    /** The player's sleep timer carries on here: the sound fades over the last minute, then stops. */
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            val p = player ?: return
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (SleepTimer.mode == SleepTimer.Mode.AT_TIME) {
+                p.volume = SleepTimer.volume(now)
+                if (SleepTimer.due(now)) {
+                    SleepTimer.cancel()
+                    stopNow()
+                    return
+                }
+            } else if (p.volume != 1f) {
+                p.volume = 1f
+            }
+            handler.postDelayed(this, 1_000)
+        }
     }
 
     private val listener = object : Player.Listener {

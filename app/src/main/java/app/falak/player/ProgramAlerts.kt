@@ -224,6 +224,8 @@ class AlertReceiver : BroadcastReceiver() {
                 // The same receiver rings for Subscription watch (an action of its own).
                 if (intent.action == SubscriptionAlarm.ACTION) {
                     SubscriptionAlarm.onAlarm(context.applicationContext, intent)
+                } else if (intent.action == SuhoorAlarm.ACTION) {
+                    SuhoorAlarm.onAlarm(context.applicationContext, intent)
                 } else {
                     AlertAlarm.onAlarm(context.applicationContext)
                 }

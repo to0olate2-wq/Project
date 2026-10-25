@@ -3,6 +3,7 @@ package app.falak.player.ui
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyListState
@@ -208,6 +209,27 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun clearRecentSearches() {
         recentSearches = emptyList()
         searchPrefs.edit().remove("recent").apply()
+    }
+
+    // ---- voice search ----
+
+    /** Counts what voice search heard (the classic look opens its search row for it). */
+    var voiceHeard by mutableIntStateOf(0)
+        private set
+
+    /** What voice search heard: searched for on the lists, everything in this playlist from Home. */
+    fun heardSearch(text: String) {
+        if (playlist == null) return
+        screen = Screen.LIBRARY
+        group = null
+        query = text
+        voiceHeard++
+    }
+
+    /** The search box's "ع / EN": voice search listens for the other language from now on. */
+    fun switchVoiceLanguage() {
+        val now = VoiceSearch.language(state.value.settings.voiceLang)
+        updateSettings { it.copy(voiceLang = if (now == "ar") "en" else "ar") }
     }
 
     // ---- Subscription watch ----
@@ -1039,6 +1061,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** [id]: "" the main profile, [KIDS_PROFILE], or one of the extra profiles. */
     fun chooseProfile(id: String) {
+        // A kids' "that's all for today" page belongs to the profile that saw it.
+        app.falak.player.data.KidsClock.dismiss()
         val kids = id == KIDS_PROFILE
         kidsActive = kids
         repo.kidsActive = kids

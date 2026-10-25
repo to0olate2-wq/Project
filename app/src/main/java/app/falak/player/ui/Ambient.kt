@@ -129,6 +129,11 @@ fun AmbientScreen(slides: List<AmbientSlide>, paused: String?, onExit: () -> Uni
         ) {
             Text(time, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 88.sp else 64.sp, color = Color(0xFFF7F3EC))
             Text(date, fontFamily = Sans, fontSize = if (tv) 20.sp else 16.sp, color = Color(0xCCF7F3EC))
+            // Ramadan: the countdown to Iftar or Imsak.
+            ramadanAmbientLine()?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 18.sp else 15.sp, color = Color(0xFFF2C14E), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (slide != null) {
                 Spacer(Modifier.height(if (tv) 28.dp else 18.dp))
                 Text(slide.title, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 18.sp else 15.sp, color = Color(0xFFF7F3EC), maxLines = 1, overflow = TextOverflow.Ellipsis)

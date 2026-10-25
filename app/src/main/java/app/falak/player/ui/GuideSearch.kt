@@ -77,7 +77,7 @@ fun searchGuide(
                 Catchup.canReplay(ch, p, now) -> earlier
                 else -> continue
             }
-            val score = q.score(p.title)
+            val score = q.scoreAcross(p.title)
             if (score == 0) continue
             // The same programme on the same guide row listed under two channel entries: once.
             if (!seen.add(ch.epgKey + "|" + p.start + "|" + ch.name)) continue

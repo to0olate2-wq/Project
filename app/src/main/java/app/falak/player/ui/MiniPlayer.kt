@@ -97,6 +97,17 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
         delay(400)
         started = true
     }
+    // The player's sleep timer: when it's time, the small picture goes too.
+    LaunchedEffect(r) {
+        while (true) {
+            delay(1_000)
+            if (app.falak.player.player.SleepTimer.due(android.os.SystemClock.elapsedRealtime())) {
+                app.falak.player.player.SleepTimer.cancel()
+                close()
+                break
+            }
+        }
+    }
     // The app left the screen (Home, another app, the full player): the mini player is done.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {

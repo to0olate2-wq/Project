@@ -155,6 +155,9 @@ class SearchQuery(raw: String) {
 
     val isEmpty: Boolean get() = words.isEmpty()
 
+    /** The same search for names written in the other script (Arabic / Latin), when it can be compared. */
+    val cross: CrossScript? by lazy { CrossScript.of(text) }
+
     /**
      * How well a name matches, 0 = not at all: 1000 the exact title, 800 the title starts with
      * what was typed, 600 the words in that order, 400 every word at the start of a word,
@@ -204,6 +207,15 @@ class SearchQuery(raw: String) {
         if (words.isEmpty()) return 0
         val n = SearchText.normalize(title)
         return score(" $n ") { SearchText.core(title) }
+    }
+
+    /** [score], or else how it sounds against a title in the other script (see [CrossScript]). */
+    fun scoreAcross(title: String): Int {
+        val s = score(title)
+        if (s > 0) return s
+        val c = cross ?: return 0
+        if (!c.wanted(Sounds.scripts(title))) return 0
+        return c.match(Sounds.of(title))
     }
 
     private fun containsIgnoringSpaces(padded: String, w: String): Boolean {
@@ -263,17 +275,30 @@ class SearchIndex(private val items: List<Channel>) {
     // Racing threads just compute the same string.
     private val cores = arrayOfNulls<String>(items.size)
 
+    // Names by sound (see Sounds), for searches typed in the other script; made when first needed.
+    private val sounds = arrayOfNulls<String>(items.size)
+
+    private fun soundOf(i: Int): String = sounds[i] ?: Sounds.of(items[i].name, names[i].trim()).also { sounds[i] = it }
+
+    /** Works every name's sound out ahead (while the search box opens), so the first search in the other script is quick. */
+    fun warmSounds() {
+        for (i in items.indices) soundOf(i)
+    }
+
     val size: Int get() = items.size
 
     /** Matching items, best first; [accept] keeps out other kinds, hidden groups and the like. */
     fun find(query: String, limit: Int = Int.MAX_VALUE, accept: (Channel) -> Boolean = { true }): List<Channel> {
         val q = SearchQuery(query)
         if (q.isEmpty) return emptyList()
+        val cross = q.cross
         var keys = LongArray(64)
         var n = 0
         for (i in names.indices) {
             val padded = names[i]
-            val score = q.score(padded) { cores[i] ?: SearchText.core(items[i].name).also { cores[i] = it } }
+            var score = q.score(padded) { cores[i] ?: SearchText.core(items[i].name).also { cores[i] = it } }
+            // Typed in Arabic, written in Latin letters (or the other way round): by sound.
+            if (score == 0 && cross != null && cross.wanted(Sounds.scripts(padded))) score = cross.match(soundOf(i))
             if (score == 0 || !accept(items[i])) continue
             if (n == keys.size) keys = keys.copyOf(n * 2)
             // Sorted as one number: score, then shorter names, then playlist order.
@@ -294,5 +319,309 @@ class SearchIndex(private val items: List<Channel>) {
         /** Ranks a short list (favorites, recently watched) without keeping an index. */
         fun rank(list: List<Channel>, query: String, accept: (Channel) -> Boolean = { true }): List<Channel> =
             SearchIndex(list).find(query, accept = accept)
+    }
+}
+
+/**
+ * Names across scripts: "الجزيرة" and "Al Jazeera", "ام بي سي" and "MBC", "سبايدر مان" and
+ * "Spider-Man" sound alike, so both are spelled out the same rough way, by their consonants only
+ * ("jzr", "mbs", "sbdr mn"), and compared there. Arabic doesn't write most vowels and Latin
+ * spellings of Arabic names disagree on them, so leaving every vowel out is what makes the two
+ * meet. It's rough on purpose: such matches rank after every match in the script typed.
+ */
+object Sounds {
+    /** Arabic letter names, as spelled-out names write them ("ام بي سي" = MBC). */
+    private val LETTER_NAMES: Map<Char, String> = mapOf(
+        'a' to "اي", 'b' to "بي", 'c' to "سي", 'd' to "دي", 'e' to "اي", 'f' to "اف", 'g' to "جي",
+        'h' to "اتش", 'i' to "اي", 'j' to "جي", 'k' to "كي", 'l' to "ال", 'm' to "ام", 'n' to "ان",
+        'o' to "او", 'p' to "بي", 'q' to "كيو", 'r' to "ار", 's' to "اس", 't' to "تي", 'u' to "يو",
+        'v' to "في", 'w' to "دبليو", 'x' to "اكس", 'y' to "واي", 'z' to "زد",
+    )
+
+    /** Words that spell a letter (with the other usual spellings): a run of two or more is an abbreviation. */
+    private val SPELLED: Set<String> = LETTER_NAMES.values.toHashSet() + setOf("ايه", "زي", "ايتش", "جاي", "كاي", "اكس")
+
+    private const val VOWELS = "aeiou"
+
+    /** Bit for a text with Arabic letters, and for one with Latin letters. */
+    const val ARABIC = 1
+    const val LATIN = 2
+
+    fun scripts(text: CharSequence): Int {
+        var s = 0
+        for (c in text) {
+            if (c in 'a'..'z' || c in 'A'..'Z') s = s or LATIN else if (c in 'ء'..'ي' || c in 'ٱ'..'ۿ') s = s or ARABIC
+            if (s == ARABIC or LATIN) break
+        }
+        return s
+    }
+
+    /**
+     * [raw]'s words by sound, ready for [CrossScript.match]: " jzr/jzrt mbk/mbs 2 " (each word's
+     * readings separated by "/", words by spaces, a space each end). Empty when nothing is left.
+     */
+    fun of(raw: String, normalized: String = SearchText.normalize(raw)): String {
+        val acronyms = capitalRuns(raw)
+        val out = StringBuilder(" ")
+        for (alts in words(normalized, acronyms)) {
+            out.append(alts.joinToString("/")).append(' ')
+        }
+        return if (out.length == 1) "" else out.toString()
+    }
+
+    /**
+     * Each word's readings, first the usual one. Arabic letter names in a row ("ام بي سي") become
+     * one word; a short Latin word may be letters said one by one ("mbc", or "MBC" in [acronyms]).
+     */
+    internal fun words(normalized: String, acronyms: Set<String> = emptySet()): List<List<String>> {
+        val raw = normalized.split(' ').filter { it.isNotEmpty() }
+        val out = ArrayList<List<String>>(raw.size)
+        var i = 0
+        while (i < raw.size) {
+            val w = raw[i]
+            // A run of spelled letters: one word made of the letters' sounds.
+            if (w in SPELLED) {
+                var j = i
+                while (j < raw.size && raw[j] in SPELLED) j++
+                if (j - i >= 2) {
+                    val joined = squeeze(raw.subList(i, j).joinToString("") { arabic(it).first() })
+                    if (joined.isNotEmpty()) out += listOf(joined)
+                    i = j
+                    continue
+                }
+            }
+            val alts = when {
+                w.all { it in '0'..'9' } -> listOf(w)
+                w.any { it in 'a'..'z' } -> latin(w, acronym = w in acronyms || (w.length in 2..4 && w.none { it in VOWELS }))
+                else -> arabic(w)
+            }.filter { it.isNotEmpty() }.distinct()
+            // "al" and "el" on their own are the article ("Al Jazeera").
+            if (alts.isNotEmpty() && w != "al" && w != "el") out += alts
+            i++
+        }
+        return out
+    }
+
+    /** All-capital Latin words of 2–4 letters in [raw], in lower case ("MBC", "OSN"): likely abbreviations. */
+    private fun capitalRuns(raw: String): Set<String> {
+        var out: HashSet<String>? = null
+        var start = -1
+        for (k in 0..raw.length) {
+            val c = if (k < raw.length) raw[k] else ' '
+            if (c in 'A'..'Z') {
+                if (start < 0) start = k
+                continue
+            }
+            if (start >= 0) {
+                val len = k - start
+                val wordEnds = !(c in 'a'..'z')
+                val wordStarts = start == 0 || raw[start - 1] !in 'a'..'z'
+                if (len in 2..4 && wordEnds && wordStarts) (out ?: HashSet<String>().also { out = it }) += raw.substring(start, k).lowercase()
+                start = -1
+            }
+        }
+        return out ?: emptySet()
+    }
+
+    /** One Arabic word by sound: the usual reading first, then the others (an "and" in front left off, a final ة said as t). */
+    internal fun arabic(word: String): List<String> {
+        var s = word
+        // The article ("الجزيره" → "جزيره"); not in short words.
+        if (s.length > 3 && s.startsWith("ال")) s = s.substring(2)
+        // A final ه is mostly the ة of a feminine ending ("جزيره" = Jazeera), said as t before another
+        // word ("الحياه" = Al Hayat): left off, or a t.
+        val feminine = s.length > 1 && s.endsWith("ه")
+        if (feminine) s = s.dropLast(1)
+        val sb = StringBuilder()
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            val first = i == 0
+            val code: Char? = when (c) {
+                'ب', 'پ' -> 'b'
+                'ت' -> if (s.getOrNull(i + 1) == 'ش') { i++; 'x' } else 't'
+                'ط', 'ث' -> 't'
+                'ج', 'چ', 'گ' -> 'j'
+                'ح', 'خ', 'ه' -> 'h'
+                'د', 'ض' -> 'd'
+                'ذ', 'ز', 'ظ', 'س', 'ص' -> 's'
+                'ر' -> 'r'
+                'ش' -> 'x'
+                // غ too: Arabic writes the hard g of other languages with ج or غ ("جيوغرافيك").
+                'غ' -> 'j'
+                'ف', 'ڤ' -> 'f'
+                'ق', 'ك', 'ک' -> 'k'
+                'ل' -> 'l'
+                'م' -> 'm'
+                'ن' -> 'n'
+                'و' -> if (first) 'w' else null
+                'ي' -> if (first) 'y' else null
+                in '0'..'9' -> c
+                else -> null // ا ء ع: vowel sounds
+            }
+            if (code != null && (sb.isEmpty() || sb[sb.length - 1] != code)) sb.append(code)
+            i++
+        }
+        val main = sb.toString()
+        val alts = ArrayList<String>(3)
+        alts += main
+        if (feminine) alts += squeeze(main + "t")
+        // A و in front may be "and", or the w of a borrowed word ("ون" = One).
+        if (main.startsWith('w') && main.length > 1) alts += main.substring(1)
+        return alts
+    }
+
+    /** One Latin word by sound; with [acronym] also its letters said one by one, as Arabic spells them. */
+    internal fun latin(word: String, acronym: Boolean = false): List<String> {
+        var s = word
+        if (s.length >= 6 && (s.startsWith("al") || s.startsWith("el"))) s = s.substring(2)
+        val sb = StringBuilder()
+        var i = 0
+        fun add(code: String) {
+            for (c in code) if (sb.isEmpty() || sb[sb.length - 1] != c) sb.append(c)
+        }
+        while (i < s.length) {
+            val c = s[i]
+            val next = s.getOrNull(i + 1)
+            val first = i == 0
+            val code: String? = when (c) {
+                'a', 'e', 'i', 'o', 'u' -> null
+                'y' -> if (first) "y" else null
+                'w' -> if (first) "w" else null
+                'b' -> "b"
+                'p' -> if (next == 'h') { i++; "f" } else "b"
+                // "-tion" is said "-shun" ("Station" = ستيشن).
+                't' -> if (next == 'h') { i++; "t" } else if (s.startsWith("ion", i + 1)) "x" else "t"
+                'd' -> if (next == 'h') { i++; "s" } else "d"
+                'j' -> "j"
+                'g' -> when {
+                    next != 'h' -> "j"
+                    // English's silent "gh" ("Night", "Lights", "Through"): no sound at all.
+                    i > 0 && s[i - 1] in VOWELS && (i + 2 >= s.length || s[i + 2] == 't') -> { i++; null }
+                    else -> { i++; "j" }
+                }
+                // "wh" at the start is said w ("White" = وايت).
+                'h' -> if (i == 1 && s[0] == 'w') null else "h"
+                'k' -> if (next == 'h') { i++; "h" } else "k"
+                'q' -> "k"
+                'c' -> when (next) {
+                    'h' -> { i++; "x" }
+                    'e', 'i', 'y' -> "s"
+                    'k' -> { i++; "k" }
+                    else -> "k"
+                }
+                's' -> if (next == 'h') { i++; "x" } else "s"
+                'z' -> "s"
+                'x' -> "ks"
+                'f', 'v' -> "f"
+                'l', 'm', 'n', 'r' -> c.toString()
+                in '0'..'9' -> c.toString()
+                else -> null
+            }
+            if (code != null) add(code)
+            i++
+        }
+        // A final h after a vowel is the Arabic ending, as above ("Jazeerah").
+        if (s.length >= 3 && s.last() == 'h' && s[s.length - 2] in VOWELS && sb.length > 1 && sb.last() == 'h') sb.setLength(sb.length - 1)
+        val main = sb.toString()
+        if (!acronym) return listOf(main)
+        val spelled = squeeze(word.mapNotNull { LETTER_NAMES[it] }.joinToString("") { arabic(it).first() })
+        return listOf(main, spelled)
+    }
+
+    /** Doubled sounds once ("snn" → "sn"). */
+    private fun squeeze(s: String): String {
+        if (s.length < 2) return s
+        val sb = StringBuilder(s.length)
+        for (c in s) if (sb.isEmpty() || sb[sb.length - 1] != c) sb.append(c)
+        return sb.toString()
+    }
+}
+
+/**
+ * A search typed in one script, compared with names in the other by sound (see [Sounds]). Each
+ * word must sound like a word of the name (or like the start of one, for a word being typed), or
+ * the whole search like the name run together ("ابوظبي" and "Abu Dhabi").
+ */
+class CrossScript private constructor(
+    /** [Sounds.ARABIC] or [Sounds.LATIN]: the names to compare are the ones written in the other. */
+    val wants: Int,
+    private val words: List<List<String>>,
+    private val joined: String,
+) {
+    /** True for a name worth comparing: it has letters of the other script. */
+    fun wanted(nameScripts: Int): Boolean = nameScripts and wants != 0
+
+    /** [WORDS] when every word matches, [JOINED] when the whole search does, 0 otherwise. [sound] from [Sounds.of]. */
+    fun match(sound: String): Int {
+        if (sound.isEmpty()) return 0
+        if (words.isNotEmpty() && words.all { alts -> alts.any { hasWord(sound, it) } }) return WORDS
+        if (joined.length >= 3 && runsTogether(sound)) return JOINED
+        return 0
+    }
+
+    /** A word of [sound] that is [w] (2 sounds), starts with it (3+), or is it one sound short ("sports" / "سبورت"). */
+    private fun hasWord(sound: String, w: String): Boolean {
+        val digits = w[0] in '0'..'9'
+        var i = sound.indexOf(w)
+        while (i >= 0) {
+            val before = sound[i - 1]
+            if (before == ' ' || before == '/') {
+                val after = sound.getOrElse(i + w.length) { ' ' }
+                val whole = after == ' ' || after == '/'
+                if (whole || (!digits && w.length >= 3)) return true
+            }
+            i = sound.indexOf(w, i + 1)
+        }
+        if (!digits && w.length >= 4) {
+            val shorter = w.dropLast(1)
+            var k = sound.indexOf(shorter)
+            while (k >= 0) {
+                val before = sound[k - 1]
+                val after = sound.getOrElse(k + shorter.length) { ' ' }
+                if ((before == ' ' || before == '/') && (after == ' ' || after == '/')) return true
+                k = sound.indexOf(shorter, k + 1)
+            }
+        }
+        return false
+    }
+
+    /** Some of the name's words in a row (their usual readings, run together) are the whole search run together. */
+    private fun runsTogether(sound: String): Boolean {
+        val primary = StringBuilder()
+        val bounds = HashSet<Int>()
+        bounds += 0
+        var k = 1
+        while (k < sound.length) {
+            val end = sound.indexOf(' ', k)
+            if (end < 0) break
+            primary.append(sound.substring(k, end).substringBefore('/'))
+            bounds += primary.length
+            k = end + 1
+        }
+        for (s in bounds) if (s + joined.length in bounds && primary.startsWith(joined, s)) return true
+        return false
+    }
+
+    companion object {
+        /** Scores, below every match in the script typed (see [SearchQuery.score]). */
+        const val WORDS = 200
+        const val JOINED = 150
+
+        /** For a search typed in one script only, with enough to compare; null otherwise. */
+        fun of(normalizedQuery: String): CrossScript? {
+            val script = Sounds.scripts(normalizedQuery)
+            val wants = when (script) {
+                Sounds.ARABIC -> Sounds.LATIN
+                Sounds.LATIN -> Sounds.ARABIC
+                else -> return null
+            }
+            val all = Sounds.words(normalizedQuery)
+            // Words of one sound say too little on their own ("و"); numbers always count.
+            val words = all.filter { alts -> alts[0][0] in '0'..'9' || alts.any { it.length >= 2 } }
+            val joined = all.joinToString("") { it[0] }
+            if (words.isEmpty() && joined.length < 3) return null
+            return CrossScript(wants, words, joined)
+        }
     }
 }
