@@ -591,6 +591,7 @@ class TvHomeScreens : ScreenshotBase() {
         shoot("tv-02-live")
         vm.section = Section.MOVIES
         shoot("tv-03-films")
+        println("DEBUG marquee art=${vm.marqueeArt?.poster} backdrop=${vm.marqueeArt?.backdrop} fade=${vm.marqueeFade}")
         // "All films": every film as a grid, as the Films page was before.
         vm.group = ALL_FILTER
         shoot("tv-03b-films-all")
