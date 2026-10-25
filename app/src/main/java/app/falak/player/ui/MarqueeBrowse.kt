@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -104,7 +105,6 @@ fun MarqueeStage(vm: LibraryViewModel, modifier: Modifier = Modifier, content: @
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
         val info = remember(height) { MarqueeStageInfo(height) { top[0] } }
-        println("DEBUG stage vm=${System.identityHashCode(vm)} art=${vm.marqueeArt != null} h=$height")
         vm.marqueeArt?.let { art ->
             MarqueeBackdrop(art, { vm.marqueeFade }, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
         }
@@ -235,14 +235,19 @@ fun MarqueeBrowse(
             val owner = remember { Any() }
             val info = vm.heroInfo[item.id]
             val art = MarqueeArt(owner, vm.heroArt[item.id]?.takeIf { it.isNotBlank() }, item.logo.ifBlank { null })
-            LaunchedEffect(art.backdrop, art.poster) {
-                println("DEBUG set art vm=${System.identityHashCode(vm)} owner=${System.identityHashCode(owner)}")
-                vm.marqueeArt = art
+            // Put up the picture as soon as this page is on screen (not from a coroutine, which may
+            // only run a frame later), and take it down when the page goes. Only the section that is
+            // open puts it up (while switching Films and Series both pages are briefly composed),
+            // and it reads what's up, so it puts its own back if the other page took it down.
+            val active = vm.section == section
+            val shown = vm.marqueeArt
+            SideEffect {
+                if (active && (shown == null || shown.owner !== owner || shown.backdrop != art.backdrop || shown.poster != art.poster)) {
+                    vm.marqueeArt = art
+                }
             }
             DisposableEffect(owner) {
-                println("DEBUG effect start owner=${System.identityHashCode(owner)}")
                 onDispose {
-                    println("DEBUG dispose owner=${System.identityHashCode(owner)} match=${vm.marqueeArt?.owner === owner}")
                     if (vm.marqueeArt?.owner === owner) {
                         vm.marqueeArt = null
                         vm.marqueeFade = 1f
