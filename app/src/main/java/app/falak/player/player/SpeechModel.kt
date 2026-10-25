@@ -112,8 +112,9 @@ object SpeechModel {
             if (!res.isSuccessful) throw IOException("The download server answered ${res.code}")
             val body = res.body ?: throw IOException("Empty download")
             val expected = body.contentLength()
-            // Hugging Face gives a large file's SHA-256 on its first answer (the redirect to its store).
-            val sha = (res.priorResponse?.header("X-Linked-Etag") ?: res.header("X-Linked-Etag"))
+            // Hugging Face gives a large file's SHA-256 on its first answer (the redirect to its file
+            // store); a small file comes straight away, with a different kind of tag (not checked).
+            val sha = res.priorResponse?.header("X-Linked-Etag")
                 ?.trim()?.removePrefix("W/")?.trim('"')?.lowercase()
                 ?.takeIf { it.length == 64 && it.all { c -> c in '0'..'9' || c in 'a'..'f' } }
             val digest = MessageDigest.getInstance("SHA-256")

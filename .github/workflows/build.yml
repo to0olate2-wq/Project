@@ -186,7 +186,9 @@ jobs:
             code=$(curl -sL -o "/tmp/$f" -w '%{http_code}' "$base/$f")
             size=$(stat -c %s "/tmp/$f" 2>/dev/null || echo 0)
             got=$(sha256sum "/tmp/$f" | cut -d' ' -f1)
-            if [ -z "$sha" ]; then check="no SHA-256 given (not checked)"; elif [ "$sha" = "$got" ]; then check="SHA-256 matches"; else check="SHA-256 MISMATCH"; fi
+            # The app checks the tag of a redirected (large) file only; a small file's tag isn't a SHA-256.
+            redirect=$(curl -sI "$base/$f" | head -1 | awk '{print $2}')
+            if [ -z "$sha" ]; then check="no tag given (not checked)"; elif [ "$sha" = "$got" ]; then check="SHA-256 matches"; elif [ "$redirect" = "302" ]; then check="SHA-256 MISMATCH"; else check="served directly, tag not a SHA-256 (not checked by the app)"; fi
             echo "::notice::Speech model $f: HTTP $code, $size bytes, $check"
             rm -f "/tmp/$f"
           done
