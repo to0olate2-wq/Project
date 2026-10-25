@@ -335,7 +335,9 @@ private fun TonightPanel(
                     Text(prog?.title?.takeIf { it.isNotBlank() } ?: ch.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val sub = when {
                         prog == null -> ch.group.takeIf { it.isNotBlank() && it != ch.name } ?: "Live"
-                        !wide && next != null -> "${ch.name}  ·  next ${fmt.format(Date(next.start))} ${next.title}"
+                        // Wide: what's next (and so when this ends) is on the right.
+                        wide && next != null -> ch.name
+                        next != null -> "${ch.name}  ·  next ${fmt.format(Date(next.start))} ${next.title}"
                         else -> "${ch.name}  ·  until ${fmt.format(Date(prog.stop))}"
                     }
                     Text(sub, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -758,7 +758,12 @@ class PhoneShelfScreens : ScreenshotBase() {
     // A very tall phone shows every Home row: Recently watched, Continue watching, Trending now,
     // New films, New series, then favorites.
     @Test @Config(qualifiers = PHONE_TALL)
-    fun phoneShelves() = mainScreens("phone", watching = true, habits = true) { _, shoot -> shoot("phone-11-home-all-shelves") }
+    fun phoneShelves() = mainScreens("phone", watching = true, habits = true) { vm, shoot ->
+        shoot("phone-11-home-all-shelves")
+        // The Films page's rows: Continue watching, the Top 10, new films, favorites, each group.
+        vm.section = Section.MOVIES
+        shoot("phone-11b-films-all-rows")
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
