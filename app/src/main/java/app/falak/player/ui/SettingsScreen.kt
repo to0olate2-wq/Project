@@ -1018,6 +1018,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
+            SwitchRow(
+                "In time with the speech",
+                "Each word shows as it's said, instead of about a second later: the captions hear the sound " +
+                    "2 seconds before you do. From the next channel you open.",
+                s.syncedCaptions,
+            ) { vm.updateSettings { it.copy(syncedCaptions = !it.syncedCaptions) } }
+        }
+        item {
             Note(
                 "Used by both video players from the next video you open. While watching, Subtitles → Caption style " +
                     "changes it on the picture as you pick.",

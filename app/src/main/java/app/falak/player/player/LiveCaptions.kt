@@ -6,6 +6,8 @@ import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -17,19 +19,31 @@ import java.util.concurrent.TimeUnit
  * plays (sherpa-onnx's streaming recognizer with [SpeechModel]; nothing leaves the device).
  *
  * [newTap] goes into ExoPlayer's audio processors: it passes the sound on untouched and keeps a
- * mono copy. Recognition runs on a thread of its own, about a second behind the speech. [onText]
- * gets the words to show (see [CaptionText]; null: nothing to show), on the main thread;
+ * mono copy; [watch] wraps ExoPlayer's audio output to know when that sound will be heard.
+ * Recognition runs on a thread of its own. The engine works on 1.28 seconds of sound at a time, so
+ * words come out 0.2 to 1.4 seconds after they're said; each [Word] carries the moment it's heard,
+ * so with a head start ([HEAD_START_US], "In time with the speech") it can show as it's said.
+ * [onText] gets the words to show (see [CaptionText]; null: nothing to show), on the main thread;
  * [onProblem] says when it can't work here (the speech engine doesn't run on this device, or it
  * can't keep up).
  */
 class LiveCaptions(
     private val modelDir: File,
-    private val onText: (String?) -> Unit,
+    private val onText: (List<Word>?) -> Unit,
     private val onProblem: (Problem) -> Unit,
 ) {
     enum class Problem { UNAVAILABLE, TOO_SLOW }
 
-    private class Chunk(val samples: FloatArray, val rate: Int, val reset: Boolean = false)
+    /** Sound for the engine; [atUs]: when its first sample is heard (the audio output's timeline). */
+    private class Chunk(val samples: FloatArray, val rate: Int, val reset: Boolean = false, val atUs: Long = Word.NOW)
+
+    /** The audio output's time of the sound going in now (read by the tap, on the same thread). */
+    @Volatile private var inputUs = Word.NOW
+
+    /** Where the sound being heard was, and when that was seen (elapsedRealtimeNanos). */
+    private class Heard(val us: Long, val atNanos: Long)
+
+    @Volatile private var heard: Heard? = null
 
     @Volatile private var listening = false
 
@@ -45,6 +59,47 @@ class LiveCaptions(
 
     /** A fresh tap for a new ExoPlayer's audio chain. */
     fun newTap(): AudioProcessor = Tap()
+
+    /**
+     * ExoPlayer's audio output, watched: the time of each piece of sound going in (for the tap)
+     * and of the sound being heard (ExoPlayer asks for it every few milliseconds while playing).
+     * Both are in the output's own timeline, so they compare directly.
+     */
+    fun watch(sink: AudioSink): AudioSink = object : ForwardingAudioSink(sink) {
+        override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
+            inputUs = presentationTimeUs
+            return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        }
+
+        override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+            val us = super.getCurrentPositionUs(sourceEnded)
+            if (us != AudioSink.CURRENT_POSITION_NOT_SET) heard = Heard(us, SystemClock.elapsedRealtimeNanos())
+            return us
+        }
+
+        override fun flush() {
+            inputUs = Word.NOW
+            heard = null
+            super.flush()
+        }
+
+        override fun reset() {
+            inputUs = Word.NOW
+            heard = null
+            super.reset()
+        }
+    }
+
+    /**
+     * Where the sound being heard is now, in the audio output's timeline (null: not known yet).
+     * [playing]: it moves on from the last time it was seen (never more than a quarter second).
+     */
+    fun heardNowUs(playing: Boolean): Long? {
+        val h = heard ?: return null
+        if (!playing) return h.us
+        val sinceUs = ((SystemClock.elapsedRealtimeNanos() - h.atNanos) / 1000).coerceIn(0L, 250_000L)
+        return h.us + sinceUs
+    }
 
     /** Captions for what plays from now on (a new channel starts afresh). */
     fun start() {
@@ -89,6 +144,7 @@ class LiveCaptions(
         dropped = 0
         ready = true
         val text = CaptionText()
+        val clock = WordClock(SpeechModel.CHUNK_SECONDS)
         var audioSeconds = 0.0
         var busyNanos = 0L
         var slowWindows = 0
@@ -97,17 +153,19 @@ class LiveCaptions(
                 val c = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue
                 if (c.reset) {
                     recognizer.restart()
+                    clock.restart()
                     text.clear()
                     main.post { onText(null) }
                     continue
                 }
                 if (!listening) continue
                 val t0 = System.nanoTime()
-                val heard = recognizer.feed(c.samples, c.rate)
+                clock.fed(c.samples.size.toDouble() / c.rate, c.atUs)
+                val heard = recognizer.feed(c.samples, c.rate, clock)
                 busyNanos += System.nanoTime() - t0
                 audioSeconds += c.samples.size.toDouble() / c.rate
                 if (heard != null) {
-                    val shown = if (heard.ended) text.finish(heard.text) else text.partial(heard.text)
+                    val shown = if (heard.ended) text.finish(heard.words) else text.partial(heard.words)
                     if (shown != null) main.post { if (listening) onText(shown) }
                 }
                 // Every 30 seconds of sound: did recognising it take nearly as long (twice in a row),
@@ -137,7 +195,7 @@ class LiveCaptions(
 
     /** sherpa-onnx's streaming recognizer, kept on the captions thread. */
     private class Engine(dir: File) {
-        class Heard(val text: String, val ended: Boolean)
+        class Heard(val words: List<Word>, val ended: Boolean)
 
         private val recognizer: com.k2fsa.sherpa.onnx.OnlineRecognizer
         private var stream: com.k2fsa.sherpa.onnx.OnlineStream
@@ -171,19 +229,28 @@ class LiveCaptions(
             stream = recognizer.createStream()
         }
 
-        /** New sound; what's been said so far in this line, when it changed (or the line ended). */
-        fun feed(samples: FloatArray, rate: Int): Heard? {
+        /**
+         * New sound; the words said so far in this line (each with when it's heard, from [clock]),
+         * when they changed or the line ended.
+         */
+        fun feed(samples: FloatArray, rate: Int, clock: WordClock): Heard? {
             stream.acceptWaveform(samples, rate)
-            while (recognizer.isReady(stream)) recognizer.decode(stream)
-            val now = recognizer.getResult(stream).text.trim()
+            while (recognizer.isReady(stream)) {
+                recognizer.decode(stream)
+                clock.stepped()
+            }
+            val result = recognizer.getResult(stream)
+            val words = clock.words(result.tokens, result.timestamps)
+            val now = CaptionText.join(words)
             if (recognizer.isEndpoint(stream)) {
                 recognizer.reset(stream)
+                clock.lineEnded()
                 last = ""
-                return if (now.isNotEmpty()) Heard(now, ended = true) else null
+                return if (words.isNotEmpty()) Heard(words, ended = true) else null
             }
             if (now == last) return null
             last = now
-            return Heard(now, ended = false)
+            return Heard(words, ended = false)
         }
 
         fun restart() {
@@ -220,13 +287,21 @@ class LiveCaptions(
             val channels = f.channelCount
             if (channels <= 0 || f.sampleRate <= 0) return
             val mono = Downmix.mono16k(input.duplicate().order(ByteOrder.nativeOrder()), channels, f.sampleRate) ?: return
-            if (!queue.offer(Chunk(mono.first, mono.second))) dropped++
+            if (!queue.offer(Chunk(mono.first, mono.second, atUs = inputUs))) dropped++
         }
     }
 
     companion object {
         /** About 10 seconds of sound waiting at most. */
         private const val QUEUE = 512
+
+        /**
+         * "In time with the speech": how far ahead of what you hear the captions hear the sound
+         * (ExoPlayer's audio output holds this much; the picture follows the sound as always). The
+         * engine needs up to 1.4 seconds, plus its working time; ExoPlayer starts a channel with
+         * 2.5 seconds loaded, so this never holds up the start.
+         */
+        const val HEAD_START_US = 2_000_000
     }
 }
 
@@ -256,35 +331,142 @@ object Downmix {
 }
 
 /**
+ * A word of auto captions; [atUs]: when it's heard, in the audio output's timeline ([NOW]: show
+ * it at once).
+ */
+data class Word(val text: String, val atUs: Long = NOW) {
+    companion object {
+        const val NOW = Long.MIN_VALUE
+
+        /** [text]'s words, to show at once. */
+        fun of(text: String): List<Word> = text.split(' ', '\n', '\t').filter { it.isNotEmpty() }.map { Word(it) }
+    }
+}
+
+/**
+ * Turns the speech engine's word times into the moments they're heard ([Word.atUs]). The engine
+ * counts time in the sound it was given, from the start of each line: after a pause it starts a
+ * new line at the end of the last step it worked on ([chunkSeconds] each, see [stepped]). The
+ * sound came in pieces, each with the moment its first sample is heard ([fed]).
+ */
+class WordClock(private val chunkSeconds: Double) {
+    private class Mark(val fedSec: Double, val us: Long)
+
+    private val marks = ArrayDeque<Mark>()
+    private var fedSec = 0.0
+    private var lineStartSec = 0.0
+    private var lineSteps = 0
+
+    /** The engine starts afresh (a new channel, a jump). */
+    fun restart() {
+        marks.clear()
+        fedSec = 0.0
+        lineStartSec = 0.0
+        lineSteps = 0
+    }
+
+    /** [seconds] of sound given to the engine, its first sample heard at [atUs] ([Word.NOW]: not known). */
+    fun fed(seconds: Double, atUs: Long) {
+        if (marks.lastOrNull()?.us != Word.NOW || atUs != Word.NOW) marks.addLast(Mark(fedSec, atUs))
+        while (marks.size > MAX_MARKS) marks.removeFirst()
+        fedSec += seconds
+    }
+
+    /** The engine worked on one more step of the line. */
+    fun stepped() {
+        lineSteps++
+    }
+
+    /** A pause ended the line: the next one starts after the steps already worked on. */
+    fun lineEnded() {
+        lineStartSec += lineSteps * chunkSeconds
+        lineSteps = 0
+        // What's before the new line isn't needed any more (the mark covering its start stays).
+        while (marks.size > 1 && marks[1].fedSec <= lineStartSec) marks.removeFirst()
+    }
+
+    /** When the sound [lineSec] seconds into the current line is heard ([Word.NOW]: not known). */
+    fun at(lineSec: Double): Long {
+        val t = lineStartSec + lineSec
+        val m = marks.lastOrNull { it.fedSec <= t + 1e-6 } ?: return Word.NOW
+        if (m.us == Word.NOW) return Word.NOW
+        return m.us + ((t - m.fedSec) * 1_000_000).toLong()
+    }
+
+    /**
+     * The engine's tokens as words: a token starting with a space starts a word, the rest (word
+     * pieces, punctuation) join it; each word is heard when its first token is.
+     */
+    fun words(tokens: Array<String>, times: FloatArray): List<Word> {
+        val out = ArrayList<Word>()
+        val text = StringBuilder()
+        var at = Word.NOW
+        for (i in tokens.indices) {
+            val token = tokens[i]
+            if (token.startsWith(" ") && text.isNotBlank()) {
+                out += Word(text.toString().trim(), at)
+                text.setLength(0)
+            }
+            if (text.isBlank()) at = if (i < times.size) at(times[i].toDouble()) else Word.NOW
+            text.append(token)
+        }
+        if (text.isNotBlank()) out += Word(text.toString().trim(), at)
+        return out
+    }
+
+    private companion object {
+        /** About 45 seconds of sound in pieces. */
+        const val MAX_MARKS = 2000
+    }
+}
+
+/**
  * What to show, broadcast style: the words heard, the line said before kept until new words push
- * it up. [partial] and [finish] give all of it; [rollUp] fits it to the screen (the last lines,
- * each as wide as fits), so the player can fit it again when the lines or the size change.
+ * it up. [partial] and [finish] give all of them; [showing] picks those heard by now and
+ * [rollUp] fits them to the screen (the last lines, each as wide as fits), so the player can fit
+ * them again when the lines or the size change.
  */
 class CaptionText {
-    private var before = ""
-    private var current = ""
+    private var before: List<Word> = emptyList()
+    private var current: List<Word> = emptyList()
 
     fun clear() {
-        before = ""
-        current = ""
+        before = emptyList()
+        current = emptyList()
     }
 
     /** The words so far in the line being spoken (with the line before); null when there are none. */
-    fun partial(text: String): String? {
-        current = text
+    fun partial(words: List<Word>): List<Word>? {
+        current = words
         return shown()
     }
 
     /** The line was finished (a pause, or long enough). */
-    fun finish(text: String): String? {
-        before = text
-        current = ""
+    fun finish(words: List<Word>): List<Word>? {
+        before = words
+        current = emptyList()
         return shown()
     }
 
-    private fun shown(): String? = words("$before $current").joinToString(" ").ifEmpty { null }
+    fun partial(text: String): String? = partial(Word.of(text))?.let { join(it) }
+
+    fun finish(text: String): String? = finish(Word.of(text))?.let { join(it) }
+
+    private fun shown(): List<Word>? = (before + current).ifEmpty { null }
 
     companion object {
+        fun join(words: List<Word>): String = words.joinToString(" ") { it.text }
+
+        /**
+         * The words heard by [nowUs] (all of them when it's null: not in time with the speech),
+         * and when the next one is heard (null: none waiting).
+         */
+        fun showing(words: List<Word>, nowUs: Long?): Pair<List<Word>, Long?> {
+            if (nowUs == null) return words to null
+            val heard = words.takeWhile { it.atUs == Word.NOW || it.atUs <= nowUs }
+            return heard to words.getOrNull(heard.size)?.atUs
+        }
+
         private fun words(text: String) = text.split(' ', '\n', '\t').filter { it.isNotEmpty() }
 
         /** [text]'s words wrapped at [lineChars], the last [lines] lines; null when there are none. */

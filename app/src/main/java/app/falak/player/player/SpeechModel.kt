@@ -39,6 +39,12 @@ object SpeechModel {
         "encoder.onnx" to 70_100_000L,
     )
     const val SIZE_LABEL = "71 MB"
+
+    /**
+     * How much sound the model works on at a time: its encoder's decode_chunk_len, 128 frames of
+     * 10 ms. After a pause the engine starts a new line at a multiple of it (see WordClock).
+     */
+    const val CHUNK_SECONDS = 1.28
     const val CREDIT = "Kroko-ASR speech model by Banafo (CC BY-SA 4.0)"
 
     private val _state = MutableStateFlow<State>(State.Missing)

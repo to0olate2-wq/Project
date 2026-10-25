@@ -86,6 +86,7 @@ import app.falak.player.player.FrameRateMatch
 import app.falak.player.player.SubtitleStyle
 import app.falak.player.player.CaptionLayout
 import app.falak.player.player.CaptionText
+import app.falak.player.player.Word
 import app.falak.player.data.Settings
 import app.falak.player.R
 import app.falak.player.player.CaptionSniffer
@@ -264,6 +265,9 @@ class PlayerActivity : ComponentActivity() {
     /** The ExoPlayer was built hearing the sound for auto captions. */
     private var exoCaptions = false
 
+    /** ... and with the head start that shows each word as it's said ("In time with the speech"). */
+    private var exoSynced = false
+
     /** Auto captions are running for what's playing. */
     private var autoCapsOn = false
 
@@ -271,12 +275,21 @@ class PlayerActivity : ComponentActivity() {
     private var autoCapsPending: String? = null
     private lateinit var autoCapsView: androidx.media3.ui.SubtitleView
 
-    /** What auto captions say now, all of it ([renderAutoCaption] fits it to the lines chosen); null: nothing. */
-    private var autoCapsText: String? = null
+    /**
+     * What auto captions say now, all of it ([renderAutoCaption] shows the words heard by now and
+     * fits them to the lines chosen); null: nothing.
+     */
+    private var autoCapsWords: List<Word>? = null
     private val clearAutoCaps = Runnable {
-        autoCapsText = null
+        autoCapsWords = null
         renderAutoCaption()
     }
+
+    /** The next word is due: show it. */
+    private val nextAutoCaption = Runnable { renderAutoCaption() }
+
+    /** How late words come out of the speech engine, smoothed (ms; null: not measured yet). */
+    private var autoCapsLateMs: Double? = null
 
     /** Measures auto captions' lines as they'll be drawn (the size and typeface of the captions). */
     private val capsPaint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -804,6 +817,9 @@ class PlayerActivity : ComponentActivity() {
         nightSound = night
         // Auto captions hear the sound through a tap at the start of the chain.
         val tap = if (captions) captionsEngine().newTap() else null
+        // "In time with the speech": the audio output holds 2 seconds, so the captions hear each
+        // word that long before you do (the picture follows the sound, so lips stay in sync).
+        val synced = captions && s.syncedCaptions
         val renderers = object : DefaultRenderersFactory(this) {
             // Volume levelling and night sound run inside the audio output, for every decoder (hardware or FFmpeg).
             override fun buildAudioSink(
@@ -826,11 +842,21 @@ class PlayerActivity : ComponentActivity() {
                 } else {
                     androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                 }
-                return sink
+                if (synced) {
+                    sink.setAudioTrackBufferSizeProvider(
+                        androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider.Builder()
+                            .setMinPcmBufferDurationUs(LiveCaptions.HEAD_START_US)
+                            .setMaxPcmBufferDurationUs(LiveCaptions.HEAD_START_US)
+                            .build(),
+                    )
+                }
+                val built = sink
                     .setEnableFloatOutput(false) // all of them work on 16-bit sound
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(processors.toTypedArray())
                     .build()
+                // Auto captions also see when each piece of sound is heard.
+                return if (tap != null) captionsEngine().watch(built) else built
             }
         }
             .setEnableDecoderFallback(true)
@@ -881,6 +907,7 @@ class PlayerActivity : ComponentActivity() {
         applySubtitleStyle()
         exo = p
         exoCaptions = captions
+        exoSynced = synced
     }
 
     private fun createVlc() {
@@ -918,6 +945,7 @@ class PlayerActivity : ComponentActivity() {
     private fun releaseEngine() {
         stopAutoCaptions()
         exoCaptions = false
+        exoSynced = false
         playerView.player = null
         exo?.let {
             it.removeListener(listener)
@@ -983,7 +1011,9 @@ class PlayerActivity : ComponentActivity() {
         val wanted = desiredEngine(ch)
         // Auto captions chosen for this channel: the player is built hearing its sound.
         val captions = wanted != Engine.VLC && dual == null && autoCaptionsChosen(ch)
-        if (player == null || wanted != engine || captions != exoCaptions) startEngine(wanted, captions)
+        // "In time with the speech" changed since: the sound's head start is part of the player.
+        val resync = captions && repo.state.value.settings.syncedCaptions != exoSynced
+        if (player == null || wanted != engine || captions != exoCaptions || resync) startEngine(wanted, captions)
         // A new stream: its data rate is measured afresh.
         rateSamples.clear()
         rateBps = 0
@@ -3874,13 +3904,14 @@ class PlayerActivity : ComponentActivity() {
         }
         captionsEngine().start()
         autoCapsOn = true
+        autoCapsLateMs = null
     }
 
     private fun stopAutoCaptions() {
         autoCapsOn = false
         liveCaptions?.stop()
         handler.removeCallbacks(clearAutoCaps)
-        autoCapsText = null
+        autoCapsWords = null
         renderAutoCaption()
     }
 
@@ -3973,25 +4004,50 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Words from the speech engine (null: clear). They fade after 6 seconds without new words. */
-    private fun showAutoCaption(text: String?) {
+    /**
+     * Words from the speech engine (null: clear), each with when it's heard. They fade 6 seconds
+     * after the last one shows.
+     */
+    private fun showAutoCaption(words: List<Word>?) {
         if (!::autoCapsView.isInitialized) return
         handler.removeCallbacks(clearAutoCaps)
-        autoCapsText = text?.takeIf { autoCapsOn }
+        val before = autoCapsWords
+        autoCapsWords = words?.takeIf { autoCapsOn && it.isNotEmpty() }
+        val nowUs = liveCaptions?.heardNowUs(exo?.isPlaying == true)
+        // How late the newest word came out of the engine, against when it's heard (smoothed;
+        // early counts as on time). The caption style panel shows it.
+        val newest = autoCapsWords?.lastOrNull { it.atUs != Word.NOW }?.atUs
+        if (nowUs != null && newest != null && newest != before?.lastOrNull { it.atUs != Word.NOW }?.atUs) {
+            val lateMs = ((nowUs - newest) / 1000.0).coerceAtLeast(0.0)
+            autoCapsLateMs = autoCapsLateMs?.let { it * 0.8 + lateMs * 0.2 } ?: lateMs
+        }
         renderAutoCaption()
-        if (autoCapsText != null) handler.postDelayed(clearAutoCaps, 6_000)
+        val shown = autoCapsWords ?: return
+        // In time with the speech, the last word may still be on its way to being heard.
+        val lastUs = shown.last().atUs
+        val waitMs = if (exoSynced && nowUs != null && lastUs != Word.NOW) ((lastUs - nowUs) / 1000).coerceIn(0L, 3_000L) else 0L
+        handler.postDelayed(clearAutoCaps, 6_000 + waitMs)
     }
 
     /**
-     * Auto captions on screen as chosen: as many lines as fit the picture's width (never more than
-     * the lines chosen), in their place. While the caption style panel is open and nothing is
-     * being said, its sample shows instead.
+     * Auto captions on screen as chosen: in time with the speech, the words heard by now (the next
+     * one shows when it's heard); as many lines as fit the picture's width (never more than the
+     * lines chosen), in their place. While the caption style panel is open and nothing is being
+     * said, its sample shows instead.
      */
     private fun renderAutoCaption() {
         if (!::autoCapsView.isInitialized) return
-        if (styleOpen) styleAuto = autoCaptionsInPanel()
+        handler.removeCallbacks(nextAutoCaption)
+        if (styleOpen) {
+            styleAuto = autoCaptionsInPanel()
+            styleNote = captionNote()
+        }
         val s = repo.state.value.settings
-        val live = autoCapsText?.takeIf { autoCapsOn }
+        val words = autoCapsWords?.takeIf { autoCapsOn }
+        val nowUs = if (words != null && exoSynced) liveCaptions?.heardNowUs(exo?.isPlaying == true) else null
+        val (heard, nextUs) = if (words != null) CaptionText.showing(words, nowUs) else (null to null)
+        if (nextUs != null && nowUs != null) handler.postDelayed(nextAutoCaption, ((nextUs - nowUs) / 1000).coerceIn(15L, 500L))
+        val live = heard?.takeIf { it.isNotEmpty() }?.let { CaptionText.join(it) }
         val sample = if (live == null && styleOpen) captionSample() else null
         val text = live ?: sample?.first
         val auto = live != null || sample?.second == true
@@ -4018,6 +4074,17 @@ class PlayerActivity : ComponentActivity() {
     private fun autoCaptionsInPanel(): Boolean =
         autoCapsOn || (autoCaptionsOffered() && countTracks(C.TRACK_TYPE_TEXT) == 0)
 
+    /** The line under the caption style panel's title: VLC's look waits; how auto captions keep time. */
+    private fun captionNote(): String? {
+        if (vlc != null) return "This stream plays in VLC: its subtitles take the new look from the next video."
+        if (!autoCapsOn) return null
+        val late = autoCapsLateMs ?: return null
+        if (late < 150) return "Auto captions: in time with the speech"
+        val behind = String.format(java.util.Locale.US, "%.1f", late / 1000)
+        return "Auto captions: about $behind s behind the speech" +
+            if (exoSynced) "" else " (Settings → Subtitle style: In time with the speech)"
+    }
+
     /** The panel's sample while nothing is said: its words, and whether it's auto captions'; null: none. */
     private fun captionSample(): Pair<String, Boolean>? = when {
         autoCaptionsInPanel() -> CaptionLayout.SAMPLE to true
@@ -4035,7 +4102,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.useController = false
         bannerView.visibility = View.GONE
         styleAuto = autoCaptionsInPanel()
-        styleNote = if (vlc != null) "This stream plays in VLC: its subtitles take the new look from the next video." else null
+        styleNote = captionNote()
         browserView.visibility = View.VISIBLE
         styleOpen = true
         browserView.requestFocus()
@@ -4072,7 +4139,7 @@ class PlayerActivity : ComponentActivity() {
     internal fun previewAutoCaptions(text: String) {
         playerView.hideController()
         autoCapsOn = true
-        showAutoCaption(text)
+        showAutoCaption(Word.of(text))
     }
 
     /** Screenshot tests: the caption style panel. */

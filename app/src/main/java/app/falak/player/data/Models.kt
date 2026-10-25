@@ -329,6 +329,8 @@ data class Settings(
     val autoCapsPosition: String = "bottom",
     /** Auto captions: how many lines show at once (1 to 3). */
     val autoCapsLines: Int = 2,
+    /** Auto captions "in time with the speech": they hear the sound 2 seconds early, each word shown as it's said. */
+    val syncedCaptions: Boolean = false,
     /** TVs: switch the screen's refresh rate to the video's frame rate: "off", "vod" (films and series) or "all". */
     val frameRate: String = "vod",
     /** OpenSubtitles.com: free API key (+ optional account for more downloads per day). */
