@@ -87,6 +87,8 @@ android {
         // VLC and the FFmpeg audio decoder both bring the C++ runtime.
         jniLibs {
             pickFirsts += "**/libc++_shared.so"
+            // sherpa-onnx's C and C++ APIs: only its JNI library (and ONNX Runtime) are used.
+            excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
             // Compress the native libraries (VLC is large): less than half the download size.
             useLegacyPackaging = true
         }
@@ -117,6 +119,25 @@ kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
+// Auto captions' speech engine: sherpa-onnx 2.0.0 (Apache 2.0), the project's own Android library
+// from its GitHub release (it isn't on Maven Central). Fetched once into app/libs (not committed)
+// and checked against its SHA-256 before it's used.
+val sherpaOnnxAar: File = file("libs/sherpa-onnx-2.0.0.aar").also { aar ->
+    if (!aar.exists()) {
+        aar.parentFile.mkdirs()
+        val part = File(aar.path + ".part")
+        java.net.URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-2.0.0.aar")
+            .toURL().openStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(part.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        check(sha == "f0f8716982d27cb4ce695e3934018b1342d9d3d6fdb6ef1f1658fe8bad50b4fc") {
+            part.delete()
+            "sherpa-onnx-2.0.0.aar didn't match its SHA-256 ($sha)"
+        }
+        check(part.renameTo(aar)) { "Couldn't save $aar" }
+    }
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.10.01")
     implementation(composeBom)
@@ -140,7 +161,7 @@ dependencies {
     // Listen mode: play/pause on the lock screen and in the notification.
     implementation("androidx.media3:media3-session:$media3")
     // Auto captions: on-device streaming speech recognition (Apache 2.0); its model is downloaded on demand.
-    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v2.0.0")
+    implementation(files(sherpaOnnxAar))
     // FFmpeg audio decoder (Dolby AC-3/E-AC-3, DTS, MP2, TrueHD…) for devices without hardware decoders.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     // VLC engine: plays streams ExoPlayer can't, and shows teletext subtitles.
