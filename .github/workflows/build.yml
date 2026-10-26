@@ -102,27 +102,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # Google Play upload key, from the repository's secrets (Settings → Secrets and variables → Actions).
-      # Without it the Play bundle is built unsigned.
-      - name: Play upload key
-        env:
-          PLAY_KEYSTORE_B64: ${{ secrets.PLAY_KEYSTORE_B64 }}
-        run: |
-          if [ -n "$PLAY_KEYSTORE_B64" ]; then
-            echo "$PLAY_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-            echo "PLAY_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
-            echo "Play bundle will be signed with the upload key."
-          else
-            echo "::notice::No PLAY_KEYSTORE_B64 secret: the Play bundle is built unsigned."
-          fi
-
-      - name: Build APK (GitHub) and bundle (Google Play)
-        env:
-          PLAY_KEYSTORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_PASSWORD }}
+      # Only the app: the APK that the app's own updates install.
+      - name: Build APK
         run: |
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleGithubRelease bundlePlayRelease -PstatsUrl="$STATS_URL" --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleGithubRelease -PstatsUrl="$STATS_URL" --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Report build errors
         if: failure()
@@ -131,15 +116,12 @@ jobs:
             echo "::error::$line"
           done
 
-      - name: Name the APK and bundle
+      - name: Name the APK
         run: |
           VNAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "VNAME=$VNAME" >> "$GITHUB_ENV"
           mkdir -p out
           cp app/build/outputs/apk/github/release/*.apk "out/ThePlayer-$VNAME-build${{ github.run_number }}.apk"
-          SUFFIX=play
-          [ -n "$PLAY_KEYSTORE_FILE" ] || SUFFIX=play-unsigned
-          cp app/build/outputs/bundle/playRelease/*.aab "out/ThePlayer-$VNAME-build${{ github.run_number }}-$SUFFIX.aab"
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -153,7 +135,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' > notes.txt
-          gh release create "build-${{ github.run_number }}" out/*.apk out/*.aab \
+          gh release create "build-${{ github.run_number }}" out/*.apk \
             --target "${{ github.sha }}" \
             --title "The Player $VNAME (build ${{ github.run_number }})" \
             --notes-file notes.txt \

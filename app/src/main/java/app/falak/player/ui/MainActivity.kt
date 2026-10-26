@@ -139,8 +139,17 @@ class MainActivity : ComponentActivity() {
                 // A first reminder or alert word on a phone: may notifications come when the app is closed?
                 val wantsAlerts = state.reminders.isNotEmpty() || state.alertWords.isNotEmpty()
                 LaunchedEffect(wantsAlerts) { if (wantsAlerts) askForNotificationsOnce(forReminders = true) }
-                // Where the user is, for problem reports ("Last steps").
                 val tvNow = isTv()
+                // Phones and tablets turn with the device on every page, as the player does (even
+                // with rotation locked in the system); a TV stays as it is.
+                LaunchedEffect(tvNow) {
+                    requestedOrientation = if (tvNow) {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    } else {
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                    }
+                }
+                // Where the user is, for problem reports ("Last steps").
                 LaunchedEffect(vm.screen, vm.section, vm.group != null, s.look, tvNow) {
                     FreezeWatch.note(
                         "screen ${vm.screen.name.lowercase()} · ${vm.section.name.lowercase()}" +
