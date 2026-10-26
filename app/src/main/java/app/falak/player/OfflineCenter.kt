@@ -69,8 +69,19 @@ object OfflineCenter {
     /** Every download, oldest first. */
     val items: StateFlow<List<OfflineItem>> = _items.asStateFlow()
 
-    /** True while the player streams from the provider (not a saved copy): downloads wait. */
-    val watching = MutableStateFlow(false)
+    private val streams = HashSet<Any>()
+    private val _watching = MutableStateFlow(false)
+
+    /** True while anything streams from the provider (the player, Listen mode, a preview): downloads wait. */
+    val watching: StateFlow<Boolean> = _watching.asStateFlow()
+
+    /** [who] started (true) or stopped (false) streaming from the provider. */
+    fun streaming(who: Any, on: Boolean) {
+        synchronized(streams) {
+            if (on) streams.add(who) else streams.remove(who)
+            _watching.value = streams.isNotEmpty()
+        }
+    }
 
     /** The download being fetched now, so pausing or deleting it stops it at once. */
     @Volatile
@@ -374,10 +385,11 @@ object OfflineCenter {
         return PendingIntent.getActivity(app, 4410, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    private fun progressNotification(item: OfflineItem?): Notification {
+    private fun progressNotification(item: OfflineItem?, note: String? = null): Notification {
         channel()
         val pct = ((item?.fraction ?: 0f) * 100).toInt()
         val text = when {
+            note != null -> note
             item == null -> "Getting ready…"
             item.size > 0 -> "$pct%  ·  ${sizeLabel(item.done)} of ${sizeLabel(item.size)}"
             else -> sizeLabel(item.done)
@@ -403,9 +415,9 @@ object OfflineCenter {
             ForegroundInfo(PROGRESS_ID, progressNotification(item))
         }
 
-    internal fun showProgress(item: OfflineItem) {
+    internal fun showProgress(item: OfflineItem, note: String? = null) {
         if (!canNotify()) return
-        runCatching { NotificationManagerCompat.from(app).notify(PROGRESS_ID, progressNotification(item)) }
+        runCatching { NotificationManagerCompat.from(app).notify(PROGRESS_ID, progressNotification(item, note)) }
     }
 
     internal fun showDone(item: OfflineItem) {
@@ -443,6 +455,7 @@ class OfflineWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 val item = OfflineCenter.nextQueued() ?: break
                 // Something from the provider is playing: wait for the player to close.
                 if (OfflineCenter.watching.value) {
+                    if (shown) OfflineCenter.showProgress(item, "Waits while you watch")
                     OfflineCenter.watching.first { !it }
                     continue
                 }

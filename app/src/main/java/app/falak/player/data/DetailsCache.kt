@@ -51,6 +51,8 @@ object DetailsCache {
         emptyMap()
     }
 
+    /** One write at a time (they share the temporary file). */
+    @Synchronized
     fun write(dir: File, playlistId: String, entries: Map<String, Pair<VodInfo, Long>>) {
         dir.mkdirs()
         val kept = entries.entries.sortedByDescending { it.value.second }.take(MAX).associate { (id, v) ->

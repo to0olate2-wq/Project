@@ -190,6 +190,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     fetched[ch.id] = info
                 }
                 heroArt[ch.id] = info?.backdrop.orEmpty()
+                // Kept as it goes, so a long round isn't lost if the app closes midway.
+                if (fetched.size >= 10) {
+                    keepDetails(p, fetched)
+                    fetched.clear()
+                }
             }
             keepDetails(p, fetched)
         }

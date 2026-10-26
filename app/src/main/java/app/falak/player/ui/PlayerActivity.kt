@@ -752,6 +752,8 @@ class PlayerActivity : ComponentActivity() {
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
+        // The picture has stopped (it starts again on coming back): downloads needn't wait meanwhile.
+        app.falak.player.OfflineCenter.streaming(this, false)
         // The speech engine's memory goes back too (it loads again when captions are next needed).
         liveCaptions?.release()
         liveCaptions = null
@@ -766,8 +768,8 @@ class PlayerActivity : ComponentActivity() {
             listening = false
             app.falak.player.ListenService.handBack(currentUrl)
         }
-        // Nothing streams any more (unless Listen mode carries on): downloads go on.
-        if (!app.falak.player.ListenService.busy()) app.falak.player.OfflineCenter.watching.value = false
+        // Nothing streams from here any more: downloads go on (Listen mode counts on its own).
+        app.falak.player.OfflineCenter.streaming(this, false)
         handler.removeCallbacksAndMessages(null)
         if (isTvDevice) frameMatch.release()
         super.onDestroy()
@@ -1071,7 +1073,7 @@ class PlayerActivity : ComponentActivity() {
             }
         currentUrl = url
         // Streaming from the provider: downloads wait (many providers allow one connection at a time).
-        app.falak.player.OfflineCenter.watching.value = savedCopy == null
+        app.falak.player.OfflineCenter.streaming(this, savedCopy == null)
         val ua = ch.userAgent
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }

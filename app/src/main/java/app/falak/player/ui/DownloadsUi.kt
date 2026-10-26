@@ -66,6 +66,8 @@ import coil.compose.AsyncImage
 @Composable
 fun rememberDownloads(): List<OfflineItem> {
     val items by OfflineCenter.items.collectAsState()
+    // "Waits while you watch" comes and goes with the player.
+    OfflineCenter.watching.collectAsState().value
     return items
 }
 
