@@ -56,6 +56,40 @@ import app.falak.player.data.Program
 import app.falak.player.data.Watch
 import coil.compose.AsyncImage
 
+/**
+ * TV: the card (and the row it's in) to put the remote back on when coming back from a film,
+ * its details or a series' episodes. [row] null: wherever that item is. [at]: when it was set
+ * (an old one, from another page, is ignored).
+ */
+data class ReturnFocus(val row: String?, val id: String, val at: Long = System.currentTimeMillis())
+
+/** The row a card sits in (the row's title), for [ReturnFocus]. */
+val LocalRow = staticCompositionLocalOf<String?> { null }
+
+/** Where the remote goes back to on this page (TV), while it is being put back. */
+val LocalReturnFocus = androidx.compose.runtime.compositionLocalOf<ReturnFocus?> { null }
+
+/** A card was picked (its row and id): remembered, so coming back puts the remote on it again. */
+val LocalCardTap = staticCompositionLocalOf<((String?, String) -> Unit)?> { null }
+
+/** Rows that keep their place while the page is away (Home, Films, Series), by row title. */
+val LocalRowStates = staticCompositionLocalOf<((String) -> LazyListState)?> { null }
+
+/** Takes the remote's focus when this card is where it should go back to (see [ReturnFocus]). */
+@Composable
+fun Modifier.comeBackHere(row: String?, id: String, also: Boolean = false): Modifier {
+    val target = LocalReturnFocus.current
+    val requester = remember { FocusRequester() }
+    val match = also || (target != null && target.id == id && (target.row == null || target.row == row))
+    LaunchedEffect(match) {
+        if (match) {
+            delay(120)
+            runCatching { requester.requestFocus() }
+        }
+    }
+    return this.focusRequester(requester)
+}
+
 /** "7.4" / "7.400" → "★ 7.4"; null when there is no useful rating. */
 fun ratingLabel(raw: String): String? {
     val v = raw.toDoubleOrNull() ?: return null
@@ -88,23 +122,18 @@ fun PosterCard(
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(focusMe) {
-        if (focusMe) {
-            delay(120)
-            runCatching { focus.requestFocus() }
-        }
-    }
+    val row = LocalRow.current
+    val tap = LocalCardTap.current
     Column(if (width != null) modifier.width(width) else modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .focusRequester(focus)
+                .comeBackHere(row, ch.id, also = focusMe)
                 .cardFocus(shape)
                 .clip(shape)
                 .background(Ink3)
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+                .combinedClickable(onClick = { tap?.invoke(row, ch.id); onClick() }, onLongClick = onLongClick),
         ) {
             if (ch.logo.isBlank()) {
                 Text(
@@ -180,15 +209,18 @@ fun ChannelCard(
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(8.dp)
+    val row = LocalRow.current
+    val tap = LocalCardTap.current
     Column(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
+                .comeBackHere(row, ch.id)
                 .cardFocus(shape)
                 .clip(shape)
                 .background(Brush.verticalGradient(listOf(Ink3, Ink2)))
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+                .combinedClickable(onClick = { tap?.invoke(row, ch.id); onClick() }, onLongClick = onLongClick),
         ) {
             if (ch.logo.isBlank()) {
                 Text(
@@ -242,12 +274,18 @@ fun minutesLeft(p: Program, now: Long): String {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun Shelf(title: String, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
     val scroller = LocalHomeScroller.current
+    // On Home, Films and Series the row keeps its place while the page is away.
+    val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
     Column(Modifier.fillMaxWidth().pinToTop().padding(top = 22.dp)) {
         SectionHeader(title, onSeeAll)
         // The page itself scrolls whole rows into place (see HomeScroller); the row keeps the
         // normal sideways behaviour.
-        CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {
+        CompositionLocalProvider(
+            LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current),
+            LocalRow provides title,
+        ) {
             LazyRow(
+                state = rowState,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
                 content = content,

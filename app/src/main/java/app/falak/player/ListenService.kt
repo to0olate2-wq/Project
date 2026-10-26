@@ -113,6 +113,8 @@ class ListenService : Service() {
 
     private fun play(i: Item) {
         release()
+        // Streaming from the provider: downloads wait meanwhile.
+        OfflineCenter.watching.value = !i.url.startsWith("file:")
         // A sleep timer that ran out before the sound got here is over.
         if (SleepTimer.due(android.os.SystemClock.elapsedRealtime())) SleepTimer.cancel()
         item = i
@@ -336,6 +338,7 @@ class ListenService : Service() {
 
     override fun onDestroy() {
         release()
+        OfflineCenter.watching.value = false
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -351,6 +354,9 @@ class ListenService : Service() {
         private var pending: Item? = null
         private var lastUrl: String? = null
         private var lastPosition: Long = C.TIME_UNSET
+
+        /** Listening now (or about to): the stream is in use. */
+        fun busy(): Boolean = instance != null || pending != null
 
         /** Hands [item] over to the service (from the player, while it's still on screen). */
         fun start(context: Context, item: Item): Boolean {

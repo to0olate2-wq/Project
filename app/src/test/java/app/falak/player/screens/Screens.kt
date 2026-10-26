@@ -738,6 +738,44 @@ class PhoneLandscapeScreens : ScreenshotBase() {
     }
 }
 
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneDownloadsScreens : ScreenshotBase() {
+    // Downloads in each state: a film's page with its saved copy, then the Downloads page.
+    @Test @Config(qualifiers = PHONE_TALL)
+    fun phoneDownloads() = mainScreens("phone", watching = true) { vm, shoot ->
+        val films = vm.index.movies
+        val dir = java.io.File(app.filesDir, "dl").apply { mkdirs() }
+        fun saved(ch: app.falak.player.data.Channel, size: Long) = java.io.File(dir, ch.id + ".mp4").apply { writeBytes(ByteArray(16)) }.path.let { path ->
+            app.falak.player.data.OfflineItem(
+                id = ch.id, playlistId = "sample", name = ch.name, kind = ch.kind, logo = ch.logo, url = ch.url,
+                file = path, size = size, done = size, state = app.falak.player.data.OfflineState.DONE, addedAt = 1,
+            )
+        }
+        app.falak.player.OfflineCenter.showForTest(
+            listOf(
+                saved(films[0], 1_610_612_736L),
+                saved(films[1], 943_718_400L),
+                app.falak.player.data.OfflineItem(
+                    id = films[2].id, playlistId = "sample", name = films[2].name, kind = films[2].kind, logo = films[2].logo, url = films[2].url,
+                    size = 2_147_483_648L, done = 773_094_113L, state = app.falak.player.data.OfflineState.RUNNING, addedAt = 2,
+                ),
+                app.falak.player.data.OfflineItem(
+                    id = films[3].id, playlistId = "sample", name = films[3].name, kind = films[3].kind, logo = films[3].logo, url = films[3].url,
+                    size = 1_288_490_188L, done = 128_849_018L, state = app.falak.player.data.OfflineState.FAILED,
+                    note = "Not enough space: it needs 1.1 GB, 600 MB free", addedAt = 3,
+                ),
+            ),
+        )
+        vm.openDetails(films[0])
+        shoot("phone-46-film-downloaded")
+        vm.openDetails(films[2])
+        shoot("phone-47-film-downloading")
+        vm.screen = Screen.DOWNLOADS
+        shoot("phone-48-downloads")
+    }
+}
+
 // ---------- Phone (1080 × 2340) ----------
 
 @RunWith(RobolectricTestRunner::class)

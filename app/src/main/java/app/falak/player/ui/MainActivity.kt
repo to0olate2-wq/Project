@@ -141,9 +141,9 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(wantsAlerts) { if (wantsAlerts) askForNotificationsOnce(forReminders = true) }
                 val tvNow = isTv()
                 // Phones and tablets turn with the device on every page, as the player does (even
-                // with rotation locked in the system); a TV stays as it is.
-                LaunchedEffect(tvNow) {
-                    requestedOrientation = if (tvNow) {
+                // with rotation locked in the system), unless turned off in Settings; a TV stays as it is.
+                LaunchedEffect(tvNow, s.turnWithPhone) {
+                    requestedOrientation = if (tvNow || !s.turnWithPhone) {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     } else {
                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
@@ -204,6 +204,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.PROFILES -> ProfilesScreen(vm, state)
                                 Screen.REMOTE -> RemoteScreen(vm, state)
                                 Screen.PRAYER -> PrayerScreen(vm, state)
+                                Screen.DOWNLOADS -> DownloadsScreen(vm, state, onPlay = ::play)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -243,7 +244,10 @@ class MainActivity : ComponentActivity() {
                                         // TVs: the remote goes back to the channel in the list.
                                         onClose = {
                                             MiniPlayerState.close()
-                                            if (tv) vm.focusId = m.channel.id
+                                            if (tv) {
+                                                vm.focusId = m.channel.id
+                                                vm.returnFocus = ReturnFocus(null, m.channel.id)
+                                            }
                                         },
                                     )
                                 }
@@ -400,6 +404,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Downloads left waiting (the app was closed) carry on.
+        app.falak.player.OfflineCenter.resumeWaiting()
         // A page asked for from inside the player (Menu: Films, Series, Settings…).
         repo.pendingNav?.let { where ->
             repo.pendingNav = null
@@ -422,7 +428,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
     }
@@ -519,10 +525,15 @@ class MainActivity : ComponentActivity() {
         vm.prepareQueue(list, channel)
         val index = list.indexOf(channel).coerceAtLeast(0)
         if (vm.state.value.settings.player == app.falak.player.player.Engine.EXTERNAL.key) {
-            // "Another app" chosen in Settings: hand the stream straight to it.
+            // "Another app" chosen in Settings: hand the stream straight to it (a downloaded copy
+            // as the file itself, with permission to read it).
+            val saved = app.falak.player.OfflineCenter.fileFor(channel.id)
+            val uri = saved?.let { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.offline", it) }
+                ?: android.net.Uri.parse(channel.url)
             val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(android.net.Uri.parse(channel.url), "video/*")
+                .setDataAndType(uri, "video/*")
                 .putExtra("title", channel.name)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             try {
                 startActivity(Intent.createChooser(intent, "Play with"))
                 return

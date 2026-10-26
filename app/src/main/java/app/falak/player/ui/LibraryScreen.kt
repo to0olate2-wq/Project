@@ -119,6 +119,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     var editList by remember { mutableStateOf<app.falak.player.data.FavList?>(null) }
     var newList by remember { mutableStateOf(false) }
     val locked = rememberLockedGroups(vm, state)
+    val downloads = rememberDownloads()
     // Hidden groups, plus (in kids mode) every group not chosen for kids.
     val hidden = remember(state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.kidsActive, p.id, index) {
         state.settings.hiddenGroups[p.id].orEmpty().toHashSet().apply { addAll(vm.kidsHidden(state.settings, index)) }
@@ -238,8 +239,15 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     // Coming back from the player: scroll to (and on TV focus) what was playing.
     val focusId = vm.focusId
+    // Back on the lists: the remote goes back to the card it came from (TV; see ReturnFocus).
+    LaunchedEffect(Unit) { vm.onLibraryShown() }
     LaunchedEffect(focusId, visible) {
         val id = focusId ?: return@LaunchedEffect
+        // Home and the Films and Series front pages put the remote back themselves.
+        if (landing != null) {
+            vm.focusId = null
+            return@LaunchedEffect
+        }
         val items = visible ?: return@LaunchedEffect
         val idx = items.indexOfFirst { it.id == id }
         if (idx < 0) {
@@ -279,7 +287,11 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 searching = false
                 vm.query = ""
             }
-            group != null -> vm.group = null
+            group != null -> {
+                // The Films or Series front page again, with the remote on the chip picked.
+                if (isVod) vm.returnFocus = ReturnFocus(GROUP_ROW, group.takeUnless { it == ALL_FILTER } ?: ALL_CHIP)
+                vm.group = null
+            }
             else -> vm.section = Section.HOME
         }
     }
@@ -333,6 +345,11 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     Text(vm.error.orEmpty(), color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
                     Spacer(Modifier.height(16.dp))
                     PaperButton("Try again") { vm.open(p, refresh = true) }
+                    // No internet: what's downloaded still plays.
+                    if (!vm.kidsActive && downloads.any { it.state == app.falak.player.data.OfflineState.DONE }) {
+                        Spacer(Modifier.height(10.dp))
+                        GhostButton("Watch your downloads", downloadIcon()) { vm.screen = Screen.DOWNLOADS }
+                    }
                 }
                 else -> AnimatedContent(
                     targetState = section to (q.isEmpty()),
@@ -463,7 +480,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     if (sidebarLook) {
-        SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay) { m -> Body(m) }
+        SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay, hasDownloads = !vm.kidsActive && downloads.isNotEmpty()) { m -> Body(m) }
     } else {
         // The Films and Series pages' picture goes behind the masthead and tabs too.
         MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
@@ -504,6 +521,12 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         }
                     }
                     if (vm.profilesWanted(state)) ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true }
+                    // Downloads, once there are any.
+                    if (!vm.kidsActive && downloads.isNotEmpty()) {
+                        IconButton(onClick = { vm.screen = Screen.DOWNLOADS }) {
+                            Icon(downloadIcon(), contentDescription = "Downloads", tint = Paper)
+                        }
+                    }
                     if (!vm.kidsActive) NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
                     IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
                         Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)

@@ -373,6 +373,10 @@ data class Settings(
     val prayerAsr: String = "",
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
     val playerRotation: String = "auto",
+    /** Phones: every page turns with the phone, even with rotation locked in the phone's settings. */
+    val turnWithPhone: Boolean = true,
+    /** Downloads (films and episodes to watch offline) only on Wi-Fi. */
+    val downloadWifiOnly: Boolean = true,
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
     val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */

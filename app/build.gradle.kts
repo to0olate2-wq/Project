@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.0"
+        versionName = "8.1"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -170,6 +170,9 @@ dependencies {
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     // VLC engine: plays streams ExoPlayer can't, and shows teletext subtitles.
     implementation("org.videolan.android:libvlc-all:3.6.5")
+
+    // Downloads: carried on in the background, only on Wi-Fi unless chosen, picked up after a restart.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // Android TV home screen: "Continue watching" / "Play next" row.
     implementation("androidx.tvprovider:tvprovider:1.1.0")

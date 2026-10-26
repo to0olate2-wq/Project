@@ -170,7 +170,10 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 GhostButton(if (isFav) "In my list" else "My list", if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder) {
                     vm.onStar(ch)
                 }
+                // Save it to watch without internet; delete the copy once it's downloaded.
+                DownloadActions(vm, ch)
             }
+            DownloadProgress(ch)
             if (watched != null && watched.dur > 0) {
                 LinearProgressIndicator(
                     progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },

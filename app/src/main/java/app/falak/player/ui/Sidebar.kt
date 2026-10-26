@@ -137,6 +137,8 @@ fun SidebarFrame(
     landing: Section?,
     excluded: Set<String>,
     onPlay: (List<Channel>, Channel) -> Unit,
+    /** There are downloads: a button for their page in the top bar. */
+    hasDownloads: Boolean = false,
     body: @Composable (Modifier) -> Unit,
 ) {
     val tv = isTv()
@@ -217,6 +219,7 @@ fun SidebarFrame(
                     onRefresh = { vm.open(p, refresh = true) },
                     unread = state.notices.count { !it.read },
                     onNotices = { vm.screen = Screen.NOTICES },
+                    onDownloads = if (hasDownloads) ({ vm.screen = Screen.DOWNLOADS }) else null,
                     profileButton = if (vm.profilesWanted(state)) {
                         { ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true } }
                     } else {
@@ -537,6 +540,8 @@ fun SidebarTopBar(
     /** Voice search's language ("ar" / "en"), and switching it. */
     voiceLang: String = "en",
     onVoiceLang: () -> Unit = {},
+    /** The Downloads page, when there are downloads. */
+    onDownloads: (() -> Unit)? = null,
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -591,6 +596,9 @@ fun SidebarTopBar(
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
             profileButton?.invoke()
+            if (onDownloads != null) {
+                IconButton(onClick = onDownloads) { Icon(downloadIcon(), contentDescription = "Downloads", tint = Paper) }
+            }
             if (!kids) NoticeBell(unread, onNotices)
             IconButton(onClick = onRefresh, enabled = !loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
@@ -789,14 +797,18 @@ fun ContinueRow(
 ) {
     val tv = isTv()
     val scroller = LocalHomeScroller.current
+    val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
     Column(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
         Box(Modifier.padding(start = 4.dp, bottom = 10.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, color = Paper)
         }
         // On a TV page that places whole rows itself (see HomeScroller), the row still scrolls
         // sideways to the card the remote moves to.
-        CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
+        CompositionLocalProvider(
+            LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current),
+            LocalRow provides title,
+        ) {
+            LazyRow(state = rowState, horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
                 items(items, key = { "cw:" + it.id }) { ch ->
                     ContinueCard(ch, art[ch.id], progress[progressKey(playlistId, ch.id)], width ?: if (tv) 320.dp else 270.dp) { onOpen(ch) }
                 }
@@ -808,14 +820,17 @@ fun ContinueRow(
 @Composable
 private fun ContinueCard(ch: Channel, backdrop: String?, watched: Watch?, width: Dp, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
+    val row = LocalRow.current
+    val tap = LocalCardTap.current
     Box(
         Modifier
             .width(width)
             .aspectRatio(16f / 9f)
+            .comeBackHere(row, ch.id)
             .cardFocus(shape)
             .clip(shape)
             .background(Ink3)
-            .clickable(onClick = onClick),
+            .clickable(onClick = { tap?.invoke(row, ch.id); onClick() }),
     ) {
         val picture = backdrop?.takeIf { it.isNotBlank() } ?: ch.logo.ifBlank { null }
         if (picture != null) {

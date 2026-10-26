@@ -156,10 +156,14 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                             }
                         }
                     }
+                    // Save the whole season to watch without internet.
+                    item(key = "download") {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { SeasonDownload(vm, season.episodes) }
+                    }
                     // The player gets every episode of every season, so the next one follows across seasons.
                     val all = info.seasons.flatMap { it.episodes }
                     items(season.episodes, key = { it.id }) { ep ->
-                        EpisodeRow(ep, state.progress[progressKey(state.mine(p.id), ep.id)]) { onPlay(all, ep) }
+                        EpisodeRow(vm, ep, state.progress[progressKey(state.mine(p.id), ep.id)]) { onPlay(all, ep) }
                     }
                 }
             }
@@ -168,7 +172,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
 }
 
 @Composable
-private fun EpisodeRow(ep: Channel, watched: Watch?, onClick: () -> Unit) {
+private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
     Row(
@@ -202,6 +206,19 @@ private fun EpisodeRow(ep: Channel, watched: Watch?, onClick: () -> Unit) {
                     modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp),
                 )
             }
+            // Its download, when there is one: how far, or how big the saved copy is.
+            rememberDownloads().firstOrNull { it.id == ep.id }?.let { d ->
+                Text(
+                    downloadStatus(d),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (d.state == app.falak.player.data.OfflineState.FAILED) Amber else colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
+        // Download, cancel, or delete the saved copy.
+        EpisodeDownload(vm, ep)
     }
 }
