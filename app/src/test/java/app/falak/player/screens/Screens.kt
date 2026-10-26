@@ -722,6 +722,22 @@ class PhoneSidebarLightScreens : ScreenshotBase() {
     }
 }
 
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneLandscapeScreens : ScreenshotBase() {
+    // Every page turns with the phone: the classic look on its side.
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneLandscape() = mainScreens("phone", watching = true) { vm, shoot ->
+        shoot("phone-42-home-landscape")
+        vm.section = Section.SERIES
+        shoot("phone-43-series-landscape")
+        vm.openDetails(vm.index.movies.first())
+        shoot("phone-44-film-details-landscape")
+        vm.screen = Screen.SETTINGS
+        shoot("phone-45-settings-landscape")
+    }
+}
+
 // ---------- Phone (1080 × 2340) ----------
 
 @RunWith(RobolectricTestRunner::class)

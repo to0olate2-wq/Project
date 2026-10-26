@@ -30,6 +30,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -201,7 +203,8 @@ private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.c
                         // A poster only: a soft wash of it (decoded tiny, so it costs nothing to draw),
                         // and the whole poster sharp on the right.
                         val wash = remember(tall) {
-                            ImageRequest.Builder(context).data(tall).size(24, 36).memoryCacheKey("$tall#wash").build()
+                            // Decoded very small, so only its colours show (not smears of its lettering).
+                            ImageRequest.Builder(context).data(tall).size(6, 9).memoryCacheKey("$tall#tint").build()
                         }
                         AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
                         AsyncImage(
@@ -392,17 +395,166 @@ fun MarqueePage(
                     }
                 } else if (featured.isNotEmpty()) {
                     item(key = "hero") {
-                        FeatureCarousel(
+                        PhoneFeature(
                             items = featured,
+                            current = current,
                             art = vm.heroArt,
-                            heightLimit = 10_000.dp,
+                            info = vm.heroInfo,
+                            onCurrent = { vm.marqueeIndex[section] = it },
                             onPrimary = onPrimary,
-                            onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
+                            onDetails = { ch -> vm.openDetails(ch) },
                         )
                     }
                 }
                 rows()
             }
+        }
+    }
+}
+
+/**
+ * A phone held upright: the featured titles as a card you can swipe (a new one every 7 seconds).
+ * The picture keeps its own shape: a wide picture fills the 16:9 frame; a poster stands whole in
+ * the middle over a soft wash of itself. The name, rating, story and buttons sit under the
+ * picture, so nothing is cut off or covered.
+ */
+@Composable
+private fun PhoneFeature(
+    items: List<Channel>,
+    current: Int,
+    art: Map<String, String>,
+    info: Map<String, app.falak.player.data.VodInfo>,
+    onCurrent: (Int) -> Unit,
+    onPrimary: (Channel) -> Unit,
+    onDetails: (Channel) -> Unit,
+) {
+    val size = items.size
+    val start = remember(size) { if (size <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % size } + current.coerceIn(0, size - 1) }
+    val pager = rememberPagerState(initialPage = start, pageCount = { if (size <= 1) size else Int.MAX_VALUE })
+    val shown = if (size == 0) 0 else pager.currentPage % size
+    LaunchedEffect(pager.settledPage, size) {
+        if (size > 0) onCurrent(pager.settledPage % size)
+        if (size > 1) {
+            delay(7_000)
+            pager.animateScrollToPage(pager.settledPage + 1, animationSpec = tween(600))
+        }
+    }
+    val item = items.getOrNull(shown) ?: return
+    val context = LocalContext.current
+    // Room for two lines of story once any featured title has one, so the rows below stay put.
+    val anyPlot = items.any { !info[it.id]?.plot.isNullOrBlank() }
+
+    Column(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Ink2)) {
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                val ch = items[page % size]
+                val wide = art[ch.id]?.takeIf { it.isNotBlank() }
+                Box(Modifier.fillMaxSize()) {
+                    if (wide != null) {
+                        AsyncImage(model = wide, contentDescription = ch.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    } else if (ch.logo.isNotBlank()) {
+                        val wash = remember(ch.logo) {
+                            // Decoded very small, so only its colours show (not smears of its lettering).
+                            ImageRequest.Builder(context).data(ch.logo).size(6, 9).memoryCacheKey(ch.logo + "#tint").build()
+                        }
+                        AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.55f, modifier = Modifier.fillMaxSize())
+                        AsyncImage(
+                            model = ch.logo,
+                            contentDescription = ch.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(vertical = 14.dp)
+                                .fillMaxHeight()
+                                .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
+                }
+            }
+            if (size > 1) {
+                // In the corner, clear of a poster standing in the middle.
+                Row(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 10.dp)
+                        .background(Color(0x66000000), RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    repeat(size) { i ->
+                        Box(
+                            Modifier
+                                .width(if (i == shown) 16.dp else 6.dp)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (i == shown) Color.White else Color.White.copy(alpha = 0.45f)),
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        AnimatedContent(
+            targetState = item,
+            transitionSpec = { fadeIn(tween(300)).togetherWith(fadeOut(tween(150))) },
+            label = "phoneFeatureText",
+        ) { ch ->
+            val details = info[ch.id]
+            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Kicker(
+                        when {
+                            ch.isNew() && ch.isSeriesFolder -> "New series"
+                            ch.isNew() -> "New film"
+                            ch.isSeriesFolder -> "Series"
+                            else -> "Film"
+                        },
+                    )
+                    qualityTag(ch)?.let {
+                        Spacer(Modifier.width(8.dp))
+                        CardBadge(it, Paper)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    ch.name,
+                    fontFamily = Serif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 26.sp,
+                    lineHeight = 30.sp,
+                    color = Paper,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val meta = listOfNotNull(
+                    ratingLabel(details?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
+                    details?.year?.takeIf { it.isNotBlank() }?.take(4),
+                    (details?.genre?.takeIf { it.isNotBlank() }?.substringBefore(',') ?: ch.group.takeIf { it.isNotBlank() }),
+                    details?.duration?.takeIf { it.isNotBlank() },
+                ).joinToString("  ·  ")
+                Spacer(Modifier.height(4.dp))
+                Text(meta.ifEmpty { " " }, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (anyPlot) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        details?.plot.orEmpty(),
+                        fontFamily = Sans,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        color = Muted,
+                        minLines = 2,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        // The buttons stay put while the titles change; they act on the one shown.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow, Modifier.weight(1f)) { onPrimary(item) }
+            if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
         }
     }
 }
