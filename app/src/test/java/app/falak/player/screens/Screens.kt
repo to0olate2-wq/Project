@@ -338,6 +338,9 @@ abstract class ScreenshotBase {
         val looper = shadowOf(Looper.getMainLooper())
         var left = ms
         while (left > 0) {
+            // State changed while a frame was being made (a page putting up its picture, say) is
+            // passed on at once: the test's main thread doesn't always get round to it by itself.
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
             looper.idleFor(Duration.ofMillis(50))
             Thread.sleep(10)
             left -= 50
@@ -591,6 +594,7 @@ class TvHomeScreens : ScreenshotBase() {
         shoot("tv-02-live")
         vm.section = Section.MOVIES
         shoot("tv-03-films")
+        println("CHECK films picture up: ${vm.marqueeArt != null}")
         // "All films": every film as a grid, as the Films page was before.
         vm.group = ALL_FILTER
         shoot("tv-03b-films-all")
