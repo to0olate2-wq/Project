@@ -158,8 +158,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     // The group the chips and the group list show as picked ("All" for every title).
     val pickedGroup = group.takeUnless { it == ALL_FILTER }
-    // The Films or Series front page is open (its picture goes behind the bars too).
-    val landing = section.takeIf { isVod && group == null && q.isEmpty() }
+    // Home, or the Films or Series front page, is open: its featured picture goes behind the bars too.
+    val landing = section.takeIf { q.isEmpty() && (section == Section.HOME || (isVod && group == null)) }
     val base: List<Channel> = when (section) {
         Section.HOME -> index.all
         Section.FAVORITES -> remember(savedIds, index) { savedIds.mapNotNull { index.byId[it] } }
@@ -349,7 +349,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     modifier = Modifier.fillMaxSize().padding(top = 8.dp),
                 ) { (shown, noQuery) ->
                     if (shown == Section.HOME && noQuery) {
-                        HomeContent(vm, state, excluded, epg, now, onPlay, sidebar = sidebarLook)
+                        HomeContent(vm, state, excluded, epg, now, onPlay)
                     } else if (shown == Section.HOME) {
                         SearchResults(vm, state, q, visible, excluded, epg, now, openFrom)
                     } else if (noQuery && group == null && (shown == Section.MOVIES || shown == Section.SERIES)) {

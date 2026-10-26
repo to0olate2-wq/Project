@@ -81,10 +81,11 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 
 /*
- * The Films and Series pages, Marquee style: the featured title's picture across the top of the
- * page (behind the bars too), its name, rating and story with Play and More info; then rows of
- * what to watch: continue, the playlist's top ten, what's new, favorites and the provider's
- * groups, each with "See all". Picking a group (or "All") opens its full grid as before.
+ * Home, Films and Series, Marquee style: the featured title's picture across the top of the page
+ * (behind the bars too), its name, rating and story with Play and More info; then rows of what to
+ * watch. Films and Series: continue, the playlist's top ten, what's new, favorites and the
+ * provider's groups, each with "See all"; picking a group (or "All") opens its full grid as before.
+ * Home's rows are in HomeScreen.
  */
 
 /** The page area the picture is drawn in: its height, where its top is on screen (px), and
@@ -97,27 +98,35 @@ val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 private fun marqueeFraction(height: Dp): Float = if (height < 480.dp) 0.84f else 0.74f
 
 /**
- * The titles the Films (or Series) page features: new ones with a picture, else any with one;
- * never from hidden, locked or adult groups.
+ * The titles a page features: new ones with a picture, else any with one; never from hidden,
+ * locked or adult groups. Home: new films and series; Films or Series: new ones of that kind.
  */
 @Composable
-fun rememberMarqueeFeatured(vm: LibraryViewModel, kind: Kind, excluded: Set<String>): List<Channel> {
+fun rememberMarqueeFeatured(vm: LibraryViewModel, section: Section, excluded: Set<String>): List<Channel> {
     val index = vm.index
-    return remember(index, excluded, kind) {
+    return remember(index, excluded, section) {
         fun shows(ch: Channel) = ch.logo.isNotBlank() && (excluded.isEmpty() || ch.group !in excluded) && !ADULT_GROUP.containsMatchIn(ch.group)
-        val new = if (kind == Kind.MOVIE) index.newMovies else index.newSeries
-        new.filter(::shows).take(6).ifEmpty { index.ofKind(kind).asSequence().filter(::shows).take(6).toList() }
+        when (section) {
+            Section.HOME -> (index.newMovies.filter(::shows).take(4) + index.newSeries.filter(::shows).take(2))
+                .ifEmpty { (index.movies.asSequence() + index.series.asSequence()).filter(::shows).take(5).toList() }
+            Section.MOVIES, Section.SERIES -> {
+                val kind = if (section == Section.MOVIES) Kind.MOVIE else Kind.SERIES
+                val new = if (kind == Kind.MOVIE) index.newMovies else index.newSeries
+                new.filter(::shows).take(6).ifEmpty { index.ofKind(kind).asSequence().filter(::shows).take(6).toList() }
+            }
+            else -> emptyList()
+        }
     }
 }
 
 /** Which of [featured] is on show now. */
-private fun marqueeSlot(vm: LibraryViewModel, kind: Kind, featured: List<Channel>): Int =
-    if (featured.isEmpty()) 0 else (vm.marqueeIndex[kind] ?: 0).mod(featured.size)
+private fun marqueeSlot(vm: LibraryViewModel, section: Section, featured: List<Channel>): Int =
+    if (featured.isEmpty()) 0 else (vm.marqueeIndex[section] ?: 0).mod(featured.size)
 
 /**
- * A page (bars included) that can have the Films or Series picture behind its top: the picture
- * is drawn first, and [content] over it. [landing] is the Films or Series front page when it is
- * the one open (no group picked, nothing searched), else null.
+ * A page (bars included) that can have the featured picture behind its top: the picture is drawn
+ * first, and [content] over it. [landing] is the page showing it, when one is open (Home, or the
+ * Films or Series front page: no group picked, nothing searched), else null.
  */
 @Composable
 fun MarqueeStage(
@@ -134,9 +143,8 @@ fun MarqueeStage(
         // TV, tablets and phones on their side; a phone held upright has the tall poster card instead.
         val wide = tv || maxWidth >= 640.dp
         val info = remember(height, wide) { MarqueeStageInfo(height, wide) { top[0] } }
-        val kind = landing?.kind
-        if (wide && kind != null) {
-            MarqueeBackdropFor(vm, landing, kind, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
+        if (wide && landing != null) {
+            MarqueeBackdropFor(vm, landing, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
     }
@@ -144,9 +152,9 @@ fun MarqueeStage(
 
 /** The picture of the title the page is showing. */
 @Composable
-private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, kind: Kind, excluded: Set<String>, modifier: Modifier) {
-    val featured = rememberMarqueeFeatured(vm, kind, excluded)
-    val item = featured.getOrNull(marqueeSlot(vm, kind, featured)) ?: return
+private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded: Set<String>, modifier: Modifier) {
+    val featured = rememberMarqueeFeatured(vm, section, excluded)
+    val item = featured.getOrNull(marqueeSlot(vm, section, featured)) ?: return
     MarqueeBackdrop(
         backdrop = vm.heroArt[item.id]?.takeIf { it.isNotBlank() },
         poster = item.logo.ifBlank { null },
@@ -239,7 +247,7 @@ fun MarqueeBrowse(
     fun ok(ch: Channel) = excluded.isEmpty() || ch.group !in excluded
 
     val newOfKind = remember(index, excluded, kind) { (if (films) index.newMovies else index.newSeries).filter(::ok) }
-    val featured = rememberMarqueeFeatured(vm, kind, excluded)
+    val featured = rememberMarqueeFeatured(vm, section, excluded)
     val continueOfKind = remember(state.progress, index, me, excluded, kind) {
         state.progress.entries.toList().asReversed()
             .filter { it.key.startsWith("$me|") }
@@ -267,6 +275,69 @@ fun MarqueeBrowse(
     val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }
 
     val tv = isTv()
+    MarqueePage(vm, section, featured, onPlay) {
+        item(key = "groups") {
+            GroupPicker(
+                all = if (films) "All films" else "All series",
+                total = groups.values.sumOf { it.size },
+                groups = groups,
+                locked = locked,
+                onGroup = onGroup,
+                onOptions = onGroupOptions,
+            )
+        }
+        if (continueOfKind.isNotEmpty()) {
+            item(key = "continue") {
+                Box(Modifier.padding(top = 16.dp)) {
+                    ContinueRow(
+                        continueOfKind, vm.heroArt, state.progress, me,
+                        title = "Continue watching",
+                        width = if (tv) 220.dp else 180.dp,
+                    ) { ch -> onPlay(listOf(ch), ch) }
+                }
+            }
+        }
+        if (top.size >= 3) {
+            item(key = "top") {
+                RankShelf(if (films) "Top 10 films on your playlist" else "Top 10 series on your playlist", top, watched, { ch -> onOpen(top, ch) }, sheet)
+            }
+        }
+        if (newOfKind.isNotEmpty()) {
+            item(key = "new") {
+                Shelf(if (films) "New films" else "New series", onSeeAll = { vm.sort = Sort.NEWEST; onGroup(null) }) {
+                    items(newOfKind, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(newOfKind, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        if (favOfKind.isNotEmpty()) {
+            item(key = "fav") {
+                Shelf(if (films) "Your favorite films" else "Your favorite series") {
+                    items(favOfKind, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(favOfKind, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        items(groupRows, key = { "g:" + it.first }) { (name, list) ->
+            Shelf(name, onSeeAll = { onGroup(name) }) {
+                items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(list, ch) }, onLongClick = { sheet(ch) }) }
+            }
+        }
+    }
+}
+
+/**
+ * The page under a featured picture: on a TV, a tablet or a phone on its side, the featured title
+ * over its picture (the page frame draws the picture, see [MarqueeStage]); on a phone held
+ * upright, the tall poster card. Then [rows]. On a TV, rows the remote moves to slide to the top.
+ */
+@Composable
+fun MarqueePage(
+    vm: LibraryViewModel,
+    section: Section,
+    featured: List<Channel>,
+    onPlay: (List<Channel>, Channel) -> Unit,
+    rows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    val tv = isTv()
     val listState = vm.marqueeStateFor(section)
     val scope = rememberCoroutineScope()
     val inheritedSpec = LocalBringIntoViewSpec.current
@@ -274,12 +345,11 @@ fun MarqueeBrowse(
     val stage = LocalMarqueeStage.current
     val density = LocalDensity.current
     var myTop by remember { mutableFloatStateOf(-1f) }
+    val onPrimary: (Channel) -> Unit = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) }
 
     Box(Modifier.fillMaxSize().onGloballyPositioned { myTop = it.positionInRoot().y }) {
-        // The picture behind the page (drawn by the page frame, see MarqueeStage) needs room: TV,
-        // tablets and phones on their side. A phone held upright has the tall poster card instead.
         val wide = stage?.wide == true
-        val current = marqueeSlot(vm, kind, featured)
+        val current = marqueeSlot(vm, section, featured)
         val item = featured.getOrNull(current)
         // A series' details are a bigger download (every episode), so only the one on show.
         LaunchedEffect(item?.id) { if (item != null && item.isSeriesFolder) vm.loadHeroArt(listOf(item), series = true) }
@@ -294,7 +364,7 @@ fun MarqueeBrowse(
             LaunchedEffect(current, featured.size, heroInView) {
                 if (featured.size > 1 && heroInView) {
                     delay(7_000)
-                    vm.marqueeIndex[kind] = (current + 1) % featured.size
+                    vm.marqueeIndex[section] = (current + 1) % featured.size
                 }
             }
         }
@@ -316,7 +386,7 @@ fun MarqueeBrowse(
                             count = featured.size,
                             current = current,
                             height = heroHeight,
-                            onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
+                            onPrimary = onPrimary,
                             onDetails = { ch -> vm.openDetails(ch) },
                         )
                     }
@@ -326,56 +396,12 @@ fun MarqueeBrowse(
                             items = featured,
                             art = vm.heroArt,
                             heightLimit = 10_000.dp,
-                            onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
+                            onPrimary = onPrimary,
                             onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
                         )
                     }
                 }
-                item(key = "groups") {
-                    GroupPicker(
-                        all = if (films) "All films" else "All series",
-                        total = groups.values.sumOf { it.size },
-                        groups = groups,
-                        locked = locked,
-                        onGroup = onGroup,
-                        onOptions = onGroupOptions,
-                    )
-                }
-                if (continueOfKind.isNotEmpty()) {
-                    item(key = "continue") {
-                        Box(Modifier.padding(top = 16.dp)) {
-                            ContinueRow(
-                                continueOfKind, vm.heroArt, state.progress, me,
-                                title = "Continue watching",
-                                width = if (tv) 220.dp else 180.dp,
-                            ) { ch -> onPlay(listOf(ch), ch) }
-                        }
-                    }
-                }
-                if (top.size >= 3) {
-                    item(key = "top") {
-                        RankShelf(if (films) "Top 10 films on your playlist" else "Top 10 series on your playlist", top, watched, { ch -> onOpen(top, ch) }, sheet)
-                    }
-                }
-                if (newOfKind.isNotEmpty()) {
-                    item(key = "new") {
-                        Shelf(if (films) "New films" else "New series", onSeeAll = { vm.sort = Sort.NEWEST; onGroup(null) }) {
-                            items(newOfKind, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(newOfKind, ch) }, onLongClick = { sheet(ch) }) }
-                        }
-                    }
-                }
-                if (favOfKind.isNotEmpty()) {
-                    item(key = "fav") {
-                        Shelf(if (films) "Your favorite films" else "Your favorite series") {
-                            items(favOfKind, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(favOfKind, ch) }, onLongClick = { sheet(ch) }) }
-                        }
-                    }
-                }
-                items(groupRows, key = { "g:" + it.first }) { (name, list) ->
-                    Shelf(name, onSeeAll = { onGroup(name) }) {
-                        items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(list, ch) }, onLongClick = { sheet(ch) }) }
-                    }
-                }
+                rows()
             }
         }
     }
@@ -492,7 +518,7 @@ private fun GroupPicker(
 
 /** The playlist's top ten: big outlined numbers with the posters over their edge. */
 @Composable
-private fun RankShelf(
+internal fun RankShelf(
     title: String,
     list: List<Channel>,
     watched: (Channel) -> app.falak.player.data.Watch?,

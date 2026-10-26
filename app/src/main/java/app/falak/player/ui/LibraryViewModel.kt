@@ -110,10 +110,6 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Wide backdrops for the Home feature carousel (Xtream movie details), by channel id. */
     val heroArt = androidx.compose.runtime.mutableStateMapOf<String, String>()
 
-    /** The next prayer for Home's greeting (Settings → Prayer times on); work it out off the main thread. */
-    fun nextPrayer(): Pair<Long, app.falak.player.data.PrayerTimes.Prayer>? =
-        runCatching { app.falak.player.PrayerAlerts.nextPrayer(getApplication(), repo) }.getOrNull()
-
     /** The same films' details (plot, year, length), for the Films page's featured picture. */
     val heroInfo = androidx.compose.runtime.mutableStateMapOf<String, app.falak.player.data.VodInfo>()
     private var heroJob: Job? = null
@@ -159,12 +155,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Which featured title the Films and Series pages show (it changes every few seconds). */
-    val marqueeIndex = androidx.compose.runtime.mutableStateMapOf<Kind, Int>()
+    /** Which featured title Home, Films and Series show (it changes every few seconds). */
+    val marqueeIndex = androidx.compose.runtime.mutableStateMapOf<Section, Int>()
 
-    /** The Films and Series pages' scroll places, kept while the app is open. */
+    /** The Films and Series pages' scroll places, kept while the app is open (Home's is [homeState]). */
     private val marqueeStates = HashMap<Section, LazyListState>()
-    fun marqueeStateFor(s: Section): LazyListState = marqueeStates.getOrPut(s) { LazyListState() }
+    fun marqueeStateFor(s: Section): LazyListState = if (s == Section.HOME) homeState else marqueeStates.getOrPut(s) { LazyListState() }
 
     var loading by mutableStateOf(false)
         private set
