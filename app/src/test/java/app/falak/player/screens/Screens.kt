@@ -53,6 +53,9 @@ import app.falak.player.data.ServiceReport
 import app.falak.player.player.SleepTimer
 import app.falak.player.ui.forceVoiceForTest
 import app.falak.player.ui.LibraryViewModel
+import app.falak.player.OfflineCenter
+import app.falak.player.data.OfflineItem
+import app.falak.player.data.OfflineState
 import app.falak.player.ui.ALL_FILTER
 import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
@@ -746,23 +749,23 @@ class PhoneDownloadsScreens : ScreenshotBase() {
     fun phoneDownloads() = mainScreens("phone", watching = true) { vm, shoot ->
         val films = vm.index.movies
         val dir = java.io.File(app.filesDir, "dl").apply { mkdirs() }
-        fun saved(ch: app.falak.player.data.Channel, size: Long) = java.io.File(dir, ch.id + ".mp4").apply { writeBytes(ByteArray(16)) }.path.let { path ->
-            app.falak.player.data.OfflineItem(
+        fun saved(ch: Channel, size: Long) = java.io.File(dir, ch.id + ".mp4").apply { writeBytes(ByteArray(16)) }.path.let { path ->
+            OfflineItem(
                 id = ch.id, playlistId = "sample", name = ch.name, kind = ch.kind, logo = ch.logo, url = ch.url,
-                file = path, size = size, done = size, state = app.falak.player.data.OfflineState.DONE, addedAt = 1,
+                file = path, size = size, done = size, state = OfflineState.DONE, addedAt = 1,
             )
         }
-        app.falak.player.OfflineCenter.showForTest(
+        OfflineCenter.showForTest(
             listOf(
                 saved(films[0], 1_610_612_736L),
                 saved(films[1], 943_718_400L),
-                app.falak.player.data.OfflineItem(
+                OfflineItem(
                     id = films[2].id, playlistId = "sample", name = films[2].name, kind = films[2].kind, logo = films[2].logo, url = films[2].url,
-                    size = 2_147_483_648L, done = 773_094_113L, state = app.falak.player.data.OfflineState.RUNNING, addedAt = 2,
+                    size = 2_147_483_648L, done = 773_094_113L, state = OfflineState.RUNNING, addedAt = 2,
                 ),
-                app.falak.player.data.OfflineItem(
+                OfflineItem(
                     id = films[3].id, playlistId = "sample", name = films[3].name, kind = films[3].kind, logo = films[3].logo, url = films[3].url,
-                    size = 1_288_490_188L, done = 128_849_018L, state = app.falak.player.data.OfflineState.FAILED,
+                    size = 1_288_490_188L, done = 128_849_018L, state = OfflineState.FAILED,
                     note = "Not enough space: it needs 1.1 GB, 600 MB free", addedAt = 3,
                 ),
             ),
