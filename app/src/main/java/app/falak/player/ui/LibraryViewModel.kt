@@ -159,12 +159,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * The Films or Series page's featured picture, drawn behind the top of the page (the bars
-     * too), and how much of it shows as the page scrolls past it (1 = all, 0 = gone).
-     */
-    var marqueeArt by mutableStateOf<MarqueeArt?>(null)
-    var marqueeFade by androidx.compose.runtime.mutableFloatStateOf(1f)
+    /** Which featured title the Films and Series pages show (it changes every few seconds). */
+    val marqueeIndex = androidx.compose.runtime.mutableStateMapOf<Kind, Int>()
 
     /** The Films and Series pages' scroll places, kept while the app is open. */
     private val marqueeStates = HashMap<Section, LazyListState>()
@@ -580,6 +576,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             heroInfo.clear()
             heroQueue.clear()
             marqueeStates.clear()
+            marqueeIndex.clear()
             group = null
             query = ""
             section = Section.HOME

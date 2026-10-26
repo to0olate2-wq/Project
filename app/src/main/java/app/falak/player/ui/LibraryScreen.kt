@@ -158,6 +158,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     // The group the chips and the group list show as picked ("All" for every title).
     val pickedGroup = group.takeUnless { it == ALL_FILTER }
+    // The Films or Series front page is open (its picture goes behind the bars too).
+    val landing = section.takeIf { isVod && group == null && q.isEmpty() }
     val base: List<Channel> = when (section) {
         Section.HOME -> index.all
         Section.FAVORITES -> remember(savedIds, index) { savedIds.mapNotNull { index.byId[it] } }
@@ -461,10 +463,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     if (sidebarLook) {
-        SidebarFrame(vm, state, p, sections, section, excluded, onPlay) { m -> Body(m) }
+        SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay) { m -> Body(m) }
     } else {
         // The Films and Series pages' picture goes behind the masthead and tabs too.
-        MarqueeStage(vm, Modifier.fillMaxSize()) {
+        MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
             // Masthead
             Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {

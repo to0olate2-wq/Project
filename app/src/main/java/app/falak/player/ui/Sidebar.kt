@@ -133,6 +133,8 @@ fun SidebarFrame(
     p: Playlist,
     sections: List<Section>,
     section: Section,
+    /** The Films or Series front page, when it is the one open (see [MarqueeStage]). */
+    landing: Section?,
     excluded: Set<String>,
     onPlay: (List<Channel>, Channel) -> Unit,
     body: @Composable (Modifier) -> Unit,
@@ -202,7 +204,7 @@ fun SidebarFrame(
         val openMenu: () -> Unit = { scope.launch { drawer.open() } }
         val main: @Composable (Modifier) -> Unit = { m ->
             // The Films and Series pages' picture goes behind the top bar too.
-            MarqueeStage(vm, m) {
+            MarqueeStage(vm, landing, excluded, m) {
             Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp)) {
                 SidebarTopBar(
                     query = vm.query,

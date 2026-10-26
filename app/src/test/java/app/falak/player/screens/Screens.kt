@@ -327,7 +327,6 @@ abstract class ScreenshotBase {
             idle(400)
             Thread.sleep(150)
         }
-        println("TRACE capture $name")
         val root = activity.window.decorView
         val bmp = Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bmp))
@@ -595,7 +594,6 @@ class TvHomeScreens : ScreenshotBase() {
         shoot("tv-02-live")
         vm.section = Section.MOVIES
         shoot("tv-03-films")
-        println("CHECK films picture up: ${vm.marqueeArt != null}")
         // "All films": every film as a grid, as the Films page was before.
         vm.group = ALL_FILTER
         shoot("tv-03b-films-all")

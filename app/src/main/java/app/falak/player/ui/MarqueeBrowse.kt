@@ -85,11 +85,9 @@ import kotlinx.coroutines.delay
  * groups, each with "See all". Picking a group (or "All") opens its full grid as before.
  */
 
-/** The picture behind the top of the page; [owner] is the page that put it there. */
-class MarqueeArt(val owner: Any, val backdrop: String?, val poster: String?)
-
-/** The page area the picture is drawn in: its height and where its top is on screen (px). */
-class MarqueeStageInfo(val height: Dp, val top: () -> Float)
+/** The page area the picture is drawn in: its height, where its top is on screen (px), and
+ * whether there is room for the picture (TV, tablets, phones on their side). */
+class MarqueeStageInfo(val height: Dp, val wide: Boolean, val top: () -> Float)
 
 val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 
@@ -97,63 +95,115 @@ val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 private fun marqueeFraction(height: Dp): Float = if (height < 480.dp) 0.84f else 0.74f
 
 /**
- * A page (bars included) that can have the Films or Series picture behind its top: the picture
- * is drawn first, and [content] over it.
+ * The titles the Films (or Series) page features: new ones with a picture, else any with one;
+ * never from hidden, locked or adult groups.
  */
 @Composable
-fun MarqueeStage(vm: LibraryViewModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun rememberMarqueeFeatured(vm: LibraryViewModel, kind: Kind, excluded: Set<String>): List<Channel> {
+    val index = vm.index
+    return remember(index, excluded, kind) {
+        fun shows(ch: Channel) = ch.logo.isNotBlank() && (excluded.isEmpty() || ch.group !in excluded) && !ADULT_GROUP.containsMatchIn(ch.group)
+        val new = if (kind == Kind.MOVIE) index.newMovies else index.newSeries
+        new.filter(::shows).take(6).ifEmpty { index.ofKind(kind).asSequence().filter(::shows).take(6).toList() }
+    }
+}
+
+/** Which of [featured] is on show now. */
+private fun marqueeSlot(vm: LibraryViewModel, kind: Kind, featured: List<Channel>): Int =
+    if (featured.isEmpty()) 0 else (vm.marqueeIndex[kind] ?: 0).mod(featured.size)
+
+/**
+ * A page (bars included) that can have the Films or Series picture behind its top: the picture
+ * is drawn first, and [content] over it. [landing] is the Films or Series front page when it is
+ * the one open (no group picked, nothing searched), else null.
+ */
+@Composable
+fun MarqueeStage(
+    vm: LibraryViewModel,
+    landing: Section?,
+    excluded: Set<String>,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     val top = remember { floatArrayOf(0f) }
+    val tv = isTv()
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
-        val info = remember(height) { MarqueeStageInfo(height) { top[0] } }
-        println("TRACE stage art=${vm.marqueeArt != null}")
-        vm.marqueeArt?.let { art ->
-            MarqueeBackdrop(art, { vm.marqueeFade }, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
+        // TV, tablets and phones on their side; a phone held upright has the tall poster card instead.
+        val wide = tv || maxWidth >= 640.dp
+        val info = remember(height, wide) { MarqueeStageInfo(height, wide) { top[0] } }
+        val kind = landing?.kind
+        if (wide && kind != null) {
+            MarqueeBackdropFor(vm, landing, kind, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
     }
 }
 
-/** The featured picture: wide art filling the width, or a poster on the right over a soft wash of it. */
+/** The picture of the title the page is showing. */
 @Composable
-private fun MarqueeBackdrop(art: MarqueeArt, fade: () -> Float, modifier: Modifier) {
+private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, kind: Kind, excluded: Set<String>, modifier: Modifier) {
+    val featured = rememberMarqueeFeatured(vm, kind, excluded)
+    val item = featured.getOrNull(marqueeSlot(vm, kind, featured)) ?: return
+    MarqueeBackdrop(
+        backdrop = vm.heroArt[item.id]?.takeIf { it.isNotBlank() },
+        poster = item.logo.ifBlank { null },
+        list = vm.marqueeStateFor(section),
+        modifier = modifier,
+    )
+}
+
+/**
+ * The featured picture: wide art filling the width, or a poster on the right over a soft wash
+ * of it. It fades as the page scrolls past it ([list]).
+ */
+@Composable
+private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.compose.foundation.lazy.LazyListState, modifier: Modifier) {
     val context = LocalContext.current
-    BoxWithConstraints(modifier.graphicsLayer { alpha = fade() }) {
+    BoxWithConstraints(modifier) {
         val h = maxHeight
-        Crossfade(art.backdrop to art.poster, animationSpec = tween(450), label = "marqueeArt") { (backdrop, poster) ->
-            Box(Modifier.fillMaxSize()) {
-                if (!backdrop.isNullOrBlank()) {
-                    AsyncImage(
-                        model = backdrop,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.TopCenter,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else if (!poster.isNullOrBlank()) {
-                    // A poster only: a soft wash of it (decoded tiny, so it costs nothing to draw),
-                    // and the whole poster sharp on the right.
-                    val wash = remember(poster) {
-                        ImageRequest.Builder(context).data(poster).size(24, 36).memoryCacheKey("$poster#wash").build()
+        val fadePx = with(LocalDensity.current) { (h * 0.7f).toPx() }.coerceAtLeast(1f)
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                // Read while drawing: scrolling only redraws the picture.
+                alpha = if (list.firstVisibleItemIndex > 0) 0f else (1f - list.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
+            },
+        ) {
+            Crossfade(backdrop to poster, animationSpec = tween(450), label = "marqueeArt") { (wide, tall) ->
+                Box(Modifier.fillMaxSize()) {
+                    if (!wide.isNullOrBlank()) {
+                        AsyncImage(
+                            model = wide,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (!tall.isNullOrBlank()) {
+                        // A poster only: a soft wash of it (decoded tiny, so it costs nothing to draw),
+                        // and the whole poster sharp on the right.
+                        val wash = remember(tall) {
+                            ImageRequest.Builder(context).data(tall).size(24, 36).memoryCacheKey("$tall#wash").build()
+                        }
+                        AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
+                        AsyncImage(
+                            model = tall,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = h * 0.2f, end = 48.dp)
+                                .height(h * 0.62f)
+                                .aspectRatio(2f / 3f)
+                                .clip(RoundedCornerShape(10.dp)),
+                        )
                     }
-                    AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
-                    AsyncImage(
-                        model = poster,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = h * 0.2f, end = 48.dp)
-                            .height(h * 0.62f)
-                            .aspectRatio(2f / 3f)
-                            .clip(RoundedCornerShape(10.dp)),
-                    )
                 }
             }
+            // Dark on the left for the words, at the top for the bars, and into the page at the bottom.
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent, 0.52f to Color.Transparent, 1f to Ink)))
         }
-        // Dark on the left for the words, at the top for the bars, and into the page at the bottom.
-        Box(Modifier.fillMaxSize().drawBehind { println("TRACE draw backdrop ${size}") }.background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent, 0.52f to Color.Transparent, 1f to Ink)))
     }
 }
 
@@ -178,12 +228,8 @@ fun MarqueeBrowse(
     val films = kind == Kind.MOVIE
     fun ok(ch: Channel) = excluded.isEmpty() || ch.group !in excluded
 
-    val ofKind = index.ofKind(kind)
     val newOfKind = remember(index, excluded, kind) { (if (films) index.newMovies else index.newSeries).filter(::ok) }
-    val featured = remember(newOfKind, ofKind, excluded) {
-        fun shows(ch: Channel) = ch.logo.isNotBlank() && ok(ch) && !ADULT_GROUP.containsMatchIn(ch.group)
-        newOfKind.filter(::shows).take(6).ifEmpty { ofKind.asSequence().filter(::shows).take(6).toList() }
-    }
+    val featured = rememberMarqueeFeatured(vm, kind, excluded)
     val continueOfKind = remember(state.progress, index, me, excluded, kind) {
         state.progress.entries.toList().asReversed()
             .filter { it.key.startsWith("$me|") }
@@ -219,12 +265,12 @@ fun MarqueeBrowse(
     val density = LocalDensity.current
     var myTop by remember { mutableFloatStateOf(-1f) }
 
-    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { myTop = it.positionInRoot().y }) {
-        // The picture behind the page needs room: TV, tablets and phones on their side. A phone
-        // held upright has the tall poster card instead.
-        val wide = stage != null && (tv || maxWidth >= 600.dp)
-        var current by remember(featured) { mutableIntStateOf(0) }
-        val item = featured.getOrNull(current.coerceIn(0, (featured.size - 1).coerceAtLeast(0)))
+    Box(Modifier.fillMaxSize().onGloballyPositioned { myTop = it.positionInRoot().y }) {
+        // The picture behind the page (drawn by the page frame, see MarqueeStage) needs room: TV,
+        // tablets and phones on their side. A phone held upright has the tall poster card instead.
+        val wide = stage?.wide == true
+        val current = marqueeSlot(vm, kind, featured)
+        val item = featured.getOrNull(current)
         // A series' details are a bigger download (every episode), so only the one on show.
         LaunchedEffect(item?.id) { if (item != null && item.isSeriesFolder) vm.loadHeroArt(listOf(item), series = true) }
         // The hero's height: from the top of this list down to where the picture fades out.
@@ -232,44 +278,13 @@ fun MarqueeBrowse(
             val offset = if (myTop < 0) 110.dp else with(density) { (myTop - stage.top()).toDp() }
             (stage.height * marqueeFraction(stage.height) - offset).coerceAtLeast(200.dp)
         }
-
         if (wide && item != null) {
-            val owner = remember { Any() }
-            val info = vm.heroInfo[item.id]
-            val art = MarqueeArt(owner, vm.heroArt[item.id]?.takeIf { it.isNotBlank() }, item.logo.ifBlank { null })
-            // Put up the picture as soon as this page is on screen (not from a coroutine, which may
-            // only run a frame later), and take it down when the page goes. Only the section that is
-            // open puts it up (while switching Films and Series both pages are briefly composed),
-            // and it reads what's up, so it puts its own back if the other page took it down.
-            val active = vm.section == section
-            val shown = vm.marqueeArt
-            SideEffect {
-                println("TRACE side active=$active shown=${shown != null}")
-                if (active && (shown == null || shown.owner !== owner || shown.backdrop != art.backdrop || shown.poster != art.poster)) {
-                    vm.marqueeArt = art
-                }
-            }
-            DisposableEffect(owner) {
-                onDispose {
-                    if (vm.marqueeArt?.owner === owner) {
-                        vm.marqueeArt = null
-                        vm.marqueeFade = 1f
-                    }
-                }
-            }
-            // The picture fades as the page scrolls past it.
-            val heroPx = with(density) { heroHeight.toPx() }.coerceAtLeast(1f)
-            LaunchedEffect(listState, heroPx) {
-                snapshotFlow {
-                    if (listState.firstVisibleItemIndex > 0) 0f else (1f - listState.firstVisibleItemScrollOffset / heroPx).coerceIn(0f, 1f)
-                }.collect { println("TRACE fade $it"); vm.marqueeFade = it }
-            }
             // A new title every 7 seconds while the top of the page is in view.
             val heroInView = listState.firstVisibleItemIndex == 0
             LaunchedEffect(current, featured.size, heroInView) {
                 if (featured.size > 1 && heroInView) {
                     delay(7_000)
-                    current = (current + 1) % featured.size
+                    vm.marqueeIndex[kind] = (current + 1) % featured.size
                 }
             }
         }
