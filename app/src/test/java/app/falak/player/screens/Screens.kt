@@ -327,6 +327,7 @@ abstract class ScreenshotBase {
             idle(400)
             Thread.sleep(150)
         }
+        println("TRACE capture $name")
         val root = activity.window.decorView
         val bmp = Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bmp))

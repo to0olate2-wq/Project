@@ -51,6 +51,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -105,6 +106,7 @@ fun MarqueeStage(vm: LibraryViewModel, modifier: Modifier = Modifier, content: @
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
         val info = remember(height) { MarqueeStageInfo(height) { top[0] } }
+        println("TRACE stage art=${vm.marqueeArt != null}")
         vm.marqueeArt?.let { art ->
             MarqueeBackdrop(art, { vm.marqueeFade }, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
         }
@@ -150,7 +152,7 @@ private fun MarqueeBackdrop(art: MarqueeArt, fade: () -> Float, modifier: Modifi
             }
         }
         // Dark on the left for the words, at the top for the bars, and into the page at the bottom.
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
+        Box(Modifier.fillMaxSize().drawBehind { println("TRACE draw backdrop ${size}") }.background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent, 0.52f to Color.Transparent, 1f to Ink)))
     }
 }
@@ -242,6 +244,7 @@ fun MarqueeBrowse(
             val active = vm.section == section
             val shown = vm.marqueeArt
             SideEffect {
+                println("TRACE side active=$active shown=${shown != null}")
                 if (active && (shown == null || shown.owner !== owner || shown.backdrop != art.backdrop || shown.poster != art.poster)) {
                     vm.marqueeArt = art
                 }
@@ -259,7 +262,7 @@ fun MarqueeBrowse(
             LaunchedEffect(listState, heroPx) {
                 snapshotFlow {
                     if (listState.firstVisibleItemIndex > 0) 0f else (1f - listState.firstVisibleItemScrollOffset / heroPx).coerceIn(0f, 1f)
-                }.collect { vm.marqueeFade = it }
+                }.collect { println("TRACE fade $it"); vm.marqueeFade = it }
             }
             // A new title every 7 seconds while the top of the page is in view.
             val heroInView = listState.firstVisibleItemIndex == 0
