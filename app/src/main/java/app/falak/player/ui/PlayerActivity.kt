@@ -1061,9 +1061,9 @@ class PlayerActivity : ComponentActivity() {
         browseButton.visibility = if (ch.id.startsWith("cu:") && queue.size <= 1) View.GONE else View.VISIBLE
         val settings = repo.state.value.settings
         // A downloaded film or episode plays from its saved copy (no internet needed).
-        val saved = if (overrideUrl == null) app.falak.player.OfflineCenter.fileFor(ch.id) else null
+        val savedCopy = if (overrideUrl == null) app.falak.player.OfflineCenter.fileFor(ch.id) else null
         val url = overrideUrl
-            ?: saved?.let { android.net.Uri.fromFile(it).toString() }
+            ?: savedCopy?.let { android.net.Uri.fromFile(it).toString() }
             ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
                 ch.url.removeSuffix(".ts") + ".m3u8"
             } else {
@@ -1071,7 +1071,7 @@ class PlayerActivity : ComponentActivity() {
             }
         currentUrl = url
         // Streaming from the provider: downloads wait (many providers allow one connection at a time).
-        app.falak.player.OfflineCenter.watching.value = saved == null
+        app.falak.player.OfflineCenter.watching.value = savedCopy == null
         val ua = ch.userAgent
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
