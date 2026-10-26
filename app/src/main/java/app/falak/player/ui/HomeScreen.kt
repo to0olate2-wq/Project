@@ -77,9 +77,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 
 /**
- * The start page: a greeting, the channel you'd most likely watch now and Tonight on your other
- * channels (or, with no live channels, the slideshow), then Pick up where you left off, what you
- * watch (For this hour, Recently watched), what's popular and new (Trending now, New films, New
+ * The start page, Marquee style (see MarqueePage): the featured new film or series over its
+ * picture (on a phone held upright, the tall poster card), then Continue watching and the
+ * playlist's Top 10, what you watch (For this hour, Recently watched), what's new (New films, New
  * series), then your own favorites and lists. The provider's groups are on the Live, Films and
  * Series pages.
  */
@@ -92,8 +92,6 @@ fun HomeContent(
     epg: Map<String, List<Program>>,
     now: Long,
     onPlay: (List<Channel>, Channel) -> Unit,
-    /** Sidebar look (a phone held upright shows Tonight as cards). */
-    sidebar: Boolean = false,
 ) {
     val p = vm.playlist ?: return
     val index = vm.index
@@ -143,43 +141,16 @@ fun HomeContent(
     }
     val newMovies = remember(index, locked) { index.newMovies.filter(::ok) }
     val newSeries = remember(index, locked) { index.newSeries.filter(::ok) }
-    val trending = remember(index, locked) { index.trending.filter(::ok) }
-    // The slideshow features only what you can see: never hidden or locked groups (keyed on them
-    // too, so hiding a group takes its films out at once), and never adult groups.
-    val hero = remember(newMovies, newSeries, index, locked) {
-        fun featured(ch: Channel) = ch.logo.isNotBlank() && ok(ch) && !ADULT_GROUP.containsMatchIn(ch.group)
-        (newMovies.filter(::featured).take(4) + newSeries.filter(::featured).take(2))
-            .ifEmpty { (index.movies.asSequence() + index.series.asSequence()).filter(::featured).take(5).toList() }
-    }
+    val top = remember(index, locked) { index.trending.filter(::ok).take(10) }
+    // The featured titles: only what you can see (never hidden, locked or adult groups).
+    val hero = rememberMarqueeFeatured(vm, Section.HOME, locked)
     // Ramadan mode: where today stands, and the provider's Ramadan series.
     val ramadan = rememberRamadan()
     val ramadanTitles = remember(ramadan?.first, ramadan?.second is app.falak.player.data.Ramadan.Phase.Eid, index, locked) {
         val r = ramadan ?: return@remember null
         if (r.second is app.falak.player.data.Ramadan.Phase.Eid) null else app.falak.player.data.Ramadan.titles(index, r.first, locked)
     }
-    // The live card: the channel you usually watch at this time, else the last one you watched,
-    // a favorite, or one with something on (never from an adult group unless it's yours).
-    val guided = remember(index, epg, locked, quarter) {
-        index.live.asSequence()
-            .filter { ok(it) && !ADULT_GROUP.containsMatchIn(it.group) && Epg.current(epg[it.epgKey], now) != null }
-            .take(8)
-            .toList()
-    }
-    val pick = remember(forThisHour, recentLive, favLive, guided, index, locked) {
-        forThisHour.firstOrNull()?.let { NowPick(it, NowReason.HABIT) }
-            ?: recentLive.firstOrNull()?.let { NowPick(it, NowReason.RECENT) }
-            ?: favLive.firstOrNull()?.let { NowPick(it, NowReason.FAVORITE) }
-            ?: guided.firstOrNull()?.let { NowPick(it, NowReason.NONE) }
-            ?: index.live.firstOrNull { ok(it) && !ADULT_GROUP.containsMatchIn(it.group) }?.let { NowPick(it, NowReason.NONE) }
-    }
-    // Tonight: your other channels (favorites, recent, this hour's), then others with a guide.
-    val tonight = remember(pick, favLive, recentLive, forThisHour, guided, epg, quarter) {
-        val skip = pick?.channel?.id
-        val mine = (favLive + recentLive + forThisHour).distinctBy { it.id }.filter { it.id != skip }
-        val (on, off) = mine.partition { Epg.current(epg[it.epgKey], now) != null }
-        (on + off + guided.filter { g -> g.id != skip && mine.none { it.id == g.id } }).take(6)
-    }
-    LaunchedEffect(hero, continueWatching, pick == null) { vm.loadHeroArt((if (pick == null) hero else emptyList()) + continueWatching) }
+    LaunchedEffect(hero, continueWatching) { vm.loadHeroArt(hero + continueWatching) }
 
     val openItem: (List<Channel>, Channel) -> Unit = { row, ch ->
         when {
@@ -195,47 +166,9 @@ fun HomeContent(
         vm.sort = sort
     }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
-
     val tvHome = isTv()
-    val scope = rememberCoroutineScope()
-    val inheritedSpec = LocalBringIntoViewSpec.current
-    val scroller = remember(vm.homeState, tvHome) {
-        if (tvHome) HomeScroller(vm.homeState, scope, inheritedSpec) else null
-    }
-    CompositionLocalProvider(
-        LocalHomeScroller provides scroller,
-        LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
-    ) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-    // TV: the greeting with the live card (or the slideshow) fits on screen whole, with the next
-    // row's title peeking below.
-    val greeting = 62.dp
-    val topMax = (maxHeight - greeting - (if (tvHome) 72.dp else 24.dp)).coerceAtLeast(220.dp)
-    LazyColumn(
-        Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
-        state = vm.homeState,
-        contentPadding = PaddingValues(bottom = 40.dp),
-    ) {
-        if (pick != null || hero.isNotEmpty()) {
-            item(key = "now") {
-                Column(Modifier.fillMaxWidth().pinToTop().padding(top = 4.dp)) {
-                    HomeGreeting(vm, state, now)
-                    Spacer(Modifier.height(12.dp))
-                    if (pick != null) {
-                        NowRow(vm, pick, tonight, epg, now, heightLimit = topMax, cards = sidebar && !tvHome, onPlay = onPlay, onLongPress = sheet)
-                    } else {
-                        FeatureCarousel(
-                            items = hero,
-                            art = vm.heroArt,
-                            heightLimit = if (tvHome) topMax else 10_000.dp,
-                            onPrimary = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) },
-                            onDetails = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else vm.openDetails(ch) },
-                            pin = false,
-                        )
-                    }
-                }
-            }
-        }
+
+    MarqueePage(vm, Section.HOME, hero, onPlay) {
         if (ramadan != null) {
             item(key = "ramadan") { RamadanCard(ramadan.second) }
         }
@@ -247,16 +180,21 @@ fun HomeContent(
                 }
             }
         }
-        // Films and episodes you started.
+        // Films and episodes you started, then the playlist's most popular.
         if (continueWatching.isNotEmpty()) {
             item(key = "continue") {
                 Box(Modifier.padding(top = 16.dp)) {
                     ContinueRow(
                         continueWatching, vm.heroArt, state.progress, me,
-                        title = "Pick up where you left off",
+                        title = "Continue watching",
                         width = if (tvHome) 220.dp else 180.dp,
                     ) { ch -> onPlay(listOf(ch), ch) }
                 }
+            }
+        }
+        if (top.isNotEmpty()) {
+            item(key = "top") {
+                RankShelf("Top 10 on your playlist", top, watched, { ch -> openItem(top, ch) }, sheet)
             }
         }
         // What you watch.
@@ -270,14 +208,7 @@ fun HomeContent(
                 LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
             }
         }
-        // What's popular and new.
-        if (trending.isNotEmpty()) {
-            item(key = "trending") {
-                Shelf("Trending now") {
-                    items(trending, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(trending, ch) }, onLongClick = { sheet(ch) }) }
-                }
-            }
-        }
+        // What's new.
         if (newMovies.isNotEmpty()) {
             item(key = "newMovies") {
                 Shelf("New films", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
@@ -322,15 +253,13 @@ fun HomeContent(
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = pick == null && hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
-            trending.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
+        val empty = hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+            top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {
                 EmptyHome(if (index.live.isNotEmpty()) ({ seeAll(Section.LIVE, null, Sort.DEFAULT) }) else null)
             }
         }
-    }
-    }
     }
 }
 
