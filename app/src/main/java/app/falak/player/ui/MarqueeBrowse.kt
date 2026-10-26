@@ -473,10 +473,11 @@ private fun PhoneFeature(
                 }
             }
             if (size > 1) {
+                // In the corner, clear of a poster standing in the middle.
                 Row(
                     Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 10.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 10.dp)
                         .background(Color(0x66000000), RoundedCornerShape(50))
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
