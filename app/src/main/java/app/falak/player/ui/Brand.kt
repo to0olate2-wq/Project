@@ -32,12 +32,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -202,13 +206,30 @@ fun NavTabs(items: List<Section>, selected: Section, onSelect: (Section) -> Unit
     }
 }
 
-/** Main action: paper on ink. */
+/**
+ * Main action: paper on ink. The remote's focus shows as a soft ring just outside it (a paper
+ * outline would vanish against the paper button).
+ */
 @Composable
 fun PaperButton(text: String, icon: ImageVector? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(8.dp)
+    var focused by remember { mutableStateOf(false) }
+    val ring = Paper.copy(alpha = 0.55f)
     Row(
         modifier
-            .focusRing(shape)
+            .onFocusChanged { focused = it.isFocused }
+            .drawBehind {
+                if (focused) {
+                    val out = 4.dp.toPx()
+                    drawRoundRect(
+                        ring,
+                        topLeft = Offset(-out, -out),
+                        size = androidx.compose.ui.geometry.Size(size.width + 2 * out, size.height + 2 * out),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()),
+                    )
+                }
+            }
             .clip(shape)
             .background(Paper)
             .clickable(onClick = onClick)

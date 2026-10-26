@@ -126,13 +126,6 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val excluded = remember(locked, hidden) { if (hidden.isEmpty()) locked else locked + hidden }
     var pinForGroup by remember { mutableStateOf<String?>(null) }
     var groupMenu by remember { mutableStateOf<String?>(null) }
-    val selectGroup: (String?) -> Unit = { g ->
-        if (g != null && g in locked) {
-            pinForGroup = g
-        } else {
-            vm.group = g
-        }
-    }
 
     val hasFav = favIds.isNotEmpty() || lists.isNotEmpty()
     val hasRecent = recentIds.isNotEmpty()
@@ -155,6 +148,18 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val q = vm.query.trim()
     val isVod = section == Section.MOVIES || section == Section.SERIES
     val sort = if (isVod) vm.sort else Sort.DEFAULT
+    // Films and Series: no group is their front page; "All" is every title as a grid.
+    val selectGroup: (String?) -> Unit = { g ->
+        if (g != null && g in locked) {
+            pinForGroup = g
+        } else {
+            vm.group = g ?: if (isVod) ALL_FILTER else null
+        }
+    }
+    // The group the chips and the group list show as picked ("All" for every title).
+    val pickedGroup = group.takeUnless { it == ALL_FILTER }
+    // The Films or Series front page is open (its picture goes behind the bars too).
+    val landing = section.takeIf { isVod && group == null && q.isEmpty() }
     val base: List<Channel> = when (section) {
         Section.HOME -> index.all
         Section.FAVORITES -> remember(savedIds, index) { savedIds.mapNotNull { index.byId[it] } }
@@ -182,7 +187,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 q.isNotEmpty() -> SearchIndex.rank(base, q, allowed)
                 else -> {
                     val src = when (group) {
-                        null -> base
+                        null, ALL_FILTER -> base
                         FAV_FILTER -> favOfKind
                         else -> groupMap[group].orEmpty()
                     }
@@ -347,6 +352,14 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         HomeContent(vm, state, excluded, epg, now, onPlay, sidebar = sidebarLook)
                     } else if (shown == Section.HOME) {
                         SearchResults(vm, state, q, visible, excluded, epg, now, openFrom)
+                    } else if (noQuery && group == null && (shown == Section.MOVIES || shown == Section.SERIES)) {
+                        MarqueeBrowse(
+                            vm, state, shown, groupMap, excluded, locked,
+                            onOpen = openFrom,
+                            onPlay = onPlay,
+                            onGroup = selectGroup,
+                            onGroupOptions = { if (!vm.kidsActive) groupMenu = it },
+                        )
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             val wide = maxWidth >= 720.dp
@@ -425,19 +438,19 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         onGrid = { vm.setGridView(shown, it) },
                                     )
                                     if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
-                                        FilterChips(groupMap, visibleTotal, favOfKind.size, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                        FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                     }
                                     content(Modifier.weight(1f).fillMaxWidth())
                                 }
                             } else if (wide && groupsVisible) {
                                 Row(Modifier.fillMaxSize()) {
-                                    GroupColumn(groupMap, base.size, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
+                                    GroupColumn(groupMap, base.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
                                     Spacer(Modifier.width(20.dp))
                                     content(Modifier.weight(1f).fillMaxHeight())
                                 }
                             } else {
                                 Column(Modifier.fillMaxSize()) {
-                                    if (groupsVisible) GroupChips(groupMap, group, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    if (groupsVisible) GroupChips(groupMap, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                     content(Modifier.weight(1f).fillMaxWidth())
                                 }
                             }
@@ -450,8 +463,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     if (sidebarLook) {
-        SidebarFrame(vm, state, p, sections, section, excluded, onPlay) { m -> Body(m) }
+        SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay) { m -> Body(m) }
     } else {
+        // The Films and Series pages' picture goes behind the masthead and tabs too.
+        MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
             // Masthead
             Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -513,6 +528,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 SearchField(vm.query, section.label, VoiceSearch.language(state.settings.voiceLang), { vm.switchVoiceLanguage() }) { vm.query = it }
             }
             Body(Modifier.fillMaxSize())
+        }
         }
     }
 
