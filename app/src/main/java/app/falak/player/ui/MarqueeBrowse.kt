@@ -203,7 +203,8 @@ private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.c
                         // A poster only: a soft wash of it (decoded tiny, so it costs nothing to draw),
                         // and the whole poster sharp on the right.
                         val wash = remember(tall) {
-                            ImageRequest.Builder(context).data(tall).size(24, 36).memoryCacheKey("$tall#wash").build()
+                            // Decoded very small, so only its colours show (not smears of its lettering).
+                            ImageRequest.Builder(context).data(tall).size(6, 9).memoryCacheKey("$tall#tint").build()
                         }
                         AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
                         AsyncImage(
@@ -453,7 +454,8 @@ private fun PhoneFeature(
                         AsyncImage(model = wide, contentDescription = ch.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     } else if (ch.logo.isNotBlank()) {
                         val wash = remember(ch.logo) {
-                            ImageRequest.Builder(context).data(ch.logo).size(24, 36).memoryCacheKey(ch.logo + "#wash").build()
+                            // Decoded very small, so only its colours show (not smears of its lettering).
+                            ImageRequest.Builder(context).data(ch.logo).size(6, 9).memoryCacheKey(ch.logo + "#tint").build()
                         }
                         AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.55f, modifier = Modifier.fillMaxSize())
                         AsyncImage(
