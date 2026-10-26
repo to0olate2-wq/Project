@@ -51,7 +51,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -164,10 +166,18 @@ private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.c
         val h = maxHeight
         val fadePx = with(LocalDensity.current) { (h * 0.7f).toPx() }.coerceAtLeast(1f)
         Box(
-            Modifier.fillMaxSize().graphicsLayer {
-                // Read while drawing: scrolling only redraws the picture.
-                alpha = if (list.firstVisibleItemIndex > 0) 0f else (1f - list.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
-            },
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Read while drawing: scrolling only redraws the picture.
+                    alpha = if (list.firstVisibleItemIndex > 0) 0f else (1f - list.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                // The lower part fades out into the page (whatever is behind it), with no edge.
+                .drawWithContent {
+                    drawContent()
+                    drawRect(Brush.verticalGradient(0.45f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                },
         ) {
             Crossfade(backdrop to poster, animationSpec = tween(450), label = "marqueeArt") { (wide, tall) ->
                 Box(Modifier.fillMaxSize()) {
@@ -200,9 +210,9 @@ private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.c
                     }
                 }
             }
-            // Dark on the left for the words, at the top for the bars, and into the page at the bottom.
+            // Dark on the left for the words, and at the top for the bars.
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent, 0.52f to Color.Transparent, 1f to Ink)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent)))
         }
     }
 }
