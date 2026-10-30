@@ -56,6 +56,8 @@ import app.falak.player.ui.LibraryViewModel
 import app.falak.player.OfflineCenter
 import app.falak.player.data.OfflineItem
 import app.falak.player.data.OfflineState
+import app.falak.player.data.Season
+import app.falak.player.data.SeriesInfo
 import app.falak.player.ui.ALL_FILTER
 import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
@@ -766,7 +768,7 @@ class PhoneDownloadsScreens : ScreenshotBase() {
                 OfflineItem(
                     id = films[3].id, playlistId = "sample", name = films[3].name, kind = films[3].kind, logo = films[3].logo, url = films[3].url,
                     size = 1_288_490_188L, done = 128_849_018L, state = OfflineState.FAILED,
-                    note = "Not enough space: it needs 1.1 GB, 600 MB free", addedAt = 3,
+                    note = "Not enough space: it needs 1.1 GB", addedAt = 3,
                 ),
             ),
         )
@@ -776,6 +778,32 @@ class PhoneDownloadsScreens : ScreenshotBase() {
         shoot("phone-47-film-downloading")
         vm.screen = Screen.DOWNLOADS
         shoot("phone-48-downloads")
+        // A series: one episode saved, one on its way, one waiting, one not downloaded.
+        val show = vm.index.series.first()
+        val eps = (1..4).map { n ->
+            Channel(
+                id = "e90$n", name = "Episode $n", group = "Season 1", url = "http://example.invalid/series/u/p/90$n.mp4",
+                kind = Kind.SERIES, info = "S1 · E$n · 45 min",
+            )
+        }
+        fun episode(ch: Channel, state: OfflineState, size: Long, done: Long) = OfflineItem(
+            id = ch.id, playlistId = "sample", name = ch.name, kind = ch.kind, url = ch.url, info = ch.info,
+            size = size, done = done, state = state, addedAt = 4, show = show.name, showPoster = show.logo,
+        )
+        OfflineCenter.showForTest(
+            OfflineCenter.items.value + listOf(
+                saved(eps[0], 734_003_200L).copy(info = eps[0].info, show = show.name, showPoster = show.logo, addedAt = 5),
+                episode(eps[1], OfflineState.RUNNING, 712_000_000L, 213_600_000L),
+                episode(eps[2], OfflineState.QUEUED, 0L, 0L),
+            ),
+        )
+        vm.showSeriesForTest(
+            show,
+            SeriesInfo(plot = "A harbour town and the families who keep its lights burning.", cover = show.logo, seasons = listOf(Season(1, eps))),
+        )
+        shoot("phone-49-series-downloads")
+        vm.screen = Screen.DOWNLOADS
+        shoot("phone-50-downloads-episodes")
     }
 }
 

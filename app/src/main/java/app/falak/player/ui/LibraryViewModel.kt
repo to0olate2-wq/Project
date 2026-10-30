@@ -991,6 +991,16 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Screenshot tests: a series' page with its episodes, without asking a provider. */
+    @androidx.annotation.VisibleForTesting
+    fun showSeriesForTest(show: Channel, info: SeriesInfo) {
+        seriesJob?.cancel()
+        series = show
+        seriesInfo = info
+        seriesError = null
+        screen = Screen.SERIES
+    }
+
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
 
     /** Follow or stop following a series (new episodes show in What's new). */

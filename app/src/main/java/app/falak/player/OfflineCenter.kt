@@ -133,7 +133,8 @@ object OfflineCenter {
 
     // ---- what the pages ask for ----
 
-    fun download(ch: Channel, playlistId: String, userAgent: String) {
+    /** Adds [ch] to the downloads ([show]: the series an episode belongs to). */
+    fun download(ch: Channel, playlistId: String, userAgent: String, show: Channel? = null) {
         if (ch.url.isBlank() || ch.isSeriesFolder) return
         val existing = item(ch.id)
         if (existing != null) {
@@ -146,6 +147,7 @@ object OfflineCenter {
                 seriesId = ch.seriesId, group = ch.group, url = ch.url,
                 userAgent = ch.userAgent.ifBlank { userAgent }, referrer = ch.referrer,
                 state = OfflineState.QUEUED, addedAt = System.currentTimeMillis(),
+                show = show?.name.orEmpty(), showPoster = show?.logo.orEmpty(),
             )
         }
         schedule()
@@ -282,7 +284,7 @@ object OfflineCenter {
                 }
                 if (!response.isSuccessful) {
                     return@withContext when (response.code) {
-                        401, 403, 404, 410 -> Fetch.Failed("The provider refused it (${response.code})")
+                        401, 403, 404, 410 -> Fetch.Failed("Your provider refused it (${response.code})")
                         else -> Fetch.Retry("The provider answered ${response.code}")
                     }
                 }
@@ -309,7 +311,7 @@ object OfflineCenter {
                     val need = total - have
                     val free = freeSpace()
                     if (need > free - 200L * 1024 * 1024) {
-                        return@withContext Fetch.Failed("Not enough space: it needs ${sizeLabel(need)}, ${sizeLabel(free)} free")
+                        return@withContext Fetch.Failed("Not enough space: it needs ${sizeLabel(need)}")
                     }
                 }
                 update(start.id) { it.copy(size = total, done = have) }
@@ -397,7 +399,7 @@ object OfflineCenter {
         val waiting = _items.value.count { it.state == OfflineState.QUEUED }
         return NotificationCompat.Builder(app, CHANNEL)
             .setSmallIcon(R.drawable.ic_download)
-            .setContentTitle(item?.let { "Downloading ${it.name}" } ?: "Downloads")
+            .setContentTitle(item?.let { "Downloading ${it.title}" } ?: "Downloads")
             .setContentText(text)
             .setSubText(if (waiting > 0) "$waiting more waiting" else null)
             .setProgress(100, pct, item == null || item.size <= 0)
@@ -426,7 +428,7 @@ object OfflineCenter {
         val n = NotificationCompat.Builder(app, CHANNEL)
             .setSmallIcon(R.drawable.ic_download)
             .setContentTitle("Downloaded")
-            .setContentText(item.name + if (item.info.isNotBlank()) " · " + item.info else "")
+            .setContentText(item.title)
             .setAutoCancel(true)
             .setContentIntent(openDownloads())
             .build()

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -87,7 +88,7 @@ fun downloadStatus(item: OfflineItem): String = when (item.state) {
     }
     OfflineState.QUEUED -> item.note.ifBlank { OfflineCenter.waitingNote() }
     OfflineState.PAUSED -> "Paused" + if (item.size > 0) " · ${(item.fraction * 100).toInt()}%" else ""
-    OfflineState.FAILED -> "Stopped: " + item.note.ifBlank { "couldn't download" }
+    OfflineState.FAILED -> item.note.ifBlank { "Couldn't download" }
 }
 
 /** "Delete the downloaded copy?" before removing a finished download. */
@@ -100,9 +101,9 @@ private fun ConfirmDelete(item: OfflineItem?, onDismiss: () -> Unit) {
         text = {
             Text(
                 if (item.state == OfflineState.DONE) {
-                    "“${item.name}” (${OfflineCenter.sizeLabel(item.size)}) will be removed from this device. You can download it again any time."
+                    "“${item.title}” (${OfflineCenter.sizeLabel(item.size)}) will be removed from this device. You can download it again any time."
                 } else {
-                    "The download of “${item.name}” stops and what's saved so far is removed."
+                    "The download of “${item.title}” stops and what's saved so far is removed."
                 },
             )
         },
@@ -173,7 +174,7 @@ fun EpisodeDownload(vm: LibraryViewModel, ep: Channel) {
     var confirm by remember { mutableStateOf<OfflineItem?>(null) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         when (item?.state) {
-            null -> IconButton(onClick = { OfflineCenter.download(ep, p.id, agentFor(vm)) }) {
+            null -> IconButton(onClick = { OfflineCenter.download(ep, p.id, agentFor(vm), vm.series) }) {
                 Icon(downloadIcon(), contentDescription = "Download ${ep.name}", tint = Paper)
             }
             OfflineState.DONE -> {
@@ -225,7 +226,7 @@ fun SeasonDownload(vm: LibraryViewModel, episodes: List<Channel>) {
     }
     TagChip(label, done == all.size) {
         if (done < all.size) {
-            all.forEach { OfflineCenter.download(it, p.id, agentFor(vm)) }
+            all.forEach { OfflineCenter.download(it, p.id, agentFor(vm), vm.series) }
         } else {
             vm.screen = Screen.DOWNLOADS
         }
@@ -237,10 +238,11 @@ fun SeasonDownload(vm: LibraryViewModel, episodes: List<Channel>) {
 fun DownloadsShelf(vm: LibraryViewModel, items: List<OfflineItem>, onPlay: (List<Channel>, Channel) -> Unit) {
     val done = items.filter { it.state == OfflineState.DONE }.asReversed()
     if (done.isEmpty()) return
-    val list = done.map { it.asChannel() }
     Shelf("Downloads", onSeeAll = { vm.screen = Screen.DOWNLOADS }) {
-        items(list, key = { "dl:" + it.id }) { ch ->
-            PosterCard(ch, null, onClick = { onPlay(listOf(ch), ch) })
+        items(done, key = { "dl:" + it.id }) { item ->
+            val ch = item.asChannel()
+            // An episode shows its series' poster and name ("Harbour Lights · S1 · E3").
+            PosterCard(ch.copy(name = item.title, logo = item.showPoster.ifBlank { item.logo }), null, onClick = { onPlay(listOf(ch), ch) })
         }
     }
 }
@@ -256,7 +258,8 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
     val tv = isTv()
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
         PageHeader("Downloads", onBack = back) {
-            TagChip(if (wifiOnly) "✓ Wi-Fi only" else "Wi-Fi only", wifiOnly) {
+            // Inside the page margin (the header's end is set for icon buttons).
+            TagChip(if (wifiOnly) "✓ Wi-Fi only" else "Wi-Fi only", wifiOnly, modifier = Modifier.offset(x = (-12).dp)) {
                 vm.updateSettings { it.copy(downloadWifiOnly = !it.downloadWifiOnly) }
                 // The waiting downloads follow the new choice (settings change at once).
                 OfflineCenter.rescheduleForNetwork()
@@ -319,9 +322,11 @@ private fun DownloadRow(item: OfflineItem, tv: Boolean, onPlay: (Channel) -> Uni
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (item.info.isNotBlank()) {
-                Text(item.info, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // An episode: its series first, then "S1 · E3 · its own name".
+            val second = if (item.show.isNotBlank()) listOf(item.episodeMark, item.name).filter { it.isNotBlank() }.joinToString(" · ") else item.info
+            Text(item.show.ifBlank { item.name }, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (second.isNotBlank()) {
+                Text(second, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
                 downloadStatus(item),

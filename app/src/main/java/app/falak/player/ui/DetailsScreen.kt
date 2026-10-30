@@ -150,7 +150,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             }
 
             Spacer(Modifier.height(22.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ButtonRow(tv) {
                 PaperButton(
                     if (watched != null) "Resume ${formatClock(watched.pos)}" else "Play",
                     Icons.Filled.PlayArrow,
@@ -229,4 +229,18 @@ internal fun formatClock(ms: Long): String {
     val s = total % 60
     return if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
     else String.format(java.util.Locale.US, "%d:%02d", m, s)
+}
+
+/** The page's buttons: one line on TV (the remote scrolls along it); on phones they wrap, so none is off the edge. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ButtonRow(tv: Boolean, content: @Composable () -> Unit) {
+    if (tv) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+    } else {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) { content() }
+    }
 }

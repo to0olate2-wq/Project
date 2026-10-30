@@ -38,8 +38,17 @@ data class OfflineItem(
     /** Why it stopped (failed), shown under it. */
     val note: String = "",
     val addedAt: Long = 0,
+    /** Episodes: the series' name and poster (an episode's own name rarely says which series). */
+    val show: String = "",
+    val showPoster: String = "",
 ) {
     val fraction: Float get() = if (size > 0) (done.toFloat() / size).coerceIn(0f, 1f) else 0f
+
+    /** "S1 · E3" from an episode's "S1 · E3 · 45 min" (empty for films). */
+    val episodeMark: String get() = if (show.isBlank()) "" else info.split(" · ").take(2).joinToString(" · ")
+
+    /** What to call it on its own: a film's name, or "Harbour Lights · S1 · E3". */
+    val title: String get() = if (show.isBlank()) name else listOf(show, episodeMark).filter { it.isNotBlank() }.joinToString(" · ")
 
     /** The download in progress, before it is renamed to its finished name. */
     val partName: String get() = safeName(id) + ".part"
