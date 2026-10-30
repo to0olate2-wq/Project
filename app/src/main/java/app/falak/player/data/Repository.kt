@@ -266,6 +266,12 @@ class Repository(private val context: Context) {
 
     fun addPlaylist(p: Playlist) = update { it.copy(playlists = it.playlists + p, lastPlaylistId = p.id) }
 
+    /** Changes the order chosen for playlist [playlistId] (Arrange); an empty one is forgotten. */
+    fun arrange(playlistId: String, change: (Arrangement) -> Arrangement) = update { s ->
+        val next = change(s.arranged[playlistId] ?: Arrangement.NONE)
+        s.copy(arranged = if (next.isEmpty()) s.arranged - playlistId else s.arranged + (playlistId to next))
+    }
+
     fun removePlaylist(id: String) {
         update { s -> SyncMerge.withoutPlaylist(s, id) }
         deleteCaches(id)
@@ -544,11 +550,27 @@ class Repository(private val context: Context) {
         SourceType.M3U_FILE -> null
     }
 
+    /** The playlist item [id] of [p] really comes from: [p] itself, or for a combined playlist the one it was taken from. */
+    fun sourceOf(p: Playlist, id: String): Playlist =
+        if (p.isCombined) Combined.sourceFor(p, id, _state.value.playlists) ?: p else p
+
     suspend fun loadVodInfo(p: Playlist, streamId: String): VodInfo? = withContext(Dispatchers.IO) {
+        if (p.isCombined) {
+            val src = Combined.sourceFor(p, streamId, _state.value.playlists) ?: return@withContext null
+            return@withContext xtreamFor(src)?.vodInfo(Combined.untag(streamId))
+        }
         xtreamFor(p)?.vodInfo(streamId)
     }
 
     suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = withContext(Dispatchers.IO) {
+        if (p.isCombined) {
+            // Asked of the playlist it came from; its episodes carry the same mark.
+            val t = Combined.tagOf(seriesId)
+            val src = Combined.sourcesOf(p, _state.value.playlists).firstOrNull { it.second == t }
+                ?: throw IOException("The playlist this series came from isn't in this list any more")
+            val api = xtreamFor(src.first) ?: throw IOException("Episodes need an Xtream login for that playlist")
+            return@withContext Combined.markEpisodes(api.seriesInfo(Combined.untag(seriesId)), src.first, src.second)
+        }
         val api = xtreamFor(p) ?: throw IOException("Episodes need an Xtream login for this playlist")
         api.seriesInfo(seriesId)
     }
@@ -587,6 +609,11 @@ class Repository(private val context: Context) {
 
     /** The saved copy of a playlist, or null if there is none (or it can't be read). Fast. */
     suspend fun cachedChannels(p: Playlist): PlaylistCache? = withContext(Dispatchers.IO) {
+        if (p.isCombined) {
+            // Put together from the saved copies of the playlists it combines (none: load them).
+            val parts = Combined.sourcesOf(p, _state.value.playlists).mapNotNull { (src, t) -> cachedChannels(src)?.let { Triple(src, t, it) } }
+            return@withContext if (parts.isEmpty()) null else Combined.combine(parts)
+        }
         val bin = File(cacheDir, "${p.id}.bin")
         if (bin.exists()) {
             try {
@@ -617,6 +644,7 @@ class Repository(private val context: Context) {
         progress: ((LoadProgress) -> Unit)? = null,
     ): PlaylistCache =
         withContext(if (quietly) background else Dispatchers.IO) {
+        if (p.isCombined) return@withContext loadCombined(p, refresh, quietly, progress)
         if (!refresh) cachedChannels(p)?.let { return@withContext it }
         val reuse = Reuse.from(keep)
         val counted: ((Int) -> Unit)? = progress?.let { report -> { n: Int -> report(LoadProgress(n)) } }
@@ -644,6 +672,30 @@ class Repository(private val context: Context) {
             File(cacheDir, "${p.id}.bin").delete() // the cache is only a speed-up
         }
         result
+    }
+
+    /**
+     * A combined playlist: each playlist it puts together, loaded (or refreshed) as on its own,
+     * then combined. One that fails is left out (its saved copy is used when there is one).
+     */
+    private suspend fun loadCombined(p: Playlist, refresh: Boolean, quietly: Boolean, progress: ((LoadProgress) -> Unit)?): PlaylistCache {
+        val sources = Combined.sourcesOf(p, _state.value.playlists)
+        if (sources.isEmpty()) throw IOException("The playlists this one combines were removed. Edit it to choose others.")
+        val parts = ArrayList<Triple<Playlist, String, PlaylistCache>>()
+        var failure: Exception? = null
+        for ((src, t) in sources) {
+            val cache = try {
+                loadChannels(src, refresh, quietly, progress = progress)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+                cachedChannels(src)
+            } ?: continue
+            parts += Triple(src, t, cache)
+        }
+        if (parts.isEmpty()) throw (failure as? IOException) ?: IOException("None of the combined playlists could be loaded")
+        return Combined.combine(parts)
     }
 
     /**
@@ -732,7 +784,9 @@ class Repository(private val context: Context) {
                     if (!force && covers && now - cached.savedAt < 8 * 3_600_000L) return@withContext guideStatus(cached)
                 }
             }
-            val sources = (listOf(providerUrl) + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            // A combined playlist's providers each have a guide: one link a line.
+            val providerUrls = providerUrl.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            val sources = (providerUrls + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             if (sources.isEmpty()) return@withContext "No TV guide for this playlist yet"
             if (matcher.keys.isEmpty()) return@withContext ""
             val merged = HashMap<String, List<Program>>()
@@ -743,7 +797,7 @@ class Repository(private val context: Context) {
             var reference = ""
             val job = coroutineContext[kotlinx.coroutines.Job]
             for (url in sources) {
-                val isProvider = url == providerUrl.trim()
+                val isProvider = url in providerUrls
                 val label = if (isProvider) "Your provider's guide" else sourceLabel(url)
                 val host = url.substringAfter("://").substringBefore('/')
                 coroutineContext.ensureActive()
@@ -937,6 +991,13 @@ class Repository(private val context: Context) {
                 continue
             }
             var p = inc
+            if (inc.isCombined) {
+                // Its playlists get their ids here once all are in (below).
+                idMap[inc.id] = p.id
+                incoming += p
+                added++
+                continue
+            }
             if (inc.type == SourceType.M3U_FILE) {
                 val text = sp.m3u ?: continue // the file itself didn't come along
                 val f = File(importDir, "${inc.id}.m3u")
@@ -953,6 +1014,14 @@ class Repository(private val context: Context) {
         }
         fun <V> remap(m: Map<String, V>): Map<String, V> =
             m.mapNotNull { (k, v) -> idMap[k]?.let { it to v } }.toMap()
+        // Combined playlists: the playlists they put together, by their ids here.
+        for (i in incoming.indices) {
+            val p = incoming[i]
+            if (p.isCombined) {
+                val mapped = p.sources.mapNotNull { idMap[it] ?: it.takeIf { id -> before.any { b -> b.id == id } } }
+                incoming[i] = p.copy(sources = mapped.ifEmpty { p.sources })
+            }
+        }
         update { s ->
             val byId = s.playlists.associateBy { it.id }.toMutableMap()
             val order = s.playlists.map { it.id }.toMutableList()

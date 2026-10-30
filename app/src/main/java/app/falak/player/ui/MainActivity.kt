@@ -97,6 +97,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.falak.player.data.AppState
@@ -205,6 +206,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.REMOTE -> RemoteScreen(vm, state)
                                 Screen.PRAYER -> PrayerScreen(vm, state)
                                 Screen.DOWNLOADS -> DownloadsScreen(vm, state, onPlay = ::play)
+                                Screen.ARRANGE -> ArrangeScreen(vm, state)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -431,6 +433,7 @@ class MainActivity : ComponentActivity() {
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
+        Screen.ARRANGE -> 5
     }
 
     // ---- ambient screen ----
@@ -589,6 +592,9 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     var adding by remember { mutableStateOf(state.playlists.isEmpty()) }
     var toDelete by remember { mutableStateOf<Playlist?>(null) }
     var toRename by remember { mutableStateOf<Playlist?>(null) }
+    // Combining playlists: a new combined one (true), or one being edited.
+    var combiningNew by remember { mutableStateOf(false) }
+    var combineEdit by remember { mutableStateOf<Playlist?>(null) }
     val tv = isTv()
 
     BackHandler(enabled = vm.playlist != null) { vm.screen = Screen.LIBRARY }
@@ -659,17 +665,34 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        when (p.type) {
-                            SourceType.M3U_URL -> "M3U"
-                            SourceType.M3U_FILE -> "FILE"
-                            SourceType.XTREAM -> "XTREAM"
+                        if (p.isCombined) {
+                            "COMBINED"
+                        } else {
+                            when (p.type) {
+                                SourceType.M3U_URL -> "M3U"
+                                SourceType.M3U_FILE -> "FILE"
+                                SourceType.XTREAM -> "XTREAM"
+                            }
                         },
                         style = Tabular.copy(fontSize = 11.sp, letterSpacing = 1.2.sp),
                         color = Faint,
-                        modifier = Modifier.width(64.dp),
+                        maxLines = 1,
+                        modifier = Modifier.width(84.dp),
                     )
                     Column(Modifier.weight(1f)) {
                         Text(p.name, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper, maxLines = 1)
+                        if (p.isCombined) {
+                            // What it puts together.
+                            val names = p.sources.mapNotNull { id -> state.playlists.firstOrNull { it.id == id }?.name }
+                            Text(
+                                if (names.isEmpty()) "Its playlists were removed" else names.joinToString(" + "),
+                                fontFamily = Sans,
+                                fontSize = 12.sp,
+                                color = Muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         if (current) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                                 LiveDot(6.dp)
@@ -678,8 +701,8 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                             }
                         }
                     }
-                    IconButton(onClick = { toRename = p }) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "Rename", tint = Faint)
+                    IconButton(onClick = { if (p.isCombined) combineEdit = p else toRename = p }) {
+                        Icon(Icons.Outlined.Edit, contentDescription = if (p.isCombined) "Edit" else "Rename", tint = Faint)
                     }
                     IconButton(onClick = { toDelete = p }) {
                         Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = Faint)
@@ -701,7 +724,13 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
 
-    if (adding) AddPlaylistDialog(vm) { adding = false }
+    // Combining needs two playlists of your own (not combined ones).
+    val canCombine = state.playlists.count { !it.isCombined } >= 2
+    if (adding) {
+        AddPlaylistDialog(vm, onCombine = if (canCombine) ({ adding = false; combiningNew = true }) else null) { adding = false }
+    }
+    if (combiningNew) CombineDialog(vm, state, null) { combiningNew = false }
+    combineEdit?.let { p -> CombineDialog(vm, state, p) { combineEdit = null } }
 
     toRename?.let { p ->
         var name by remember(p.id) { mutableStateOf(p.name) }
@@ -720,15 +749,72 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         AlertDialog(
             onDismissRequest = { toDelete = null },
             title = { Text("Remove ${p.name}?") },
-            text = { Text("Its saved items and history will be deleted too.") },
+            text = {
+                // Combined playlists it is part of carry on without it.
+                val partOf = state.playlists.filter { it.isCombined && p.id in it.sources }.map { it.name }
+                Text(
+                    "Its saved items and history will be deleted too." +
+                        if (partOf.isEmpty()) "" else " ${partOf.joinToString(", ")} won't include it any more.",
+                )
+            },
             confirmButton = { TextButton(onClick = { vm.remove(p); toDelete = null }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Cancel") } },
         )
     }
 }
 
+/** A combined playlist: new ([existing] null) or one being changed. */
 @Composable
-private fun AddPlaylistDialog(vm: LibraryViewModel, onClose: () -> Unit) {
+private fun CombineDialog(vm: LibraryViewModel, state: AppState, existing: Playlist?, onClose: () -> Unit) {
+    val choices = state.playlists.filter { !it.isCombined }
+    var name by remember { mutableStateOf(existing?.name.orEmpty()) }
+    val picked = remember { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(existing?.sources.orEmpty()) } }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(if (existing == null) "Combine playlists" else "Edit ${existing.name}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "One list with the channels, films and series of the playlists you tick. Groups with the same name " +
+                        "show as one; the same channel, film or series twice shows once.",
+                    fontFamily = Sans,
+                    fontSize = 13.sp,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(4.dp))
+                Field(name, { name = it }, if (existing == null) "Name (optional)" else "Name")
+                Spacer(Modifier.height(4.dp))
+                choices.forEach { p ->
+                    CheckLine(p.name, p.id in picked) { on ->
+                        if (on) picked.add(p.id) else picked.remove(p.id)
+                        error = null
+                    }
+                }
+                if (picked.size >= 2) {
+                    Text(
+                        "In this order: " + picked.mapNotNull { id -> choices.firstOrNull { it.id == id }?.name }.joinToString(" → ") +
+                            ". When two have the same film, the first one's shows.",
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        color = Faint,
+                    )
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val err = if (existing == null) vm.addCombined(name, picked.toList()) else vm.editCombined(existing, name, picked.toList())
+                if (err == null) onClose() else error = err
+            }) { Text(if (existing == null) "Combine" else "Save") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun AddPlaylistDialog(vm: LibraryViewModel, onCombine: (() -> Unit)? = null, onClose: () -> Unit) {
     var type by remember { mutableStateOf(SourceType.M3U_URL) }
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -764,6 +850,10 @@ private fun AddPlaylistDialog(vm: LibraryViewModel, onClose: () -> Unit) {
                             label = { Text(label) },
                         )
                     }
+                }
+                // Two or more playlists already: put them together in one list.
+                if (onCombine != null) {
+                    FilterChip(selected = false, onClick = onCombine, label = { Text("Combine my playlists…") })
                 }
                 Field(name, { name = it }, "Name (optional)")
                 when (type) {

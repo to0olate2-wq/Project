@@ -171,6 +171,24 @@ object OfflineCenter {
         deleteFiles(gone)
     }
 
+    /** Removes these downloads, files and all (stopping any that are downloading). */
+    fun deleteMany(ids: Collection<String>) {
+        val set = ids.toHashSet()
+        val gone = _items.value.filter { it.id in set }
+        if (gone.isEmpty()) return
+        change(persist = true) { list -> list.filterNot { it.id in set } }
+        for (item in gone) {
+            interrupt(item.id)
+            deleteFiles(item)
+        }
+    }
+
+    /** Removes every download, and anything left over in the downloads folder. */
+    fun deleteAll() {
+        deleteMany(_items.value.map { it.id })
+        runCatching { dir().listFiles()?.forEach { if (it.isFile) it.delete() } }
+    }
+
     /** Wi-Fi only was changed: the waiting downloads follow the new choice. */
     fun rescheduleForNetwork() {
         if (_items.value.any { it.state == OfflineState.QUEUED || it.state == OfflineState.RUNNING }) schedule(replace = true)

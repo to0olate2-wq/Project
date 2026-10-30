@@ -441,7 +441,7 @@ class SyncServer(
                     put("id", p.id)
                     put("name", p.name)
                     put("last", p.id == last)
-                    put("type", when (p.type) { SourceType.M3U_URL -> "M3U link"; SourceType.M3U_FILE -> "M3U file"; SourceType.XTREAM -> "Xtream" })
+                    put("type", if (p.isCombined) "Combined" else when (p.type) { SourceType.M3U_URL -> "M3U link"; SourceType.M3U_FILE -> "M3U file"; SourceType.XTREAM -> "Xtream" })
                     put("server", if (p.type == SourceType.M3U_FILE) "" else maskHost(p.url))
                     put("user", p.username)
                 },

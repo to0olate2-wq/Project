@@ -22,7 +22,9 @@ object Catchup {
     fun canReplay(ch: Channel, prog: Program, now: Long): Boolean =
         ch.hasCatchup && prog.start < now - 60_000 && prog.start > now - ch.catchupDays * 86_400_000L
 
-    fun url(ch: Channel, prog: Program, serverTz: String, now: Long): String? {
+    fun url(ch: Channel, prog: Program, serverTzs: String, now: Long): String? {
+        // A combined playlist: the zone of the provider this channel came from.
+        val serverTz = Combined.zoneFor(serverTzs, ch.id)
         val start = prog.start
         val stop = minOf(prog.stop, now)
         val durSec = ((prog.stop - prog.start) / 1000).coerceAtLeast(60)

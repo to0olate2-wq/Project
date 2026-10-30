@@ -71,7 +71,7 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
         PageHeader("Show & hide groups", onBack = back, subtitle = p.name)
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChipFlow {
             kinds.forEach { k ->
                 TagChip(
                     when (k) {
@@ -82,6 +82,8 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
                     k == kind,
                 ) { kind = k }
             }
+            // Your own order for these groups.
+            TagChip("↕ Arrange order", false) { vm.openArrange(kind, null) }
         }
         Spacer(Modifier.height(12.dp))
         Row(

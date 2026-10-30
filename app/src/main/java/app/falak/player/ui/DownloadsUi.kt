@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -241,6 +240,26 @@ fun SeasonDownload(vm: LibraryViewModel, episodes: List<Channel>) {
     }
 }
 
+/** A season's episodes that are downloaded or on their way: delete them all at once. */
+@Composable
+fun SeasonDelete(episodes: List<Channel>) {
+    val ids = remember(episodes) { episodes.mapTo(HashSet()) { it.id } }
+    val mine = rememberDownloads().filter { it.id in ids }
+    if (mine.isEmpty()) return
+    var confirm by remember { mutableStateOf(false) }
+    TagChip("Delete season downloads (${mine.size})", false) { confirm = true }
+    if (confirm) {
+        val size = mine.sumOf { if (it.state == OfflineState.DONE) it.size else it.done }
+        ConfirmDeleteMany(
+            title = "Delete this season's downloads?",
+            text = "${mine.size} episode" + (if (mine.size == 1) "" else "s") + " (${OfflineCenter.sizeLabel(size)}) will be removed from this device. " +
+                "Any still downloading stop.",
+            confirm = "Delete",
+            onConfirm = { OfflineCenter.deleteMany(mine.map { it.id }) },
+        ) { confirm = false }
+    }
+}
+
 /** Home: what's saved on this device, to watch without internet. */
 @Composable
 fun DownloadsShelf(vm: LibraryViewModel, items: List<OfflineItem>, onPlay: (List<Channel>, Channel) -> Unit) {
@@ -264,14 +283,21 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
     var confirm by remember { mutableStateOf<OfflineItem?>(null) }
     val wifiOnly = state.settings.downloadWifiOnly
     val tv = isTv()
+    var confirmAll by remember { mutableStateOf(false) }
+    val deleteWatched = state.settings.downloadDeleteWatched
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader("Downloads", onBack = back) {
-            // Inside the page margin (the header's end is set for icon buttons).
-            TagChip(if (wifiOnly) "✓ Wi-Fi only" else "Wi-Fi only", wifiOnly, modifier = Modifier.offset(x = (-12).dp)) {
+        PageHeader("Downloads", onBack = back)
+        // How downloads behave on this device, and clearing them all.
+        ChipFlow(Modifier.padding(bottom = 10.dp)) {
+            TagChip(if (wifiOnly) "✓ Wi-Fi only" else "Wi-Fi only", wifiOnly) {
                 vm.updateSettings { it.copy(downloadWifiOnly = !it.downloadWifiOnly) }
                 // The waiting downloads follow the new choice (settings change at once).
                 OfflineCenter.rescheduleForNetwork()
             }
+            TagChip(if (deleteWatched) "✓ Delete when watched" else "Delete when watched", deleteWatched) {
+                vm.updateSettings { it.copy(downloadDeleteWatched = !it.downloadDeleteWatched) }
+            }
+            if (items.isNotEmpty()) TagChip("Delete all", false) { confirmAll = true }
         }
         val done = items.count { it.state == OfflineState.DONE }
         Text(
@@ -279,6 +305,7 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
                 if (done > 0) "$done downloaded · ${OfflineCenter.sizeLabel(OfflineCenter.usedSpace())}" else null,
                 "${OfflineCenter.sizeLabel(OfflineCenter.freeSpace())} free",
                 if (wifiOnly) "Downloads use Wi-Fi only" else "Downloads use Wi-Fi or mobile data",
+                if (deleteWatched) "Each one goes once watched to the end" else null,
             ).joinToString("  ·  "),
             fontFamily = Sans,
             fontSize = 13.sp,
@@ -308,6 +335,33 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
         }
     }
     ConfirmDelete(confirm) { confirm = null }
+    if (confirmAll) {
+        val size = items.sumOf { if (it.state == OfflineState.DONE) it.size else it.done }
+        ConfirmDeleteMany(
+            title = "Delete all downloads?",
+            text = "All ${items.size} (${OfflineCenter.sizeLabel(size)}) will be removed from this device, and downloads on their way stop. " +
+                "You can download them again any time.",
+            confirm = "Delete all",
+            onConfirm = { OfflineCenter.deleteAll() },
+        ) { confirmAll = false }
+    }
+}
+
+/** "Delete these?" for several downloads at once. */
+@Composable
+fun ConfirmDeleteMany(title: String, text: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = {
+                onConfirm()
+                onDismiss()
+            }) { Text(confirm) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Keep") } },
+    )
 }
 
 @Composable

@@ -158,7 +158,10 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     }
                     // Save the whole season to watch without internet.
                     item(key = "download") {
-                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { SeasonDownload(vm, season.episodes) }
+                        ChipFlow(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            SeasonDownload(vm, season.episodes)
+                            SeasonDelete(season.episodes)
+                        }
                     }
                     // The player gets every episode of every season, so the next one follows across seasons.
                     val all = info.seasons.flatMap { it.episodes }

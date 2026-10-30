@@ -114,6 +114,10 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_INDEX = "index"
         private const val SEEK_STEP_MS = 10_000L
+        private const val LEVEL_BRIGHTNESS = 1
+        private const val LEVEL_VOLUME = 2
+        private const val ASPECT_FIT = 0
+        private const val ASPECT_ZOOM = 2
         /** The Up next card comes up this long before an episode ends. */
         private const val UP_NEXT_MS = 20_000L
         /** …and the next episode starts after this many seconds. */
@@ -201,6 +205,16 @@ class PlayerActivity : ComponentActivity() {
     private var inPip = false
     private var currentUrl = ""
     private var aspect = 0
+
+    /** Phones: a finger sliding up or down sets [LEVEL_BRIGHTNESS] or [LEVEL_VOLUME] (0: neither). */
+    private var levelSwipe = 0
+    private var levelValue = 0f
+    private var pinching = false
+    private var pinchScale = 1f
+    private lateinit var levelView: LinearLayout
+    private lateinit var levelLabel: TextView
+    private lateinit var levelBar: android.widget.ProgressBar
+    private val hideLevel = Runnable { levelView.visibility = View.GONE }
 
     private val resizeModes = intArrayOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
@@ -530,6 +544,34 @@ class PlayerActivity : ComponentActivity() {
             seekView,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
+        // Phones: the brightness or volume while a finger slides up or down, and the picture's shape after a pinch.
+        levelLabel = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            gravity = Gravity.CENTER
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_semibold)
+        }
+        levelBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFF4F2E.toInt())
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x40FFFFFF)
+        }
+        levelView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(0xD9111010.toInt())
+            }
+            setPadding(dp(24), dp(12), dp(24), dp(14))
+            visibility = View.GONE
+            addView(levelLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(levelBar, LinearLayout.LayoutParams(dp(170), dp(6)).apply { topMargin = dp(10) })
+        }
+        root.addView(
+            levelView,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
+        )
         createDualViews()
 
         // Touch: double-tap the left or right side to jump 10 s (films and episodes); single tap shows the controls.
@@ -538,14 +580,28 @@ class PlayerActivity : ComponentActivity() {
             object : android.view.GestureDetector.SimpleOnGestureListener() {
                 override fun onDown(e: android.view.MotionEvent): Boolean {
                     swipeStart = -1L
+                    levelSwipe = 0
                     return true
                 }
 
                 // Sliding a finger sideways across the picture scrubs precisely: one screen width ≈ 3 minutes.
+                // Phones: up or down on the left half sets the brightness, on the right half the volume.
                 override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, distanceX: Float, distanceY: Float): Boolean {
                     val start = e1 ?: return false
+                    if (pinching) return true
                     val dx = e2.x - start.x
-                    if (!canSeek() || kotlin.math.abs(dx) < kotlin.math.abs(e2.y - start.y) || kotlin.math.abs(dx) < dp(24)) return false
+                    val dy = e2.y - start.y
+                    if (levelSwipe == 0 && swipeStart < 0 && canLevelSwipe(start) &&
+                        kotlin.math.abs(dy) > kotlin.math.abs(dx) && kotlin.math.abs(dy) > dp(24)
+                    ) {
+                        beginLevel(if (start.x < playerView.width / 2f) LEVEL_BRIGHTNESS else LEVEL_VOLUME)
+                    }
+                    if (levelSwipe != 0) {
+                        // Up raises it; most of the screen's height goes from nothing to full.
+                        changeLevel(distanceY / (playerView.height.coerceAtLeast(1) * 0.8f))
+                        return true
+                    }
+                    if (!canSeek() || kotlin.math.abs(dx) < kotlin.math.abs(dy) || kotlin.math.abs(dx) < dp(24)) return false
                     val p = player ?: return false
                     if (swipeStart < 0) swipeStart = pendingSeek ?: p.currentPosition
                     val offset = (dx / playerView.width.coerceAtLeast(1) * 180_000f).toLong()
@@ -554,18 +610,20 @@ class PlayerActivity : ComponentActivity() {
                 }
 
                 override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
+                    if (pinching) return true
                     if (canSeek()) return false // wait: it may be the first tap of a double tap
                     toggleControls()
                     return true
                 }
 
                 override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    if (pinching) return true
                     if (canSeek()) toggleControls()
                     return true
                 }
 
                 override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                    if (!canSeek()) return false
+                    if (pinching || !canSeek()) return false
                     val w = playerView.width.coerceAtLeast(1)
                     when {
                         e.x < w / 3f -> seekBy(-SEEK_STEP_MS)
@@ -576,7 +634,36 @@ class PlayerActivity : ComponentActivity() {
                 }
             },
         )
+        // Phones: pinch out to fill the screen (the edges are cut), pinch in to see the whole picture.
+        val pinch = android.view.ScaleGestureDetector(
+            this,
+            object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScaleBegin(detector: android.view.ScaleGestureDetector): Boolean {
+                    if (isTvDevice || inPip || dual != null || browserOpen) return false
+                    pinching = true
+                    pinchScale = 1f
+                    return true
+                }
+
+                override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                    pinchScale *= detector.scaleFactor
+                    return true
+                }
+
+                override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
+                    val want = when {
+                        pinchScale > 1.12f -> ASPECT_ZOOM
+                        pinchScale < 0.9f -> ASPECT_FIT
+                        else -> -1
+                    }
+                    if (want >= 0) setAspect(want, byPinch = true)
+                }
+            },
+        )
         playerView.setOnTouchListener { _, e ->
+            // A new touch: whatever the last one was is over.
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) pinching = false
+            pinch.onTouchEvent(e)
             gestures.onTouchEvent(e)
             if ((e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) && swipeStart >= 0) {
                 swipeStart = -1L
@@ -768,6 +855,8 @@ class PlayerActivity : ComponentActivity() {
             listening = false
             app.falak.player.ListenService.handBack(currentUrl)
         }
+        // The player closed: the saved copies watched to the end go.
+        deleteWatchedCopies()
         // Nothing streams from here any more: downloads go on (Listen mode counts on its own).
         app.falak.player.OfflineCenter.streaming(this, false)
         handler.removeCallbacksAndMessages(null)
@@ -1011,6 +1100,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val ch = queue.getOrNull(index) ?: return
+        // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
+        deleteWatchedCopies(except = ch.id)
         serviceStarting(ch)
         val wanted = desiredEngine(ch)
         // Auto captions chosen for this channel: the player is built hearing its sound.
@@ -1841,6 +1932,20 @@ class PlayerActivity : ComponentActivity() {
     // ---- progress & picture size ----
 
     /** Saves how far a movie/episode got; finished or barely started items are cleared. */
+    /** Downloaded films and episodes watched to the end here, by id (with their names), to delete on leaving them. */
+    private val watchedCopies = LinkedHashMap<String, String>()
+
+    /** Deletes the saved copies watched to the end, except the one still playing. */
+    private fun deleteWatchedCopies(except: String? = null) {
+        val gone = watchedCopies.keys.filter { it != except }
+        if (gone.isEmpty()) return
+        val names = gone.mapNotNull { watchedCopies[it] }
+        gone.forEach { watchedCopies.remove(it) }
+        app.falak.player.OfflineCenter.deleteMany(gone)
+        val text = if (names.size == 1) "Watched: “${names[0]}” deleted from Downloads" else "Watched: ${names.size} deleted from Downloads"
+        android.widget.Toast.makeText(applicationContext, text, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     private fun saveProgress() {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
@@ -1855,6 +1960,12 @@ class PlayerActivity : ComponentActivity() {
         val key = progressKey(repo.state.value.mine(pl.id), ch.id)
         val kept = if (finished || pos < 30_000) 0 else pos
         repo.saveProgress(key, kept, dur, meta, show?.seriesId.orEmpty())
+        // Its saved copy goes once the player leaves it (Downloads → Delete when watched).
+        if (finished && repo.state.value.settings.downloadDeleteWatched && app.falak.player.OfflineCenter.fileFor(ch.id) != null) {
+            watchedCopies += ch.id to ch.name
+        } else {
+            watchedCopies.remove(ch.id)
+        }
         // Android TV home screen row: never for hidden, locked or adult groups, nor in kids mode.
         val s = repo.state.value.settings
         val group = if (show != null && ch.kind == Kind.SERIES) show.group else ch.group
@@ -1917,13 +2028,67 @@ class PlayerActivity : ComponentActivity() {
         applyRotation()
     }
 
-    private fun cycleAspect() {
-        aspect = (aspect + 1) % resizeModes.size
+    private fun cycleAspect() = setAspect((aspect + 1) % resizeModes.size, byPinch = false)
+
+    /** The picture's shape: Fit, Fill (stretched) or Zoom (edges cut). Kept for next time. */
+    private fun setAspect(to: Int, byPinch: Boolean) {
+        val changed = to != aspect
+        aspect = to
         playerView.resizeMode = resizeModes[aspect]
         vlc?.setScale(aspect)
         setPillLabel(aspectButton, aspectNames[aspect])
-        Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
-        repo.updateSettings { it.copy(aspect = aspect) }
+        if (byPinch) {
+            showLevel(if (aspect == ASPECT_ZOOM) "Zoom · fills the screen" else "Fit · the whole picture", null)
+        } else {
+            Toast.makeText(this, "Picture: ${aspectNames[aspect]}", Toast.LENGTH_SHORT).show()
+        }
+        if (changed || !byPinch) repo.updateSettings { it.copy(aspect = aspect) }
+    }
+
+    // ---- phones: brightness and volume by sliding a finger ----
+
+    private fun canLevelSwipe(e: android.view.MotionEvent): Boolean =
+        !isTvDevice && !inPip && dual == null && !browserOpen &&
+            // Not where Android's own swipes start (the notification shade, the home bar).
+            e.y > dp(48) && e.y < playerView.height - dp(48)
+
+    private fun beginLevel(kind: Int) {
+        levelSwipe = kind
+        levelValue = if (kind == LEVEL_BRIGHTNESS) {
+            window.attributes.screenBrightness.takeIf { it >= 0f } ?: runCatching {
+                android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f
+            }.getOrDefault(0.5f)
+        } else {
+            val am = getSystemService(android.media.AudioManager::class.java)
+            if (am == null) 0f else am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() /
+                am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        }.coerceIn(0f, 1f)
+    }
+
+    private fun changeLevel(delta: Float) {
+        levelValue = (levelValue + delta).coerceIn(0f, 1f)
+        if (levelSwipe == LEVEL_BRIGHTNESS) {
+            // This screen only: the phone's own brightness comes back when the player closes.
+            window.attributes = window.attributes.apply { screenBrightness = levelValue.coerceAtLeast(0.01f) }
+            showLevel("Brightness", levelValue)
+        } else {
+            val am = getSystemService(android.media.AudioManager::class.java) ?: return
+            val stream = android.media.AudioManager.STREAM_MUSIC
+            val v = kotlin.math.round(levelValue * am.getStreamMaxVolume(stream)).toInt()
+            if (v != am.getStreamVolume(stream)) runCatching { am.setStreamVolume(stream, v, 0) }
+            showLevel(if (v == 0) "Muted" else "Volume", levelValue)
+        }
+    }
+
+    /** The level in the middle of the picture for a moment ([fraction] null: just the words). */
+    private fun showLevel(text: String, fraction: Float?) {
+        levelLabel.text = if (fraction == null) text else "$text  ${(fraction * 100).toInt()}%"
+        levelBar.visibility = if (fraction == null) View.GONE else View.VISIBLE
+        if (fraction != null) levelBar.progress = (fraction * 100).toInt()
+        seekView.visibility = View.GONE
+        levelView.visibility = View.VISIBLE
+        handler.removeCallbacks(hideLevel)
+        handler.postDelayed(hideLevel, 1_000)
     }
 
     // ---- overlays ----
@@ -3856,7 +4021,8 @@ class PlayerActivity : ComponentActivity() {
      * connection in use, the subscription ended or suspended) says so instead of a bare error.
      */
     private fun explainRefusal() {
-        val pl = repo.currentPlaylist ?: return
+        // A combined playlist: the account of the playlist this channel came from.
+        val pl = repo.currentPlaylist?.let { cur -> queue.getOrNull(index)?.let { repo.sourceOf(cur, it.id) } ?: cur } ?: return
         val api = repo.xtreamFor(pl) ?: return
         val url = currentUrl
         failedUrl = url

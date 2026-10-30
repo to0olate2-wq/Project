@@ -81,9 +81,10 @@ object SyncMerge {
     const val KIDS_GROUPS = "kidsg"
     const val FOLLOWED = "followed"
     const val INTROS = "intros"
+    const val ARRANGED = "arranged"
 
     /** The parts of a playlist. */
-    private val PARTS = setOf(PL, FAV, LISTS, HIDDEN, GUIDE, RECENTS, LOCKED, KIDS_GROUPS, FOLLOWED, INTROS)
+    private val PARTS = setOf(PL, FAV, LISTS, HIDDEN, GUIDE, RECENTS, LOCKED, KIDS_GROUPS, FOLLOWED, INTROS, ARRANGED)
 
     /** Parts kept per profile: "<playlist id>" for the main one, "<playlist id>@<profile>" for the others. */
     private val PER_PROFILE = setOf(FAV, LISTS, RECENTS)
@@ -100,7 +101,7 @@ object SyncMerge {
     /** Settings that belong to one device (its screen, player, network, lock) or sync as parts of a playlist. */
     private val DEVICE_SETTINGS = setOf(
         "aspect", "bigBuffer", "softwareAudio", "preferHls", "frameRate", "theme", "layout", "player",
-        "downloadWifiOnly", "kidsMode", "syncOn", "askedNotify",
+        "downloadWifiOnly", "downloadDeleteWatched", "kidsMode", "syncOn", "askedNotify",
         "hiddenGroups", "guideOverrides", "lockedGroups", "kidsGroups",
     )
 
@@ -173,6 +174,7 @@ object SyncMerge {
                 if (old.settings.lockedGroups[id] != new.settings.lockedGroups[id]) bump("$LOCKED|$id")
                 if (old.settings.kidsGroups[id] != new.settings.kidsGroups[id]) bump("$KIDS_GROUPS|$id")
                 if (old.followed[id] != new.followed[id]) bump("$FOLLOWED|$id")
+                if (old.arranged[id] != new.arranged[id]) bump("$ARRANGED|$id")
                 if (old.intros !== new.intros && introsOf(old, id) != introsOf(new, id)) bump("$INTROS|$id")
             }
             fun perProfile(kind: String, a: Map<String, Any>, b: Map<String, Any>) {
@@ -218,6 +220,7 @@ object SyncMerge {
             if (!s.settings.kidsGroups[id].isNullOrEmpty()) stamps["$KIDS_GROUPS|$id"] = now
             if (!s.followed[id].isNullOrEmpty()) stamps["$FOLLOWED|$id"] = now
             if (introsOf(s, id).isNotEmpty()) stamps["$INTROS|$id"] = now
+            if (s.arranged[id]?.isEmpty() == false) stamps["$ARRANGED|$id"] = now
         }
         val ids = s.playlists.mapTo(HashSet()) { it.id }
         for ((kind, m) in listOf(FAV to s.favorites, LISTS to s.favLists, RECENTS to s.recents)) {
@@ -243,6 +246,7 @@ object SyncMerge {
             parts["$KIDS_GROUPS|$key"] = SyncPart(at("$KIDS_GROUPS|$id"), ids = s.settings.kidsGroups[id].orEmpty())
             parts["$FOLLOWED|$key"] = SyncPart(at("$FOLLOWED|$id"), json = json.encodeToJsonElement(followedSerializer, s.followed[id].orEmpty()))
             parts["$INTROS|$key"] = SyncPart(at("$INTROS|$id"), json = json.encodeToJsonElement(introsSerializer, introsOf(s, id)))
+            parts["$ARRANGED|$key"] = SyncPart(at("$ARRANGED|$id"), json = json.encodeToJsonElement(Arrangement.serializer(), s.arranged[id] ?: Arrangement.NONE))
             // The main profile's always go (empty too); other profiles' where they have some.
             parts["$FAV|$key"] = SyncPart(at("$FAV|$id"), ids = s.favorites[id].orEmpty())
             parts["$LISTS|$key"] = SyncPart(at("$LISTS|$id"), lists = s.favLists[id].orEmpty())
@@ -265,7 +269,12 @@ object SyncMerge {
             device = device,
             playlists = s.playlists.map { p ->
                 // A playlist loaded from a file keeps its contents on this device: only its name and settings go.
-                val shared = p.copy(id = sid(p.id), url = if (p.type == SourceType.M3U_FILE) "" else p.url)
+                // A combined one names its playlists by the ids the other devices know.
+                val shared = p.copy(
+                    id = sid(p.id),
+                    url = if (p.type == SourceType.M3U_FILE) "" else p.url,
+                    sources = p.sources.map { sid(it) },
+                )
                 SyncedPlaylist(s.sync.stamps["$PL|${p.id}"] ?: 0L, shared)
             },
             removed = s.sync.removed,
@@ -305,6 +314,8 @@ object SyncMerge {
         // Playlists that arrive with this merge take the other device's favorites and the rest as they are.
         val fresh = HashSet<String>()
         val sidOf = { id: String -> alias[id] ?: id }
+        // Combined playlists that came in: their playlists, by the other device's ids (mapped below).
+        val combinedFrom = HashMap<String, List<String>>()
 
         for (rp in r.playlists) {
             val rid = rp.playlist.id
@@ -326,12 +337,15 @@ object SyncMerge {
                 if (rp.at > (stamps["$PL|${local.id}"] ?: 0L)) {
                     playlists[i] = rp.playlist.copy(id = local.id, url = if (local.type == SourceType.M3U_FILE) local.url else rp.playlist.url)
                     stamps["$PL|${local.id}"] = rp.at
+                    if (rp.playlist.isCombined) combinedFrom[local.id] = rp.playlist.sources
                 }
             } else {
-                // New here. Playlists from a file come over with "Your devices" (they need the file).
-                if (rp.playlist.type == SourceType.M3U_FILE) continue
+                // New here. Playlists from a file come over with "Your devices" (they need the file);
+                // combined ones (no file) come over as they are.
+                if (rp.playlist.type == SourceType.M3U_FILE && !rp.playlist.isCombined) continue
                 if ((removed[rid] ?: -1L) >= rp.at) continue
                 playlists += rp.playlist
+                if (rp.playlist.isCombined) combinedFrom[rid] = rp.playlist.sources
                 stamps["$PL|$rid"] = rp.at
                 toLocal[rid] = rid
                 fresh += rid
@@ -351,6 +365,15 @@ object SyncMerge {
         }
         val localOfSid = playlists.filter { it.id !in gone }.associate { sidOf(it.id) to it.id }
         fun localId(sid: String): String? = (toLocal[sid] ?: localOfSid[sid])?.takeIf { it !in gone }
+        if (combinedFrom.isNotEmpty()) {
+            out = out.copy(
+                playlists = out.playlists.map { p ->
+                    val theirs = combinedFrom[p.id] ?: return@map p
+                    // (None of them here: it keeps their ids, and says its playlists are missing.)
+                    p.copy(sources = theirs.mapNotNull { localId(it) }.ifEmpty { theirs })
+                },
+            )
+        }
 
         // A whole-app part: the newer side wins; a device that never had its own takes the other's.
         fun takes(key: String, part: SyncPart, emptyHere: Boolean): Boolean {
@@ -381,6 +404,7 @@ object SyncMerge {
         val kidsGroups = out.settings.kidsGroups.toMutableMap()
         val followed = out.followed.toMutableMap()
         val intros = out.intros.toMutableMap()
+        val arranged = out.arranged.toMutableMap()
         for ((key, part) in r.parts) {
             val kind = key.substringBefore('|')
             if (kind !in PARTS) continue
@@ -400,10 +424,16 @@ object SyncMerge {
                 KIDS_GROUPS -> kidsGroups[local].isNullOrEmpty()
                 FOLLOWED -> followed[local].isNullOrEmpty()
                 INTROS -> intros.keys.none { it.startsWith("$local|") }
+                ARRANGED -> arranged[local]?.isEmpty() ?: true
                 else -> false
             }
             val mine = stamps["$kind|$local"] ?: 0L
-            val take = (base in fresh && profile.isEmpty()) || part.at > mine || (mine == 0L && emptyHere && part.hasData())
+            val hasData = if (kind == ARRANGED) {
+                part.json?.let { runCatching { json.decodeFromJsonElement(Arrangement.serializer(), it) }.getOrNull() }?.isEmpty() == false
+            } else {
+                part.hasData()
+            }
+            val take = (base in fresh && profile.isEmpty()) || part.at > mine || (mine == 0L && emptyHere && hasData)
             if (!take) continue
             when (kind) {
                 FAV -> favorites[local] = part.ids ?: continue
@@ -418,6 +448,10 @@ object SyncMerge {
                     val theirs = part.json?.let { runCatching { json.decodeFromJsonElement(introsSerializer, it) }.getOrNull() } ?: continue
                     intros.keys.removeAll { it.startsWith("$local|") }
                     for ((show, intro) in theirs) intros["$local|$show"] = intro
+                }
+                ARRANGED -> {
+                    val theirs = part.json?.let { runCatching { json.decodeFromJsonElement(Arrangement.serializer(), it) }.getOrNull() } ?: continue
+                    if (theirs.isEmpty()) arranged.remove(local) else arranged[local] = theirs
                 }
                 else -> continue
             }
@@ -505,6 +539,7 @@ object SyncMerge {
             recents = recents,
             followed = followed,
             intros = if (intros == out.intros) out.intros else intros,
+            arranged = if (arranged == out.arranged) out.arranged else arranged,
             profiles = profiles,
             reminders = reminders,
             alertWords = alertWords,
@@ -568,6 +603,7 @@ object SyncMerge {
         followed = s.followed - id,
         intros = s.intros.filterKeys { !it.startsWith("$id|") },
         reminders = s.reminders.filterNot { it.playlistId == id },
+        arranged = s.arranged - id,
     )
 
     /** The parts of two states that sync, for telling whether a merge changed anything. */
@@ -575,5 +611,5 @@ object SyncMerge {
         a.playlists == b.playlists && a.favorites == b.favorites && a.favLists == b.favLists &&
             a.recents == b.recents && a.settings == b.settings && a.progress == b.progress &&
             a.followed == b.followed && a.intros == b.intros && a.profiles == b.profiles &&
-            a.reminders == b.reminders && a.alertWords == b.alertWords
+            a.reminders == b.reminders && a.alertWords == b.alertWords && a.arranged == b.arranged
 }
