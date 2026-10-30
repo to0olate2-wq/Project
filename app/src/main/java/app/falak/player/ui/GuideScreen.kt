@@ -26,6 +26,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -297,27 +299,32 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                     }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                    items(channels, key = { it.id }) { ch ->
-                        GuideRow(
-                            ch = ch,
-                            programs = epg[ch.epgKey],
-                            windowStart = windowStart,
-                            windowEnd = windowEnd,
-                            totalWidth = totalWidth,
-                            now = now,
-                            hScroll = hScroll,
-                            previewing = preview?.id == ch.id,
-                            onChannel = { pick(channels, ch) },
-                            onChannelLong = { vm.listSheetFor = ch },
-                            onProgram = { prog ->
-                                // On now: preview first, full screen on the second press.
-                                val live = now >= prog.start && now < prog.stop
-                                if (live) pick(channels, ch) else details = ch to prog
-                            },
-                            onProgramLong = { prog -> details = ch to prog },
-                            reminded = remindedAt[ch.id].orEmpty(),
-                        )
+                // The remote goes round: down on the last channel comes back to the first.
+                val loop = rememberFocusLoop()
+                val rows = rememberLazyListState()
+                LazyColumn(Modifier.fillMaxSize().focusLoop(loop, rows, channels.size), state = rows, contentPadding = PaddingValues(bottom = 24.dp)) {
+                    itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
+                        Box(Modifier.loopItem(loop, i)) {
+                            GuideRow(
+                                ch = ch,
+                                programs = epg[ch.epgKey],
+                                windowStart = windowStart,
+                                windowEnd = windowEnd,
+                                totalWidth = totalWidth,
+                                now = now,
+                                hScroll = hScroll,
+                                previewing = preview?.id == ch.id,
+                                onChannel = { pick(channels, ch) },
+                                onChannelLong = { vm.listSheetFor = ch },
+                                onProgram = { prog ->
+                                    // On now: preview first, full screen on the second press.
+                                    val live = now >= prog.start && now < prog.stop
+                                    if (live) pick(channels, ch) else details = ch to prog
+                                },
+                                onProgramLong = { prog -> details = ch to prog },
+                                reminded = remindedAt[ch.id].orEmpty(),
+                            )
+                        }
                     }
                 }
             }
