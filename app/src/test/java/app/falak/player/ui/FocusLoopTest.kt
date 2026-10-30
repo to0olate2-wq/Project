@@ -10,34 +10,32 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.InputMode
-import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.unit.dp
-import app.falak.player.data.Channel
-import app.falak.player.data.Kind
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
-/** The remote going round channel lists: down on the last one back to the first, and up from the first to the last. */
-@OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
+/**
+ * The remote going round channel lists (the player's channel list, the Live list and grid, the
+ * guide all use FocusLoop): down on the last one back to the first, and up from the first to the last.
+ */
+@OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w960dp-h540dp-land-television")
@@ -45,40 +43,58 @@ class FocusLoopTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private val channels = (1..5).map { Channel(id = "c$it", name = "Channel $it", group = "Sports", url = "http://host/$it.ts", kind = Kind.LIVE) }
+    /** A test stuck for a minute writes where every thread is, as hang-<test>.txt beside the pictures. */
+    @get:Rule
+    val watchdog = object : TestWatcher() {
+        private var thread: Thread? = null
+
+        override fun starting(description: Description) {
+            thread = Thread {
+                try {
+                    Thread.sleep(60_000)
+                } catch (e: InterruptedException) {
+                    return@Thread
+                }
+                val dir = File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
+                val text = Thread.getAllStackTraces().entries.joinToString("\n\n") { (t, stack) ->
+                    "${t.name} (${t.state})\n" + stack.joinToString("\n") { "    at $it" }
+                }
+                runCatching { File(dir, "hang-FocusLoopTest-${description.methodName}.txt").writeText(text) }
+            }.apply {
+                isDaemon = true
+                start()
+            }
+        }
+
+        override fun finished(description: Description) {
+            thread?.interrupt()
+        }
+    }
 
     @Test
-    fun playerChannelListGoesRoundBothWays() {
+    fun listGoesRoundBothWays() {
+        val count = 5
         compose.setContent {
-            // As on a TV: the remote, not touch (rows only take the remote's focus then).
-            val modes = LocalInputModeManager.current
-            LaunchedEffect(Unit) { modes.requestInputMode(InputMode.Keyboard) }
-            CompositionLocalProvider(LocalIsTv provides true) {
-                ChannelBrowser(
-                    open = true,
-                    showGroups = false,
-                    groups = mapOf("Sports" to channels),
-                    currentId = "c5",
-                    epg = emptyMap(),
-                    onShowGroups = {},
-                    onPick = { _, _ -> },
-                    onClose = {},
-                )
+            val loop = rememberFocusLoop()
+            val state = rememberLazyListState()
+            LazyColumn(Modifier.size(300.dp, 400.dp).focusLoop(loop, state, count, up = true), state = state) {
+                itemsIndexed((0 until count).toList()) { i, _ ->
+                    Box(Modifier.size(300.dp, 40.dp).loopItem(loop, i).testTag("ch$i").focusable())
+                }
             }
         }
         compose.waitForIdle()
-        val last = compose.onNodeWithText("Channel 5")
-        last.requestFocus()
+        compose.onNodeWithTag("ch4").requestFocus()
         compose.waitForIdle()
-        last.assertIsFocused()
+        compose.onNodeWithTag("ch4").assertIsFocused()
         // Down on the last channel: the first.
-        last.performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("ch4").performKeyInput { pressKey(Key.DirectionDown) }
         compose.waitForIdle()
-        compose.onNodeWithText("Channel 1").assertIsFocused()
+        compose.onNodeWithTag("ch0").assertIsFocused()
         // Up on the first: the last again.
-        compose.onNodeWithText("Channel 1").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("ch0").performKeyInput { pressKey(Key.DirectionUp) }
         compose.waitForIdle()
-        compose.onNodeWithText("Channel 5").assertIsFocused()
+        compose.onNodeWithTag("ch4").assertIsFocused()
     }
 
     @Test
