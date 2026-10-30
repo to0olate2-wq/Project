@@ -11,7 +11,11 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -33,7 +37,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** The remote going round channel lists: down on the last one back to the first, and up from the first to the last. */
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w960dp-h540dp-land-television")
@@ -46,6 +50,9 @@ class FocusLoopTest {
     @Test
     fun playerChannelListGoesRoundBothWays() {
         compose.setContent {
+            // As on a TV: the remote, not touch (rows only take the remote's focus then).
+            val modes = LocalInputModeManager.current
+            LaunchedEffect(Unit) { modes.requestInputMode(InputMode.Keyboard) }
             CompositionLocalProvider(LocalIsTv provides true) {
                 ChannelBrowser(
                     open = true,
