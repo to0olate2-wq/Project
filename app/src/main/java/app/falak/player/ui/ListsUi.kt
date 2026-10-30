@@ -138,7 +138,7 @@ fun ItemSheet(vm: LibraryViewModel, state: AppState, ch: Channel, orderInList: S
 }
 
 @Composable
-private fun CheckLine(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun CheckLine(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     val shape = RoundedCornerShape(6.dp)
     Row(
         Modifier

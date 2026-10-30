@@ -713,9 +713,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Live channels' guide keys get worked out by the guide load that follows (off the main
         // thread), not here: the lists show as soon as the index is ready.
-        val tidy = state.value.settings
+        val tidy = tidyWanted()
         val order = arrangementNow()
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.cleanNames, tidy.mergeDuplicates, order) }
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.first, tidy.second, order) }
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index
@@ -1087,7 +1087,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * at a time, never while something plays. Each find goes to What's new (and a notification).
      */
     private suspend fun checkFollowedSeries(p: Playlist) {
-        if (repo.xtreamFor(p) == null) return
+        if (repo.xtreamFor(p) == null && !p.isCombined) return
         val now = System.currentTimeMillis()
         val due = state.value.followed[p.id].orEmpty().filter { now - it.checkedAt > FOLLOW_CHECK_MS }.take(25)
         for (f in due) {
@@ -1518,6 +1518,43 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return "Playlist $n"
     }
 
+    /** A new combined playlist made of [sourceIds] (in that order). Returns an error message, or null. */
+    fun addCombined(name: String, sourceIds: List<String>): String? {
+        val ids = sourceIds.distinct().filter { id -> state.value.playlists.any { it.id == id && !it.isCombined } }
+        if (ids.size < 2) return "Choose at least two playlists"
+        val p = Playlist(
+            id = UUID.randomUUID().toString(),
+            name = name.trim().ifBlank { "All my playlists" },
+            // A file playlist with no file: versions before 8.4 leave it alone (see Playlist.sources).
+            type = SourceType.M3U_FILE,
+            url = "",
+            sources = ids,
+        )
+        repo.addPlaylist(p)
+        open(p)
+        return null
+    }
+
+    /** A combined playlist's name and playlists changed. */
+    fun editCombined(p: Playlist, name: String, sourceIds: List<String>): String? {
+        val ids = sourceIds.distinct().filter { id -> state.value.playlists.any { it.id == id && !it.isCombined } }
+        if (ids.size < 2) return "Choose at least two playlists"
+        val changed = p.copy(name = name.trim().ifBlank { p.name }, sources = ids)
+        if (changed == p) return null
+        repo.updatePlaylist(changed)
+        if (playlist?.id == p.id) {
+            if (changed.sources != p.sources) {
+                // Other playlists in it: the list is put together again.
+                repo.openLibrary = null
+                playlist = null
+                open(changed)
+            } else {
+                playlist = changed
+            }
+        }
+        return null
+    }
+
     fun renamePlaylist(p: Playlist, name: String) {
         val clean = name.trim()
         if (clean.isEmpty() || clean == p.name) return
@@ -1564,6 +1601,15 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private var retidyJob: Job? = null
 
+    /**
+     * Tidy channel list as chosen: (clean names, merge duplicates). A combined playlist always
+     * merges the same channel listed twice in a group (the other stays ready as a fall-back).
+     */
+    private fun tidyWanted(): Pair<Boolean, Boolean> {
+        val s = state.value.settings
+        return s.cleanNames to (s.mergeDuplicates || playlist?.isCombined == true)
+    }
+
     /** The order chosen for the open playlist (Arrange). */
     private fun arrangementNow(): app.falak.player.data.Arrangement =
         playlist?.let { state.value.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
@@ -1573,8 +1619,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * from the playlist as it came.
      */
     private fun retidyIfChanged() {
-        val s = state.value.settings
-        val want = s.cleanNames to s.mergeDuplicates
+        val want = tidyWanted()
         val order = arrangementNow()
         val old = index
         if (old.raw.isEmpty() || (old.tidy == want && old.arrangement == order) || retidyJob?.isActive == true) return
@@ -1597,7 +1642,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             state.collect { s ->
                 val order = playlist?.let { s.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
-                if ((s.settings.cleanNames to s.settings.mergeDuplicates) != index.tidy || order != index.arrangement) retidyIfChanged()
+                val tidy = s.settings.cleanNames to (s.settings.mergeDuplicates || playlist?.isCombined == true)
+                if (tidy != index.tidy || order != index.arrangement) retidyIfChanged()
             }
         }
         // Hiding or showing live groups (here or from the phone page) changes which channels get

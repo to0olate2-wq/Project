@@ -269,7 +269,12 @@ object SyncMerge {
             device = device,
             playlists = s.playlists.map { p ->
                 // A playlist loaded from a file keeps its contents on this device: only its name and settings go.
-                val shared = p.copy(id = sid(p.id), url = if (p.type == SourceType.M3U_FILE) "" else p.url)
+                // A combined one names its playlists by the ids the other devices know.
+                val shared = p.copy(
+                    id = sid(p.id),
+                    url = if (p.type == SourceType.M3U_FILE) "" else p.url,
+                    sources = p.sources.map { sid(it) },
+                )
                 SyncedPlaylist(s.sync.stamps["$PL|${p.id}"] ?: 0L, shared)
             },
             removed = s.sync.removed,
@@ -309,6 +314,8 @@ object SyncMerge {
         // Playlists that arrive with this merge take the other device's favorites and the rest as they are.
         val fresh = HashSet<String>()
         val sidOf = { id: String -> alias[id] ?: id }
+        // Combined playlists that came in: their playlists, by the other device's ids (mapped below).
+        val combinedFrom = HashMap<String, List<String>>()
 
         for (rp in r.playlists) {
             val rid = rp.playlist.id
@@ -330,12 +337,15 @@ object SyncMerge {
                 if (rp.at > (stamps["$PL|${local.id}"] ?: 0L)) {
                     playlists[i] = rp.playlist.copy(id = local.id, url = if (local.type == SourceType.M3U_FILE) local.url else rp.playlist.url)
                     stamps["$PL|${local.id}"] = rp.at
+                    if (rp.playlist.isCombined) combinedFrom[local.id] = rp.playlist.sources
                 }
             } else {
-                // New here. Playlists from a file come over with "Your devices" (they need the file).
-                if (rp.playlist.type == SourceType.M3U_FILE) continue
+                // New here. Playlists from a file come over with "Your devices" (they need the file);
+                // combined ones (no file) come over as they are.
+                if (rp.playlist.type == SourceType.M3U_FILE && !rp.playlist.isCombined) continue
                 if ((removed[rid] ?: -1L) >= rp.at) continue
                 playlists += rp.playlist
+                if (rp.playlist.isCombined) combinedFrom[rid] = rp.playlist.sources
                 stamps["$PL|$rid"] = rp.at
                 toLocal[rid] = rid
                 fresh += rid
@@ -355,6 +365,15 @@ object SyncMerge {
         }
         val localOfSid = playlists.filter { it.id !in gone }.associate { sidOf(it.id) to it.id }
         fun localId(sid: String): String? = (toLocal[sid] ?: localOfSid[sid])?.takeIf { it !in gone }
+        if (combinedFrom.isNotEmpty()) {
+            out = out.copy(
+                playlists = out.playlists.map { p ->
+                    val theirs = combinedFrom[p.id] ?: return@map p
+                    // (None of them here: it keeps their ids, and says its playlists are missing.)
+                    p.copy(sources = theirs.mapNotNull { localId(it) }.ifEmpty { theirs })
+                },
+            )
+        }
 
         // A whole-app part: the newer side wins; a device that never had its own takes the other's.
         fun takes(key: String, part: SyncPart, emptyHere: Boolean): Boolean {

@@ -23,7 +23,14 @@ data class Playlist(
     val epgShiftMinutes: Int = 0,
     /** The same fix for one guide source (by its link), found by comparing it with the others. */
     val epgSourceShift: Map<String, Int> = emptyMap(),
-)
+    /**
+     * A combined playlist: the ids of the playlists it puts together (see [Combined]). Stored as a
+     * file playlist with no file, so versions before 8.4 leave it alone.
+     */
+    val sources: List<String> = emptyList(),
+) {
+    val isCombined: Boolean get() = sources.isNotEmpty()
+}
 
 @Serializable
 enum class Kind { LIVE, MOVIE, SERIES }

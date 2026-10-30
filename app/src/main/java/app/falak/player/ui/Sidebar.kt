@@ -427,10 +427,11 @@ fun Sidebar(
                 Column(Modifier.weight(1f)) {
                     Text(playlist.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        when (playlist.type) {
-                            SourceType.XTREAM -> "Xtream"
-                            SourceType.M3U_URL -> "M3U link"
-                            SourceType.M3U_FILE -> "M3U file"
+                        when {
+                            playlist.isCombined -> "Combined"
+                            playlist.type == SourceType.XTREAM -> "Xtream"
+                            playlist.type == SourceType.M3U_URL -> "M3U link"
+                            else -> "M3U file"
                         } + "  ·  Switch",
                         fontFamily = Sans,
                         fontSize = 11.sp,

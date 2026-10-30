@@ -4021,7 +4021,8 @@ class PlayerActivity : ComponentActivity() {
      * connection in use, the subscription ended or suspended) says so instead of a bare error.
      */
     private fun explainRefusal() {
-        val pl = repo.currentPlaylist ?: return
+        // A combined playlist: the account of the playlist this channel came from.
+        val pl = repo.currentPlaylist?.let { cur -> queue.getOrNull(index)?.let { repo.sourceOf(cur, it.id) } ?: cur } ?: return
         val api = repo.xtreamFor(pl) ?: return
         val url = currentUrl
         failedUrl = url
