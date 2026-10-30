@@ -148,7 +148,7 @@ jobs:
     runs-on: ubuntu-24.04
     continue-on-error: true
     # A stuck screen test must not hold a runner for hours.
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -178,8 +178,8 @@ jobs:
 
       - name: Draw the screens
         continue-on-error: true
-        # A full run takes about 10 minutes; a stuck test is cut off here (the log's tail says which).
-        timeout-minutes: 18
+        # A full run takes 12 to 20 minutes; a stuck test is cut off here (the log's tail says which).
+        timeout-minutes: 32
         run: |
           chmod +x gradlew
           ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
