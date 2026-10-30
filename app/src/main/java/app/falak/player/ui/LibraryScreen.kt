@@ -801,11 +801,13 @@ private fun ChannelList(
         }
         return
     }
-    LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
+    // The remote goes round: down on the last one comes back to the first.
+    val loop = rememberFocusLoop()
+    LazyColumn(modifier.focusLoop(loop, state, list.size), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier)
+            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier.loopItem(loop, i))
             Rule()
         }
     }

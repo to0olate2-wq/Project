@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -879,19 +880,23 @@ fun ChannelGrid(
         Box(modifier, contentAlignment = Alignment.Center) { Text("Nothing here yet", color = Muted) }
         return
     }
+    // The remote goes round: down on the last row comes back to the first channel.
+    val loop = rememberFocusLoop()
     LazyVerticalGrid(
         columns = GridCells.Adaptive(if (isTv()) 210.dp else 160.dp),
         state = state,
-        modifier = modifier,
+        modifier = modifier.focusLoop(loop, state, list.size),
         contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        items(list, key = { it.id }) { ch ->
-            ChannelCard(
-                ch, if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null, now,
-                onClick = { onOpen(ch) }, width = null, onLongClick = { onLongPress(ch) },
-            )
+        itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
+            Box(Modifier.loopItem(loop, i)) {
+                ChannelCard(
+                    ch, if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null, now,
+                    onClick = { onOpen(ch) }, width = null, onLongClick = { onLongPress(ch) },
+                )
+            }
         }
     }
 }

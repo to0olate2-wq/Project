@@ -259,11 +259,13 @@ fun ChannelBrowser(
                         val i = channels.indexOfFirst { it.id == currentId }
                         listState.scrollToItem((if (i >= 0) i - 3 else 0).coerceAtLeast(0))
                     }
+                    // Down on the last channel comes back to the first; up on the first goes to the last.
+                    val loop = rememberFocusLoop()
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = 24.dp),
                         // Left brings in the groups.
-                        modifier = Modifier.onPreviewKeyEvent { e ->
+                        modifier = Modifier.focusLoop(loop, listState, channels.size, up = true).onPreviewKeyEvent { e ->
                             if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
                                 onShowGroups(true)
                                 true
@@ -281,6 +283,7 @@ fun ChannelBrowser(
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp)
+                                    .loopItem(loop, i)
                                     .focusRequester(
                                         when {
                                             playing -> currentFocus
