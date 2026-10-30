@@ -17,7 +17,7 @@ class ProfileTest {
     }
 
     @Test
-    fun onlyTheMainProfileSyncs() {
+    fun everyProfileSyncsUnderItsOwnKeys() {
         val s = AppState(
             playlists = listOf(p),
             favorites = mapOf("p1" to listOf("a"), "p1@s1" to listOf("b")),
@@ -26,8 +26,11 @@ class ProfileTest {
         )
         val snap = SyncMerge.snapshot(s, "A")
         assertEquals(listOf("a"), snap.parts["fav|p1"]?.ids)
+        assertEquals(listOf("b"), snap.parts["fav|p1@s1"]?.ids)
         assertTrue("p1|film" in snap.progress)
-        assertFalse(snap.progress.keys.any { '@' in it })
+        assertTrue("p1@s1|film2" in snap.progress)
+        // Nothing of a playlist this device doesn't have.
+        assertFalse(snap.progress.keys.any { it.startsWith("p2") })
     }
 
     @Test

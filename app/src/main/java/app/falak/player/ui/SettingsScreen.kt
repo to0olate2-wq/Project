@@ -920,7 +920,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 when {
                     !linked -> "Off. Link a TV or phone on the same Wi-Fi in Your devices"
                     !s.syncOn -> "Off. Linked with ${names.ifBlank { "another device" }}"
-                    else -> "Playlists, favorites, hidden groups and Continue watching stay the same on " +
+                    else -> "Playlists, favorites, Continue watching, profiles and settings stay the same on " +
                         names.ifBlank { "your linked devices" }
                 },
                 s.syncOn && linked,

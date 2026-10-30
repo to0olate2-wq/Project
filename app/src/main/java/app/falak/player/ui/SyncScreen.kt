@@ -158,7 +158,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                 val name = peerName.ifBlank { bundle.from.ifBlank { "the other device" } }
                 repo.linkSync(key, peerId, name)
                 context.autoSync.syncNow()
-                "Linked with $name. Playlists, favorites, hidden groups and Continue watching now stay the same " +
+                "Linked with $name. Playlists, favorites, Continue watching, profiles and settings now stay the same " +
                     "on both while The Player is open on the same Wi-Fi."
             } catch (e: CancellationException) {
                 throw e
@@ -233,7 +233,7 @@ fun SyncScreen(vm: LibraryViewModel, state: AppState) {
                 ) {
                     if (!linked) {
                         Text(
-                            "Link your TVs and phones once: playlists, favorites, hidden groups and Continue watching then " +
+                            "Link your TVs and phones once: playlists, favorites, Continue watching, profiles and settings then " +
                                 "stay the same on all of them, by themselves, while The Player is open on the same Wi-Fi. " +
                                 "On the other device open Your devices and choose Start sharing, then choose Link next to it below.",
                             style = MaterialTheme.typography.bodyMedium,
