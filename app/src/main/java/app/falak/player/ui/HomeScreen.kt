@@ -167,6 +167,9 @@ fun HomeContent(
     }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
     val tvHome = isTv()
+    // Saved on this device to watch without internet (not shown in kids mode).
+    val downloads = rememberDownloads()
+    val hasDownloads = !vm.kidsActive && downloads.any { it.state == app.falak.player.data.OfflineState.DONE }
 
     MarqueePage(vm, Section.HOME, hero, onPlay) {
         if (ramadan != null) {
@@ -191,6 +194,9 @@ fun HomeContent(
                     ) { ch -> onPlay(listOf(ch), ch) }
                 }
             }
+        }
+        if (hasDownloads) {
+            item(key = "downloads") { DownloadsShelf(vm, downloads, onPlay) }
         }
         if (top.isNotEmpty()) {
             item(key = "top") {
@@ -253,7 +259,7 @@ fun HomeContent(
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = hero.isEmpty() && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+        val empty = hero.isEmpty() && !hasDownloads && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
             top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {

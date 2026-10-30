@@ -44,19 +44,20 @@ import app.falak.player.update.Updater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -117,6 +118,38 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Films waiting for their details, in the order asked (Home, then Films, ...). */
     private val heroQueue = LinkedHashMap<String, Channel>()
 
+    /** Details kept on the device for the open playlist, with when each was fetched (see DetailsCache). */
+    private val savedDetails = HashMap<String, Pair<VodInfo, Long>>()
+    private var savedDetailsFor: String? = null
+    private var savedDetailsRead: kotlinx.coroutines.Deferred<Unit>? = null
+    private val detailsDir get() = java.io.File(getApplication<Application>().filesDir, "details")
+
+    /** Reads the details kept for [p] into the pictures and details maps (once per playlist). */
+    private fun readSavedDetails(p: Playlist) {
+        if (savedDetailsFor == p.id) return
+        savedDetailsFor = p.id
+        savedDetails.clear()
+        savedDetailsRead = viewModelScope.async {
+            val saved = withContext(Dispatchers.IO) { app.falak.player.data.DetailsCache.read(detailsDir, p.id) }
+            if (playlist?.id == p.id) {
+                savedDetails.putAll(saved)
+                for ((id, v) in saved) {
+                    if (id !in heroInfo) heroInfo[id] = v.first
+                    if (id !in heroArt) heroArt[id] = v.first.backdrop
+                }
+            }
+        }
+    }
+
+    /** Keeps fetched details on the device (written in the background). */
+    private fun keepDetails(p: Playlist, fetched: Map<String, VodInfo>) {
+        if (fetched.isEmpty() || savedDetailsFor != p.id) return
+        val now = System.currentTimeMillis()
+        for ((id, info) in fetched) savedDetails[id] = info to now
+        val copy = HashMap(savedDetails)
+        viewModelScope.launch(Dispatchers.IO) { runCatching { app.falak.player.data.DetailsCache.write(detailsDir, p.id, copy) } }
+    }
+
     /**
      * Loads the details of these films (and, with [series], these series: a bigger request, so
      * only for the one on show) in the background, one at a time, in the order asked.
@@ -129,6 +162,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (heroQueue.isEmpty() || heroJob?.isActive == true) return
         heroJob = viewModelScope.launch {
+            // What's kept on the device first: no need to ask the provider for those.
+            savedDetailsRead?.await()
+            val fetched = HashMap<String, VodInfo>()
             while (heroQueue.isNotEmpty() && playlist?.id == p.id) {
                 val ch = heroQueue.values.first()
                 heroQueue.remove(ch.id)
@@ -149,9 +185,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: Exception) {
                     null
                 }
-                if (info != null) heroInfo[ch.id] = info
+                if (info != null) {
+                    heroInfo[ch.id] = info
+                    fetched[ch.id] = info
+                }
                 heroArt[ch.id] = info?.backdrop.orEmpty()
+                // Kept as it goes, so a long round isn't lost if the app closes midway.
+                if (fetched.size >= 10) {
+                    keepDetails(p, fetched)
+                    fetched.clear()
+                }
             }
+            keepDetails(p, fetched)
         }
     }
 
@@ -188,15 +233,23 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Movie details page (Xtream fills in plot, cast, backdrop…). */
     fun openDetails(ch: Channel) {
         val p = playlist ?: return
+        openedFrom = ch.id
         details = ch
-        vodInfo = null
+        // Already fetched (this session, or kept on the device): shown at once, nothing to ask.
+        vodInfo = heroInfo[ch.id]
         screen = Screen.DETAILS
         detailsJob?.cancel()
-        if (!ch.id.startsWith("m")) return
+        if (!ch.id.startsWith("m") || vodInfo != null) return
         detailsLoading = true
         detailsJob = viewModelScope.launch {
             try {
-                vodInfo = repo.loadVodInfo(p, ch.id.removePrefix("m"))
+                val info = repo.loadVodInfo(p, ch.id.removePrefix("m"))
+                vodInfo = info
+                if (info != null && details?.id == ch.id) {
+                    heroInfo[ch.id] = info
+                    heroArt[ch.id] = info.backdrop
+                    keepDetails(p, mapOf(ch.id to info))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -573,6 +626,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             heroQueue.clear()
             marqueeStates.clear()
             marqueeIndex.clear()
+            rowStates.clear()
+            lastCard = null
+            returnFocus = null
             group = null
             query = ""
             section = Section.HOME
@@ -588,6 +644,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             if (!repo.hasGuideFor(p.id)) repo.clearEpg()
         }
         playlist = p
+        readSavedDetails(p)
         error = null
         loading = true
         loadProgress.value = LoadProgress()
@@ -917,6 +974,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openSeries(ch: Channel) {
         val p = playlist ?: return
+        openedFrom = ch.id
         series = ch
         seriesInfo = null
         seriesError = null
@@ -931,6 +989,16 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 seriesError = e.message ?: e.toString()
             }
         }
+    }
+
+    /** Screenshot tests: a series' page with its episodes, without asking a provider. */
+    @androidx.annotation.VisibleForTesting
+    fun showSeriesForTest(show: Channel, info: SeriesInfo) {
+        seriesJob?.cancel()
+        series = show
+        seriesInfo = info
+        seriesError = null
+        screen = Screen.SERIES
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = repo.updateSettings(transform)
@@ -1040,6 +1108,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         when (where) {
             "SETTINGS" -> screen = Screen.SETTINGS
             "NOTICES" -> screen = Screen.NOTICES
+            "DOWNLOADS" -> screen = Screen.DOWNLOADS
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
             else -> {
                 val s = Section.entries.firstOrNull { it.name == where } ?: return
@@ -1311,10 +1380,35 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** The item to scroll to and focus after returning from the player. */
     var focusId by mutableStateOf<String?>(null)
 
+    /** TV: the card to put the remote back on (Home, Films, Series), see [ReturnFocus]. */
+    var returnFocus by mutableStateOf<ReturnFocus?>(null)
+
+    /** The card last picked on Home, Films or Series (its row and id). */
+    var lastCard: ReturnFocus? = null
+
+    /** A film's details or a series' episodes were opened from this card. */
+    private var openedFrom: String? = null
+
+    /** Home's, Films' and Series' rows keep their sideways place while the page is away. */
+    private val rowStates = HashMap<String, LazyListState>()
+    fun rowState(section: Section, key: String): LazyListState = rowStates.getOrPut(section.name + "|" + key) { LazyListState() }
+
+    /** Back on the lists from [id]: the remote goes back to it, in the row it was picked from. */
+    private fun cameBack(id: String) {
+        returnFocus = ReturnFocus(lastCard?.takeIf { it.id == id }?.row, id)
+    }
+
+    /** The lists are on screen again (back from details, episodes or another page). */
+    fun onLibraryShown() {
+        openedFrom?.let { cameBack(it) }
+        openedFrom = null
+    }
+
     fun onReturnFromPlayer() {
         val id = repo.lastPlayedId ?: return
         repo.lastPlayedId = null
         focusId = id
+        cameBack(id)
         // If the user zapped into another group inside the player, follow them there.
         val ch = index.byId[id] ?: return
         if (screen == Screen.LIBRARY && section.kind == ch.kind && ch.kind != Kind.SERIES && group != null && group != ch.group) {

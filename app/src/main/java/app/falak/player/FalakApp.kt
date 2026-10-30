@@ -51,6 +51,7 @@ class FalakApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         repo = Repository(this)
+        OfflineCenter.init(this)
         watchForSync()
         FreezeWatch.start(filesDir)
         FreezeWatch.note("app started")

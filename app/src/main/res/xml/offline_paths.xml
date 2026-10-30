@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Downloaded films and episodes, shared with another video player when it plays them. -->
+<paths>
+    <external-files-path name="downloads" path="Movies/" />
+    <files-path name="downloads_internal" path="downloads/" />
+</paths>

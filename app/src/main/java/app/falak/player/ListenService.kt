@@ -113,6 +113,8 @@ class ListenService : Service() {
 
     private fun play(i: Item) {
         release()
+        // Streaming from the provider: downloads wait meanwhile.
+        OfflineCenter.streaming(this, !i.url.startsWith("file:"))
         // A sleep timer that ran out before the sound got here is over.
         if (SleepTimer.due(android.os.SystemClock.elapsedRealtime())) SleepTimer.cancel()
         item = i
@@ -336,6 +338,7 @@ class ListenService : Service() {
 
     override fun onDestroy() {
         release()
+        OfflineCenter.streaming(this, false)
         if (instance === this) instance = null
         super.onDestroy()
     }

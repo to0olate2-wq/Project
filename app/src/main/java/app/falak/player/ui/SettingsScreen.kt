@@ -346,8 +346,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
                 Text("Look", style = MaterialTheme.typography.bodyLarge, color = Paper)
                 Text(
-                    if (s.look == "sidebar") "Side menu, big “Continue watching” cards, and each section as a grid with filters."
-                    else "Tabs along the top and a slideshow on Home.",
+                    if (s.look == "sidebar") "A side menu, and each section as a grid with filters."
+                    else "Tabs along the top.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
@@ -388,6 +388,16 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 "A slideshow with the clock after 5 minutes idle, or 90 seconds with a video paused",
                 s.ambient,
             ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
+        }
+        if (!tvLayout) {
+            item {
+                SwitchRow(
+                    "Turn with the phone",
+                    if (s.turnWithPhone) "Every page turns when you turn the phone, even with rotation locked in the phone's settings"
+                    else "Pages follow the phone's own rotation setting (the player turns as set in it)",
+                    s.turnWithPhone,
+                ) { vm.updateSettings { it.copy(turnWithPhone = !it.turnWithPhone) } }
+            }
         }
         }
 

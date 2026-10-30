@@ -169,6 +169,8 @@ internal fun PreviewPicture(
     }
     DisposableEffect(exo) {
         repo.previewOpen = true
+        // Live from the provider: downloads wait while the preview plays.
+        app.falak.player.OfflineCenter.streaming(exo, true)
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) status = PreviewStatus.PLAYING
@@ -185,6 +187,7 @@ internal fun PreviewPicture(
             exo.removeListener(listener)
             exo.release()
             repo.previewOpen = false
+            app.falak.player.OfflineCenter.streaming(exo, false)
         }
     }
     // The Kids profile: this counts as watching too, and stops when time is up or it's bedtime.
@@ -205,8 +208,12 @@ internal fun PreviewPicture(
     DisposableEffect(lifecycle, exo) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> exo.stop()
+                Lifecycle.Event.ON_STOP -> {
+                    exo.stop()
+                    app.falak.player.OfflineCenter.streaming(exo, false)
+                }
                 Lifecycle.Event.ON_START -> if (exo.mediaItemCount > 0) {
+                    app.falak.player.OfflineCenter.streaming(exo, true)
                     exo.prepare()
                     exo.playWhenReady = true
                 }

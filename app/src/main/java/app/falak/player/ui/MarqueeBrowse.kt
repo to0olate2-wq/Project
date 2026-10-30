@@ -45,6 +45,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -348,7 +350,20 @@ fun MarqueePage(
     val stage = LocalMarqueeStage.current
     val density = LocalDensity.current
     var myTop by remember { mutableFloatStateOf(-1f) }
+    // The remote is on the featured title: it stays put (pressing OK plays what you're reading).
+    var heroFocused by remember { mutableStateOf(false) }
     val onPrimary: (Channel) -> Unit = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) }
+    // TV: back from a film, its details or episodes, the remote goes back to the card picked
+    // (only just set: an old one belongs to another visit).
+    val returning = vm.returnFocus?.takeIf { tv && System.currentTimeMillis() - it.at < 5_000 }
+    LaunchedEffect(vm.returnFocus) {
+        if (vm.returnFocus != null) {
+            delay(2_500)
+            vm.returnFocus = null
+        }
+    }
+    val rowStates = remember(vm, section) { { key: String -> vm.rowState(section, key) } }
+    val tapMemory = remember(vm) { { row: String?, id: String -> vm.lastCard = ReturnFocus(row, id) } }
 
     Box(Modifier.fillMaxSize().onGloballyPositioned { myTop = it.positionInRoot().y }) {
         val wide = stage?.wide == true
@@ -362,10 +377,10 @@ fun MarqueePage(
             (stage.height * marqueeFraction(stage.height) - offset).coerceAtLeast(200.dp)
         }
         if (wide && item != null) {
-            // A new title every 7 seconds while the top of the page is in view.
+            // A new title every 7 seconds while the top of the page is in view (and the remote isn't on it).
             val heroInView = listState.firstVisibleItemIndex == 0
-            LaunchedEffect(current, featured.size, heroInView) {
-                if (featured.size > 1 && heroInView) {
+            LaunchedEffect(current, featured.size, heroInView, heroFocused) {
+                if (featured.size > 1 && heroInView && !heroFocused) {
                     delay(7_000)
                     vm.marqueeIndex[section] = (current + 1) % featured.size
                 }
@@ -375,6 +390,9 @@ fun MarqueePage(
         CompositionLocalProvider(
             LocalHomeScroller provides scroller,
             LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
+            LocalRowStates provides rowStates,
+            LocalCardTap provides tapMemory,
+            LocalReturnFocus provides returning,
         ) {
             LazyColumn(
                 Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
@@ -391,6 +409,7 @@ fun MarqueePage(
                             height = heroHeight,
                             onPrimary = onPrimary,
                             onDetails = { ch -> vm.openDetails(ch) },
+                            onFocus = { heroFocused = it },
                         )
                     }
                 } else if (featured.isNotEmpty()) {
@@ -569,9 +588,14 @@ private fun MarqueeHero(
     height: Dp,
     onPrimary: (Channel) -> Unit,
     onDetails: (Channel) -> Unit,
+    /** The remote is on the featured title's buttons (it stops changing meanwhile). */
+    onFocus: (Boolean) -> Unit,
 ) {
     val tv = isTv()
-    Box(Modifier.fillMaxWidth().heightIn(min = height).pinToTop()) {
+    val tap = LocalCardTap.current
+    // Back from it: the remote goes to Play again.
+    val back = LocalReturnFocus.current?.row == HERO_ROW
+    Box(Modifier.fillMaxWidth().heightIn(min = height).pinToTop().onFocusChanged { onFocus(it.hasFocus) }) {
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(if (tv) 0.54f else 0.6f).padding(start = 4.dp, bottom = 16.dp)) {
             AnimatedContent(
                 targetState = item to info,
@@ -622,8 +646,20 @@ private fun MarqueeHero(
             }
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow) { onPrimary(item) }
-                if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info) { onDetails(item) }
+                PaperButton(
+                    if (item.isSeriesFolder) "Episodes" else "Play",
+                    Icons.Filled.PlayArrow,
+                    Modifier.comeBackHere(HERO_ROW, item.id, also = back),
+                ) {
+                    tap?.invoke(HERO_ROW, item.id)
+                    onPrimary(item)
+                }
+                if (!item.isSeriesFolder) {
+                    GhostButton("More info", Icons.Outlined.Info) {
+                        tap?.invoke(HERO_ROW, item.id)
+                        onDetails(item)
+                    }
+                }
             }
         }
         if (count > 1) {
@@ -642,6 +678,13 @@ private fun MarqueeHero(
     }
 }
 
+/** The group chips' row, and the "All" chip in it, for coming back to the one picked (see [ReturnFocus]). */
+const val GROUP_ROW = "\u0000groups"
+const val ALL_CHIP = "\u0000all"
+
+/** The featured title's buttons, for coming back to them (see [ReturnFocus]). */
+const val HERO_ROW = "\u0000hero"
+
 /** "All films" and the provider's groups as chips; a locked group asks for the PIN when picked. */
 @Composable
 private fun GroupPicker(
@@ -654,15 +697,19 @@ private fun GroupPicker(
 ) {
     val names = remember(groups) { groups.keys.toList() }
     val scroller = LocalHomeScroller.current
+    val rowState = LocalRowStates.current?.invoke(GROUP_ROW) ?: androidx.compose.foundation.lazy.rememberLazyListState()
     CompositionLocalProvider(LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current)) {
         LazyRow(
             Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp),
+            state = rowState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
         ) {
-            item(key = "__all") { TagChip("$all · ${countLabel(total)}", false) { onGroup(null) } }
+            item(key = "__all") {
+                TagChip("$all · ${countLabel(total)}", false, modifier = Modifier.comeBackHere(GROUP_ROW, ALL_CHIP)) { onGroup(null) }
+            }
             items(names, key = { "g:$it" }) { g ->
-                TagChip(if (g in locked) "🔒 $g" else g, false, onLongClick = { onOptions(g) }) { onGroup(g) }
+                TagChip(if (g in locked) "🔒 $g" else g, false, onLongClick = { onOptions(g) }, modifier = Modifier.comeBackHere(GROUP_ROW, g)) { onGroup(g) }
             }
         }
     }

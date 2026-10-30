@@ -752,6 +752,8 @@ class PlayerActivity : ComponentActivity() {
         repo.playerOpen = false
         FreezeWatch.note("player closing")
         if (::playerView.isInitialized) releasePlayer()
+        // The picture has stopped (it starts again on coming back): downloads needn't wait meanwhile.
+        app.falak.player.OfflineCenter.streaming(this, false)
         // The speech engine's memory goes back too (it loads again when captions are next needed).
         liveCaptions?.release()
         liveCaptions = null
@@ -766,6 +768,8 @@ class PlayerActivity : ComponentActivity() {
             listening = false
             app.falak.player.ListenService.handBack(currentUrl)
         }
+        // Nothing streams from here any more: downloads go on (Listen mode counts on its own).
+        app.falak.player.OfflineCenter.streaming(this, false)
         handler.removeCallbacksAndMessages(null)
         if (isTvDevice) frameMatch.release()
         super.onDestroy()
@@ -1058,13 +1062,18 @@ class PlayerActivity : ComponentActivity() {
         // A replay on its own (such as "From the start"): there's no list to browse.
         browseButton.visibility = if (ch.id.startsWith("cu:") && queue.size <= 1) View.GONE else View.VISIBLE
         val settings = repo.state.value.settings
+        // A downloaded film or episode plays from its saved copy (no internet needed).
+        val savedCopy = if (overrideUrl == null) app.falak.player.OfflineCenter.fileFor(ch.id) else null
         val url = overrideUrl
+            ?: savedCopy?.let { android.net.Uri.fromFile(it).toString() }
             ?: if (settings.preferHls && ch.url.contains("/live/") && ch.url.endsWith(".ts")) {
                 ch.url.removeSuffix(".ts") + ".m3u8"
             } else {
                 ch.url
             }
         currentUrl = url
+        // Streaming from the provider: downloads wait (many providers allow one connection at a time).
+        app.falak.player.OfflineCenter.streaming(this, savedCopy == null)
         val ua = ch.userAgent
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
