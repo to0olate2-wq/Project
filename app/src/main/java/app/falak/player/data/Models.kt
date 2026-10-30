@@ -467,7 +467,47 @@ data class AppState(
     val reminders: List<Reminder> = emptyList(),
     /** Words to be alerted about: any programme with them in its name (Settings → Reminders & alerts). */
     val alertWords: List<String> = emptyList(),
+    /** Each playlist's groups and channels in the order chosen (Arrange), by playlist id. */
+    val arranged: Map<String, Arrangement> = emptyMap(),
 )
+
+/**
+ * A playlist's own order (Arrange, "To top"): the groups and channels listed here come first, in
+ * this order; the rest follow in the playlist's order.
+ */
+@Serializable
+data class Arrangement(
+    /** Kind name ("LIVE", "MOVIE", "SERIES") -> group names. */
+    val groups: Map<String, List<String>> = emptyMap(),
+    /** "<kind name>|<group>" -> channel ids. */
+    val channels: Map<String, List<String>> = emptyMap(),
+) {
+    fun isEmpty(): Boolean = groups.values.all { it.isEmpty() } && channels.values.all { it.isEmpty() }
+
+    fun has(kind: Kind): Boolean =
+        !groups[kind.name].isNullOrEmpty() || channels.any { (k, v) -> v.isNotEmpty() && k.startsWith(kind.name + "|") }
+
+    companion object {
+        val NONE = Arrangement()
+
+        fun channelsKey(kind: Kind, group: String) = kind.name + "|" + group
+
+        /**
+         * What to keep for [order] (the whole new order): only the start of it, up to where the rest
+         * already follows the playlist's own order ([natural]: each item's place in the playlist).
+         */
+        fun <T> trimmed(order: List<T>, natural: Map<T, Int>): List<T> {
+            var k = order.size
+            while (k > 0) {
+                val here = natural[order[k - 1]] ?: break
+                val next = if (k < order.size) natural[order[k]] ?: Int.MAX_VALUE else Int.MAX_VALUE
+                if (here > next) break
+                k--
+            }
+            return order.subList(0, k).toList()
+        }
+    }
+}
 
 /** A programme the user asked to be reminded of. */
 @Serializable

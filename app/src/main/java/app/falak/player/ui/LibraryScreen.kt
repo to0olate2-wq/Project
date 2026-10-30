@@ -564,17 +564,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     groupMenu?.let { g ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { groupMenu = null },
-            title = { Text(g, fontFamily = Serif) },
-            text = { Text("Hidden groups disappear from lists, Home, the guide and the player. You can bring them back in Show & hide groups.") },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { vm.toggleHiddenGroup(g); groupMenu = null }) { Text("Hide group") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { groupMenu = null; vm.screen = Screen.GROUPS }) { Text("Show & hide groups…") }
-            },
-        )
+        GroupMenu(vm, kind, g) { groupMenu = null }
     }
 
     pinForGroup?.let { g ->

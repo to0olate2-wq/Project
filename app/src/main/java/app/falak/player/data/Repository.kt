@@ -266,6 +266,12 @@ class Repository(private val context: Context) {
 
     fun addPlaylist(p: Playlist) = update { it.copy(playlists = it.playlists + p, lastPlaylistId = p.id) }
 
+    /** Changes the order chosen for playlist [playlistId] (Arrange); an empty one is forgotten. */
+    fun arrange(playlistId: String, change: (Arrangement) -> Arrangement) = update { s ->
+        val next = change(s.arranged[playlistId] ?: Arrangement.NONE)
+        s.copy(arranged = if (next.isEmpty()) s.arranged - playlistId else s.arranged + (playlistId to next))
+    }
+
     fun removePlaylist(id: String) {
         update { s -> SyncMerge.withoutPlaylist(s, id) }
         deleteCaches(id)

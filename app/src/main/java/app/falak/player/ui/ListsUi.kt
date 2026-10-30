@@ -100,6 +100,8 @@ fun ItemSheet(vm: LibraryViewModel, state: AppState, ch: Channel, orderInList: S
                             .padding(vertical = 11.dp, horizontal = 4.dp),
                     )
                 }
+                // Its place in its group (Arrange); in one of your lists, its place there instead.
+                if (orderInList == null) OrderInGroup(vm, ch, onDismiss)
                 if (orderInList != null) {
                     Spacer(Modifier.height(10.dp))
                     Kicker("Order in this list", color = Muted)

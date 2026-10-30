@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.REMOTE -> RemoteScreen(vm, state)
                                 Screen.PRAYER -> PrayerScreen(vm, state)
                                 Screen.DOWNLOADS -> DownloadsScreen(vm, state, onPlay = ::play)
+                                Screen.ARRANGE -> ArrangeScreen(vm, state)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -431,6 +432,7 @@ class MainActivity : ComponentActivity() {
         Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
+        Screen.ARRANGE -> 5
     }
 
     // ---- ambient screen ----

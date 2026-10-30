@@ -51,13 +51,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS, Screen.ARRANGE)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -714,7 +714,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         // Live channels' guide keys get worked out by the guide load that follows (off the main
         // thread), not here: the lists show as soon as the index is ready.
         val tidy = state.value.settings
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.cleanNames, tidy.mergeDuplicates) }
+        val order = arrangementNow()
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.cleanNames, tidy.mergeDuplicates, order) }
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index
@@ -989,6 +990,78 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 seriesError = e.message ?: e.toString()
             }
         }
+    }
+
+    // ---- the order chosen (Arrange, "To top") ----
+
+    /** What Arrange shows: the groups of a kind (group null) or the channels of one group. */
+    data class ArrangeTarget(val kind: Kind, val group: String?)
+
+    var arrangeTarget by mutableStateOf<ArrangeTarget?>(null)
+
+    /** Where Back from Arrange goes. */
+    var arrangeBack = Screen.LIBRARY
+
+    fun openArrange(kind: Kind, group: String?) {
+        arrangeBack = if (screen == Screen.ARRANGE) arrangeBack else screen
+        arrangeTarget = ArrangeTarget(kind, group)
+        screen = Screen.ARRANGE
+    }
+
+    /** The groups of [kind] as they show (hidden ones left out), in their order now. */
+    fun groupOrder(kind: Kind): List<String> {
+        val hidden = playlist?.let { state.value.settings.hiddenGroups[it.id] }.orEmpty().toHashSet()
+        return index.groupsOf(kind).keys.filter { it !in hidden }
+    }
+
+    /** Group [g] of [kind] [delta] places up (−1) or down (1), or to the top. */
+    fun moveGroup(kind: Kind, g: String, delta: Int, toTop: Boolean = false) {
+        val p = playlist ?: return
+        val order = groupOrder(kind).toMutableList()
+        if (!moveIn(order, g, delta, toTop)) return
+        // The playlist's own order: where each group first appears.
+        val natural = HashMap<String, Int>()
+        for (ch in index.all) if (ch.kind == kind && ch.group !in natural) natural[ch.group] = natural.size
+        val keep = app.falak.player.data.Arrangement.trimmed(order, natural)
+        repo.arrange(p.id) { a -> a.copy(groups = if (keep.isEmpty()) a.groups - kind.name else a.groups + (kind.name to keep)) }
+    }
+
+    /** Channel (film, series) [ch] [delta] places up or down in its group, or to the top. */
+    fun moveChannel(ch: Channel, delta: Int, toTop: Boolean = false) {
+        val p = playlist ?: return
+        val list = index.groupsOf(ch.kind)[ch.group] ?: return
+        val order = list.map { it.id }.toMutableList()
+        if (!moveIn(order, ch.id, delta, toTop)) return
+        val members = order.toHashSet()
+        val natural = HashMap<String, Int>()
+        index.all.forEachIndexed { i, c -> if (c.id in members) natural[c.id] = i }
+        val keep = app.falak.player.data.Arrangement.trimmed(order, natural)
+        val key = app.falak.player.data.Arrangement.channelsKey(ch.kind, ch.group)
+        repo.arrange(p.id) { a -> a.copy(channels = if (keep.isEmpty()) a.channels - key else a.channels + (key to keep)) }
+    }
+
+    /** Back to the playlist's own order: the groups of [kind] (group null), or one group's channels. */
+    fun resetOrder(kind: Kind, group: String?) {
+        val p = playlist ?: return
+        repo.arrange(p.id) { a ->
+            if (group == null) a.copy(groups = a.groups - kind.name) else a.copy(channels = a.channels - app.falak.player.data.Arrangement.channelsKey(kind, group))
+        }
+    }
+
+    /** Whether an order was chosen for the groups of [kind] (group null) or for one group's channels. */
+    fun isArranged(kind: Kind, group: String?): Boolean {
+        val a = arrangementNow()
+        return if (group == null) !a.groups[kind.name].isNullOrEmpty() else !a.channels[app.falak.player.data.Arrangement.channelsKey(kind, group)].isNullOrEmpty()
+    }
+
+    private fun <T> moveIn(order: MutableList<T>, item: T, delta: Int, toTop: Boolean): Boolean {
+        val at = order.indexOf(item)
+        if (at < 0) return false
+        val to = if (toTop) 0 else (at + delta).coerceIn(0, order.lastIndex)
+        if (to == at) return false
+        order.removeAt(at)
+        order.add(to, item)
+        return true
     }
 
     /** Screenshot tests: a series' page with its episodes, without asking a provider. */
@@ -1491,15 +1564,23 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private var retidyJob: Job? = null
 
-    /** Tidy channel list switched on or off: the lists are rebuilt from the playlist as it came. */
+    /** The order chosen for the open playlist (Arrange). */
+    private fun arrangementNow(): app.falak.player.data.Arrangement =
+        playlist?.let { state.value.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
+
+    /**
+     * Tidy channel list switched on or off, or the order changed (Arrange): the lists are rebuilt
+     * from the playlist as it came.
+     */
     private fun retidyIfChanged() {
         val s = state.value.settings
         val want = s.cleanNames to s.mergeDuplicates
+        val order = arrangementNow()
         val old = index
-        if (old.raw.isEmpty() || old.tidy == want || retidyJob?.isActive == true) return
+        if (old.raw.isEmpty() || (old.tidy == want && old.arrangement == order) || retidyJob?.isActive == true) return
         val p = playlist ?: return
         retidyJob = viewModelScope.launch {
-            val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second) }
+            val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second, order) }
             if (index !== old || playlist?.id != p.id) return@launch
             index = built
             if (repo.currentIndex === old) repo.currentIndex = built
@@ -1515,7 +1596,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private fun followOutsideChanges() {
         viewModelScope.launch {
             state.collect { s ->
-                if ((s.settings.cleanNames to s.settings.mergeDuplicates) != index.tidy) retidyIfChanged()
+                val order = playlist?.let { s.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
+                if ((s.settings.cleanNames to s.settings.mergeDuplicates) != index.tidy || order != index.arrangement) retidyIfChanged()
             }
         }
         // Hiding or showing live groups (here or from the phone page) changes which channels get
