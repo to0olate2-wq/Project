@@ -188,7 +188,8 @@ fun ArrangeScreen(vm: LibraryViewModel, state: AppState) {
                     if (top) scope.launch { listState.animateScrollToItem(0) }
                 }
                 Row(
-                    Modifier.fillMaxWidth().animateItem().padding(vertical = 2.dp),
+                    // Rows slide when moved, and show at once (no fade) when the list changes.
+                    Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null).padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
