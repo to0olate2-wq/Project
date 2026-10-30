@@ -38,20 +38,18 @@ import java.io.File
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w960dp-h540dp-land-television")
+// A plain application: only the lists under test run (not the app's own start-up and services).
+@Config(qualifiers = "w960dp-h540dp-land-television", application = android.app.Application::class)
 class FocusLoopTest {
-    @get:Rule
-    val compose = createComposeRule()
-
-    /** A test stuck for a minute writes where every thread is, as hang-<test>.txt beside the pictures. */
-    @get:Rule
+    /** A test stuck for 45 seconds writes where every thread is, as hang-<test>.txt beside the pictures. */
+    @get:Rule(order = 0)
     val watchdog = object : TestWatcher() {
         private var thread: Thread? = null
 
         override fun starting(description: Description) {
             thread = Thread {
                 try {
-                    Thread.sleep(60_000)
+                    Thread.sleep(45_000)
                 } catch (e: InterruptedException) {
                     return@Thread
                 }
@@ -70,6 +68,9 @@ class FocusLoopTest {
             thread?.interrupt()
         }
     }
+
+    @get:Rule(order = 1)
+    val compose = createComposeRule()
 
     @Test
     fun listGoesRoundBothWays() {
