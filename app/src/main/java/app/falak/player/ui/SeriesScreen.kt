@@ -209,7 +209,7 @@ private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, onCli
             // Its download, when there is one: how far, or how big the saved copy is.
             rememberDownloads().firstOrNull { it.id == ep.id }?.let { d ->
                 Text(
-                    downloadStatus(d),
+                    downloadStatusShort(d),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (d.state == app.falak.player.data.OfflineState.FAILED) Amber else colors.onSurfaceVariant,
                     maxLines = 1,

@@ -2,6 +2,7 @@ package app.falak.player.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -90,6 +92,14 @@ fun downloadStatus(item: OfflineItem): String = when (item.state) {
     OfflineState.PAUSED -> "Paused" + if (item.size > 0) " · ${(item.fraction * 100).toInt()}%" else ""
     OfflineState.FAILED -> item.note.ifBlank { "Couldn't download" }
 }
+
+/** The same, shorter, for lists ("Downloading 36% of 2.0 GB"). */
+fun downloadStatusShort(item: OfflineItem): String =
+    if (item.state == OfflineState.RUNNING && item.size > 0) {
+        "Downloading ${(item.fraction * 100).toInt()}% of ${OfflineCenter.sizeLabel(item.size)}"
+    } else {
+        downloadStatus(item)
+    }
 
 /** "Delete the downloaded copy?" before removing a finished download. */
 @Composable
@@ -195,10 +205,8 @@ fun EpisodeDownload(vm: LibraryViewModel, ep: Channel) {
                 }
                 IconButton(onClick = { confirm = item }) { Icon(Icons.Filled.Close, contentDescription = "Cancel download", tint = Muted) }
             }
-            OfflineState.QUEUED -> {
-                Text("Waiting", fontFamily = Sans, fontSize = 12.sp, color = Muted)
-                IconButton(onClick = { confirm = item }) { Icon(Icons.Filled.Close, contentDescription = "Cancel download", tint = Muted) }
-            }
+            // Why it waits is said under the episode's name.
+            OfflineState.QUEUED -> IconButton(onClick = { confirm = item }) { Icon(Icons.Filled.Close, contentDescription = "Cancel download", tint = Muted) }
             OfflineState.PAUSED, OfflineState.FAILED -> {
                 IconButton(onClick = { OfflineCenter.resume(ep.id) }) {
                     Icon(downloadIcon(), contentDescription = "Resume download", tint = Amber)
@@ -305,18 +313,25 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
 @Composable
 private fun DownloadRow(item: OfflineItem, tv: Boolean, onPlay: (Channel) -> Unit, onDelete: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
+    val done = item.state == OfflineState.DONE
     Row(
-        Modifier.fillMaxWidth().panel(shape).padding(10.dp),
+        Modifier
+            .fillMaxWidth()
+            .panel(shape)
+            // Phones: a tap on a saved one plays it (TV uses its Play button).
+            .then(if (!tv && done) Modifier.clip(shape).clickable { onPlay(item.asChannel()) } else Modifier)
+            .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val episode = item.kind == Kind.SERIES
+        // An episode's own picture, else its series' poster.
+        val still = item.kind == Kind.SERIES && item.logo.isNotBlank()
         AsyncImage(
-            model = item.logo.ifBlank { null },
+            model = item.logo.ifBlank { item.showPoster }.ifBlank { null },
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .width(if (episode) 96.dp else 56.dp)
-                .aspectRatio(if (episode) 16f / 9f else 2f / 3f)
+                .width(if (still) 96.dp else 56.dp)
+                .aspectRatio(if (still) 16f / 9f else 2f / 3f)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Ink3),
         )
@@ -329,14 +344,14 @@ private fun DownloadRow(item: OfflineItem, tv: Boolean, onPlay: (Channel) -> Uni
                 Text(second, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
-                downloadStatus(item),
+                downloadStatusShort(item),
                 fontFamily = Sans,
                 fontSize = 12.sp,
                 color = if (item.state == OfflineState.FAILED) Amber else Muted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (item.state != OfflineState.DONE && item.size > 0) {
+            if (!done && item.size > 0) {
                 LinearProgressIndicator(
                     progress = { item.fraction },
                     color = if (item.state == OfflineState.FAILED) Amber else Signal,
@@ -346,15 +361,33 @@ private fun DownloadRow(item: OfflineItem, tv: Boolean, onPlay: (Channel) -> Uni
             }
         }
         Spacer(Modifier.width(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            when (item.state) {
-                OfflineState.DONE -> TagChip("▶ Play", false) { onPlay(item.asChannel()) }
-                OfflineState.RUNNING, OfflineState.QUEUED -> TagChip("Pause", false) { OfflineCenter.pause(item.id) }
-                OfflineState.PAUSED -> TagChip("Resume", false) { OfflineCenter.resume(item.id) }
-                OfflineState.FAILED -> TagChip("Try again", false) { OfflineCenter.resume(item.id) }
+        Row(horizontalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 0.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (tv) {
+                when (item.state) {
+                    OfflineState.DONE -> TagChip("▶ Play", false) { onPlay(item.asChannel()) }
+                    OfflineState.RUNNING, OfflineState.QUEUED -> TagChip("Pause", false) { OfflineCenter.pause(item.id) }
+                    OfflineState.PAUSED -> TagChip("Resume", false) { OfflineCenter.resume(item.id) }
+                    OfflineState.FAILED -> TagChip("Try again", false) { OfflineCenter.resume(item.id) }
+                }
+            } else {
+                // Phones: icons, so the words beside them have room.
+                when (item.state) {
+                    OfflineState.DONE -> IconButton(onClick = { onPlay(item.asChannel()) }) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = Paper)
+                    }
+                    OfflineState.RUNNING, OfflineState.QUEUED -> IconButton(onClick = { OfflineCenter.pause(item.id) }) {
+                        Icon(ImageVector.vectorResource(R.drawable.ic_pause), contentDescription = "Pause", tint = Paper)
+                    }
+                    OfflineState.PAUSED -> IconButton(onClick = { OfflineCenter.resume(item.id) }) {
+                        Icon(downloadIcon(), contentDescription = "Resume", tint = Amber)
+                    }
+                    OfflineState.FAILED -> IconButton(onClick = { OfflineCenter.resume(item.id) }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Try again", tint = Amber)
+                    }
+                }
             }
             IconButton(onClick = onDelete) {
-                Icon(if (item.state == OfflineState.DONE) Icons.Filled.Delete else Icons.Filled.Close, contentDescription = "Delete", tint = Muted)
+                Icon(if (done) Icons.Filled.Delete else Icons.Filled.Close, contentDescription = if (done) "Delete download" else "Cancel download", tint = Muted)
             }
         }
     }
