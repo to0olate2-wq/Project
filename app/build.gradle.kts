@@ -187,4 +187,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.15.1")
     testImplementation("androidx.test:core-ktx:1.6.1")
+    // Remote-control tests (keys pressed on lists), run with Robolectric.
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
