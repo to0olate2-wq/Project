@@ -389,7 +389,7 @@ data class Settings(
     val kidsMode: Boolean = false,
     /** playlistId -> the groups kids mode shows. */
     val kidsGroups: Map<String, List<String>> = emptyMap(),
-    /** Keep playlists, favorites, hidden groups and Continue watching the same on linked devices. Off until linked. */
+    /** Keep everything (playlists, favorites, Continue watching, profiles, settings…) the same on linked devices. Off until linked. */
     val syncOn: Boolean = false,
     /** Asked Android for permission to show notifications (Android 13+), so it isn't asked again. */
     val askedNotify: Boolean = false,

@@ -143,10 +143,14 @@ class Repository(private val context: Context) {
         synchronized(this) {
             val old = _state.value
             var next = transform(old)
-            if (stamp && next !== old && next.sync.key.isNotEmpty()) {
+            if (stamp && next !== old) {
+                // Settings, profiles, reminders and alert words are dated even while not linked, so
+                // on linking the device where they were last changed wins.
                 next = SyncMerge.stamp(old, next, System.currentTimeMillis())
-                tell = next.sync.stamps !== old.sync.stamps || next.sync.removed !== old.sync.removed ||
-                    next.progress !== old.progress || next.sync.progressGone !== old.sync.progressGone
+                tell = next.sync.key.isNotEmpty() && (
+                    next.sync.stamps !== old.sync.stamps || next.sync.removed !== old.sync.removed ||
+                        next.progress !== old.progress || next.sync.progressGone !== old.sync.progressGone
+                    )
             }
             _state.value = next
         }
@@ -207,7 +211,7 @@ class Repository(private val context: Context) {
         update(stamp = false) { s ->
             val peers = if (peerId.isEmpty()) emptyMap() else mapOf(peerId to SyncPeer(peerName))
             val linked = s.copy(
-                sync = SyncMeta(deviceId = s.sync.deviceId, key = key, peers = peers),
+                sync = SyncMeta(deviceId = s.sync.deviceId, key = key, peers = peers, stamps = SyncMerge.wholeAppStamps(s.sync.stamps)),
                 settings = s.settings.copy(syncOn = true),
             )
             SyncMerge.touchAll(linked, System.currentTimeMillis())
@@ -216,7 +220,10 @@ class Repository(private val context: Context) {
 
     /** Leaves the linked devices: this one keeps everything it has but stops syncing. */
     fun unlinkSync() = update(stamp = false) { s ->
-        s.copy(sync = SyncMeta(deviceId = s.sync.deviceId), settings = s.settings.copy(syncOn = false))
+        s.copy(
+            sync = SyncMeta(deviceId = s.sync.deviceId, stamps = SyncMerge.wholeAppStamps(s.sync.stamps)),
+            settings = s.settings.copy(syncOn = false),
+        )
     }
 
     private val writer = Executors.newSingleThreadExecutor { r ->
@@ -520,9 +527,8 @@ class Repository(private val context: Context) {
         }
         while (next.size > 300) next.remove(next.keys.first())
         // Finished or removed: tell linked devices, so they drop it too.
-        val sync = if (pos <= 0 && had && s.sync.key.isNotEmpty() && '@' !in key.substringBefore('|')) {
-            val syncKey = SyncMerge.syncId(s, key.substringBefore('|')) + "|" + key.substringAfter('|')
-            s.sync.copy(progressGone = s.sync.progressGone + (syncKey to now))
+        val sync = if (pos <= 0 && had && s.sync.key.isNotEmpty()) {
+            s.sync.copy(progressGone = s.sync.progressGone + (SyncMerge.syncProgressKey(s, key) to now))
         } else {
             s.sync
         }

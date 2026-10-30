@@ -77,10 +77,12 @@ The app only makes network connections needed for what you ask it to do:
   The Player. Your playlists and logins go directly between your devices on your own network;
   sharing stops when you leave that screen.
 - **Sync with my devices** (off unless you link devices). Devices you link with the 6-digit
-  code keep playlists, favorites, hidden groups and Continue watching the same: while the app is
-  open, they find each other on your home network and exchange that data directly, encrypted with
-  a key only your linked devices have. Nothing goes through the Internet or to the developer.
-  Unlinking stops it.
+  code keep everything the same: playlists (with their logins), favorites and lists, Continue
+  watching and recently watched, profiles, settings (apart from ones that belong to one device,
+  such as its screen and player), followed series, reminders and alert words, and the Kids
+  profile's time watched today. While the app is open, they find each other on your home network
+  and exchange that data directly, encrypted with a key only your linked devices have. Nothing goes
+  through the Internet or to the developer. Unlinking stops it.
 - **Phone remote** (only after you pair a phone). While the app is open, it answers paired phones
   on your home network so they can work as a remote and keyboard and start channels, films and
   series. Phones pair with a code shown on the TV; the TV keeps only a fingerprint of each

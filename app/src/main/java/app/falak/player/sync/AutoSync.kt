@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import app.falak.player.FreezeWatch
 import app.falak.player.data.Repository
+import app.falak.player.data.KidsClock
 import app.falak.player.data.SyncSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -210,7 +211,7 @@ class AutoSync(private val context: Context, private val repo: Repository) {
 
     /** Sends our state, takes theirs back (already merged with ours on their side). */
     private fun exchange(address: String, c: SyncCrypto): Boolean {
-        val body = c.seal(pack(repo.syncSnapshot(me)))
+        val body = c.seal(pack(snapshot()))
         val req = Request.Builder()
             .url("http://$address/sync")
             .header("X-Group", c.tag)
@@ -219,8 +220,18 @@ class AutoSync(private val context: Context, private val repo: Repository) {
         http.newCall(req).execute().use { res ->
             if (!res.isSuccessful) throw IOException("HTTP ${res.code}")
             val bytes = res.body?.bytes() ?: throw IOException("Empty")
-            return repo.mergeSync(unpack(c.open(bytes)))
+            return take(unpack(c.open(bytes)))
         }
+    }
+
+    /** What this device sends: the app's state, and the Kids profile's day here. */
+    private fun snapshot(): SyncSnapshot = repo.syncSnapshot(me).copy(kids = KidsClock.share(context))
+
+    /** Takes in what a linked device sent. Returns true when something here changed. */
+    private fun take(theirs: SyncSnapshot): Boolean {
+        val changed = repo.mergeSync(theirs)
+        theirs.kids?.let { KidsClock.takeShare(context, it, repo.state.value.settings) }
+        return changed
     }
 
     // ---- the listening side ----
@@ -256,8 +267,8 @@ class AutoSync(private val context: Context, private val repo: Repository) {
                 } catch (e: Exception) {
                     return reply(out, 403, ByteArray(0)) // not from a linked device
                 }
-                val changed = repo.mergeSync(theirs)
-                reply(out, 200, c.seal(pack(repo.syncSnapshot(me))))
+                val changed = take(theirs)
+                reply(out, 200, c.seal(pack(snapshot())))
                 _status.value = "Synced with ${theirs.device.ifBlank { "another device" }}"
                 FreezeWatch.note("synced with another device")
                 if (changed && peers.size > 1) kick.trySend(Unit)

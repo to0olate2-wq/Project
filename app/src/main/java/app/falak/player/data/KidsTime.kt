@@ -4,7 +4,24 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 import java.util.Calendar
+
+/**
+ * The Kids profile's day on one device, sent to linked devices so the daily limit, extra time,
+ * "no limit today" and a lifted bedtime count on all of them.
+ */
+@Serializable
+data class KidsShare(
+    /** "yyyyMMdd" (see KidsClock.today). */
+    val day: String,
+    val usedMs: Long = 0,
+    val extraMinutes: Int = 0,
+    val unlimited: Boolean = false,
+    val bedtimeLiftedUntil: Long = 0,
+    /** When a grown-up last set today's count back to nothing (on any device). */
+    val resetAt: Long = 0,
+)
 
 /**
  * Kids screen time (Settings → Profiles & parental control, with kids mode on): how long the Kids
@@ -158,10 +175,50 @@ object KidsClock {
         _blocked.value = null
     }
 
-    /** Today's count back to nothing (Settings). */
-    fun resetToday(context: Context) {
+    /** Today's count back to nothing (Settings); linked devices do the same. */
+    fun resetToday(context: Context, now: Long = System.currentTimeMillis()) {
         pendingMs = 0L
-        prefs(context).edit().remove("used").remove("extra").remove("unlimited").remove("bedtimeLiftedUntil").apply()
+        prefs(context).edit().remove("used").remove("extra").remove("unlimited").remove("bedtimeLiftedUntil")
+            .putLong("resetAt", now).apply()
         _blocked.value = null
+    }
+
+    /** Today here, for linked devices. */
+    fun share(context: Context, now: Long = System.currentTimeMillis()): KidsShare {
+        flush(context, now)
+        val p = prefs(context)
+        return KidsShare(
+            day = today(now),
+            usedMs = todays(context, "used", now),
+            extraMinutes = todays(context, "extra", now).toInt(),
+            unlimited = p.getString("unlimited", null) == today(now),
+            bedtimeLiftedUntil = p.getLong("bedtimeLiftedUntil", 0L),
+            resetAt = p.getLong("resetAt", 0L),
+        )
+    }
+
+    /**
+     * Today on a linked device: the most watched and the most extra time count here too (usually
+     * the kids watch on one device after another), and a reset there resets here.
+     */
+    fun takeShare(context: Context, k: KidsShare, settings: Settings, now: Long = System.currentTimeMillis()) {
+        val p = prefs(context)
+        if (k.resetAt > p.getLong("resetAt", 0L)) {
+            pendingMs = 0L
+            p.edit().remove("used").remove("extra").remove("unlimited").remove("bedtimeLiftedUntil")
+                .putLong("resetAt", k.resetAt).apply()
+        }
+        val day = today(now)
+        if (k.day == day) {
+            flush(context, now)
+            val e = p.edit()
+            if (k.usedMs > todays(context, "used", now)) e.putString("used", "$day:${k.usedMs}")
+            if (k.extraMinutes > todays(context, "extra", now)) e.putString("extra", "$day:${k.extraMinutes}")
+            if (k.unlimited) e.putString("unlimited", day)
+            if (k.bedtimeLiftedUntil > p.getLong("bedtimeLiftedUntil", 0L)) e.putLong("bedtimeLiftedUntil", k.bedtimeLiftedUntil)
+            e.apply()
+        }
+        // More time given on the other device: the "time's up" page here goes.
+        if (_blocked.value != null && state(context, settings, now).block == null) _blocked.value = null
     }
 }
