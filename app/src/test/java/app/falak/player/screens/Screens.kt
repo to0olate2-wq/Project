@@ -807,6 +807,50 @@ class PhoneDownloadsScreens : ScreenshotBase() {
     }
 }
 
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneArrangeScreens : ScreenshotBase() {
+    // Your own order (Arrange), then a playlist combining two.
+    @Test @Config(qualifiers = PHONE)
+    fun phoneArrangeAndCombine() = mainScreens("phone") { vm, shoot ->
+        val groups = vm.index.groupsOf(Kind.LIVE).keys.toList()
+        check(groups.size >= 2)
+        val moved = groups.last()
+        vm.moveGroup(Kind.LIVE, moved, 0, toTop = true)
+        waitFor { vm.index.groupsOf(Kind.LIVE).keys.first() == moved }
+        vm.openArrange(Kind.LIVE, null)
+        shoot("phone-51-arrange-groups")
+        val last = vm.index.groupsOf(Kind.LIVE)[moved]!!.last()
+        vm.moveChannel(last, 0, toTop = true)
+        waitFor { vm.index.groupsOf(Kind.LIVE)[moved]!!.first().id == last.id }
+        vm.openArrange(Kind.LIVE, moved)
+        shoot("phone-52-arrange-channels")
+        // A second playlist (its provider can't be reached: left out) and one combining both.
+        val repo = app.repo
+        val sample = repo.state.value.playlists.first()
+        repo.addPlaylist(Playlist("second", "Provider B", SourceType.XTREAM, "http://127.0.0.1:9", "bob", "pw"))
+        check(vm.addCombined("Everything", listOf(sample.id, "second")) == null)
+        waitFor { vm.playlist?.isCombined == true && vm.index.all.isNotEmpty() }
+        // Each item carries the mark of the playlist it came from.
+        check(vm.index.all.all { '~' in it.id }) { "Combined items aren't marked" }
+        vm.section = Section.LIVE
+        shoot("phone-53-combined-live")
+        vm.screen = Screen.PLAYLISTS
+        shoot("phone-54-playlists-combined")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvArrangeScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvArrange() = mainScreens("tv") { vm, shoot ->
+        val group = vm.index.groupsOf(Kind.LIVE).keys.first()
+        vm.openArrange(Kind.LIVE, group)
+        shoot("tv-59-arrange-channels")
+    }
+}
+
 // ---------- Phone (1080 × 2340) ----------
 
 @RunWith(RobolectricTestRunner::class)
