@@ -377,6 +377,8 @@ data class Settings(
     val turnWithPhone: Boolean = true,
     /** Downloads (films and episodes to watch offline) only on Wi-Fi. */
     val downloadWifiOnly: Boolean = true,
+    /** A downloaded film or episode watched to the end is deleted from Downloads once the player leaves it. */
+    val downloadDeleteWatched: Boolean = false,
     /** Video player: "auto" (picked for this TV), "exo", "exo_soft", "vlc" or "external". */
     val player: String = "auto",
     /** Refresh the playlist in the background when the saved copy is older than this; 0 = never. */

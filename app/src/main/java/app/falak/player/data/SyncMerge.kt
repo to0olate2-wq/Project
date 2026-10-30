@@ -100,7 +100,7 @@ object SyncMerge {
     /** Settings that belong to one device (its screen, player, network, lock) or sync as parts of a playlist. */
     private val DEVICE_SETTINGS = setOf(
         "aspect", "bigBuffer", "softwareAudio", "preferHls", "frameRate", "theme", "layout", "player",
-        "downloadWifiOnly", "kidsMode", "syncOn", "askedNotify",
+        "downloadWifiOnly", "downloadDeleteWatched", "kidsMode", "syncOn", "askedNotify",
         "hiddenGroups", "guideOverrides", "lockedGroups", "kidsGroups",
     )
 
