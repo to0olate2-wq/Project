@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.StoreTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:14" hostname="runnervm48cm3" time="0.029">
+  <properties/>
+  <testcase name="guideSkipsChannelsOutsideTheWantedOnes" classname="app.falak.player.data.StoreTest" time="0.02"/>
+  <testcase name="groupsAreListedPerKindInPlaylistOrder" classname="app.falak.player.data.StoreTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

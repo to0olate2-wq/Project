@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.ServiceReportTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:14" hostname="runnervm48cm3" time="0.05">
+  <properties/>
+  <testcase name="nothingYet" classname="app.falak.player.data.ServiceReportTest" time="0.012"/>
+  <testcase name="goodWeekWithASlowEvening" classname="app.falak.player.data.ServiceReportTest" time="0.036"/>
+  <testcase name="poorWhenChannelsKeepFailing" classname="app.falak.player.data.ServiceReportTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

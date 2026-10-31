@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.SyncedCaptionsTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:17" hostname="runnervm48cm3" time="0.031">
+  <properties/>
+  <testcase name="showingTheWordsHeardByNow" classname="app.falak.player.player.SyncedCaptionsTest" time="0.012"/>
+  <testcase name="soundOfUnknownTimeShowsAtOnce" classname="app.falak.player.player.SyncedCaptionsTest" time="0.012"/>
+  <testcase name="theLineBeforeStaysAboveTheNextOne" classname="app.falak.player.player.SyncedCaptionsTest" time="0.0"/>
+  <testcase name="aNewLineStartsAfterTheStepsWorkedOn" classname="app.falak.player.player.SyncedCaptionsTest" time="0.005"/>
+  <testcase name="wordsAreHeardWhenTheirFirstPieceIs" classname="app.falak.player.player.SyncedCaptionsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

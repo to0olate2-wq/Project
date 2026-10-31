@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.ArrangementTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:48:56" hostname="runnervm48cm3" time="0.041">
+  <properties/>
+  <testcase name="goneOnesAreSkippedAndNewOnesFollow" classname="app.falak.player.data.ArrangementTest" time="0.035"/>
+  <testcase name="groupsAndChannelsInTheOrderChosen" classname="app.falak.player.data.ArrangementTest" time="0.001"/>
+  <testcase name="noOrderLeavesTheListsAsTheyCame" classname="app.falak.player.data.ArrangementTest" time="0.0"/>
+  <testcase name="onlyWhatDiffersFromThePlaylistIsKept" classname="app.falak.player.data.ArrangementTest" time="0.0"/>
+  <testcase name="aNewOrderIsAppliedWithoutBuildingAgain" classname="app.falak.player.data.ArrangementTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

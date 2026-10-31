@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.ReuseTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:12" hostname="runnervm48cm3" time="0.113">
+  <properties/>
+  <testcase name="groupsAreStoredOnce" classname="app.falak.player.data.ReuseTest" time="0.081"/>
+  <testcase name="guideKeyIsWorkedOutOnceAndNotPartOfEquality" classname="app.falak.player.data.ReuseTest" time="0.006"/>
+  <testcase name="refreshKeepsUnchangedEntries" classname="app.falak.player.data.ReuseTest" time="0.026"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

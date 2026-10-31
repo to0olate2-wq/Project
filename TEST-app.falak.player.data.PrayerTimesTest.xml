@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.PrayerTimesTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:07" hostname="runnervm48cm3" time="0.023">
+  <properties/>
+  <testcase name="dubaiMatchesAPublishedTimetable" classname="app.falak.player.data.PrayerTimesTest" time="0.022"/>
+  <testcase name="ummAlQuraIshaIsNinetyMinutesAfterMaghrib" classname="app.falak.player.data.PrayerTimesTest" time="0.001"/>
+  <testcase name="hanafiAsrIsLater" classname="app.falak.player.data.PrayerTimesTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

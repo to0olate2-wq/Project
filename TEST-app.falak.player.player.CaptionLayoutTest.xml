@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.CaptionLayoutTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:16" hostname="runnervm48cm3" time="0.035">
+  <properties/>
+  <testcase name="keptOnTheVisiblePartOfThePicture" classname="app.falak.player.player.CaptionLayoutTest" time="0.012"/>
+  <testcase name="lineWidthLeavesThePaintersMargins" classname="app.falak.player.player.CaptionLayoutTest" time="0.0"/>
+  <testcase name="places" classname="app.falak.player.player.CaptionLayoutTest" time="0.002"/>
+  <testcase name="sizedByTheHeightButNeverHuge" classname="app.falak.player.player.CaptionLayoutTest" time="0.0"/>
+  <testcase name="linesFitTheWidthAndTheNumberChosen" classname="app.falak.player.player.CaptionLayoutTest" time="0.02"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

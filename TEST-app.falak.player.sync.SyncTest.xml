@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.sync.SyncTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-31T09:01:19" hostname="runnervm48cm3" time="5.239">
+  <properties/>
+  <testcase name="shareCopyAndMerge" classname="app.falak.player.sync.SyncTest" time="3.311"/>
+  <testcase name="bigM3uFileFromThePhonePage" classname="app.falak.player.sync.SyncTest" time="1.928"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

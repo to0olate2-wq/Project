@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.PhoneHomeScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:50:52" hostname="runnervm48cm3" time="16.881">
+  <properties/>
+  <testcase name="phoneHome" classname="app.falak.player.screens.PhoneHomeScreens" time="16.881"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
