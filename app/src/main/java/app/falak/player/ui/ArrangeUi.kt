@@ -57,7 +57,10 @@ fun GroupMenu(vm: LibraryViewModel, kind: Kind?, group: String, onDismiss: () ->
         text = {
             Column {
                 if (kind != null) {
-                    Kicker("Order", color = Muted)
+                    // Where it is now: changes as soon as it moves.
+                    val order = vm.groupOrder(kind)
+                    val at = order.indexOf(group)
+                    Kicker(if (at >= 0) "Order · ${at + 1} of ${order.size}" else "Order", color = Muted)
                     Spacer(Modifier.height(6.dp))
                     ChipFlow {
                         GhostButton("To top") { vm.moveGroup(kind, group, 0, toTop = true) }
@@ -104,10 +107,12 @@ fun GroupMenu(vm: LibraryViewModel, kind: Kind?, group: String, onDismiss: () ->
 @Composable
 fun OrderInGroup(vm: LibraryViewModel, ch: Channel, onDismiss: () -> Unit) {
     if (ch.group.isBlank() || vm.kidsActive) return
-    val inGroup = vm.index.groupsOf(ch.kind)[ch.group]?.any { it.id == ch.id } == true
-    if (!inGroup) return
+    val list = vm.index.groupsOf(ch.kind)[ch.group].orEmpty()
+    // Where it is now: changes as soon as it moves.
+    val at = list.indexOfFirst { it.id == ch.id }
+    if (at < 0) return
     Spacer(Modifier.height(10.dp))
-    Kicker("Order in “${ch.group}”", color = Muted)
+    Kicker("Order in “${ch.group}” · ${at + 1} of ${list.size}", color = Muted)
     Spacer(Modifier.height(6.dp))
     ChipFlow {
         GhostButton("To top") { vm.moveChannel(ch, 0, toTop = true) }
@@ -180,12 +185,20 @@ fun ArrangeScreen(vm: LibraryViewModel, state: AppState) {
             itemsIndexed(items, key = { _, it -> it.first }) { i, (id, name) ->
                 val shape = RoundedCornerShape(6.dp)
                 fun move(delta: Int, top: Boolean = false) {
-                    if (group == null) {
+                    val at = if (group == null) {
                         vm.moveGroup(kind, id, delta, toTop = top)
                     } else {
-                        vm.index.groupsOf(kind)[group]?.firstOrNull { it.id == id }?.let { vm.moveChannel(it, delta, toTop = top) }
+                        vm.index.groupsOf(kind)[group]?.firstOrNull { it.id == id }?.let { vm.moveChannel(it, delta, toTop = top) } ?: -1
                     }
-                    if (top) scope.launch { listState.animateScrollToItem(0) }
+                    if (at < 0) return
+                    // Keep the moved row on screen (the remote stays on it).
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val first = visible.firstOrNull()?.index ?: 0
+                    val last = visible.lastOrNull()?.index ?: 0
+                    when {
+                        at <= first -> scope.launch { listState.animateScrollToItem((at - 1).coerceAtLeast(0)) }
+                        at >= last -> scope.launch { listState.animateScrollToItem((at - visible.size + 3).coerceAtLeast(0)) }
+                    }
                 }
                 Row(
                     // Rows slide when moved, and show at once (no fade) when the list changes.
@@ -209,11 +222,13 @@ fun ArrangeScreen(vm: LibraryViewModel, state: AppState) {
                         modifier = Modifier.weight(1f),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (i > 0) TagChip("To top", false) { move(0, top = true) }
-                        IconButton(onClick = { move(-1) }, enabled = i > 0, modifier = Modifier.focusRing(shape)) {
+                        // Always there and always reachable (at the top or bottom they just do nothing), so the
+                        // remote never loses its place when a row arrives at either end.
+                        TagChip("To top", false) { if (i > 0) move(0, top = true) }
+                        IconButton(onClick = { if (i > 0) move(-1) }, modifier = Modifier.focusRing(shape)) {
                             Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up", tint = if (i > 0) Paper else Faint)
                         }
-                        IconButton(onClick = { move(1) }, enabled = i < items.lastIndex, modifier = Modifier.focusRing(shape)) {
+                        IconButton(onClick = { if (i < items.lastIndex) move(1) }, modifier = Modifier.focusRing(shape)) {
                             Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down", tint = if (i < items.lastIndex) Paper else Faint)
                         }
                     }
