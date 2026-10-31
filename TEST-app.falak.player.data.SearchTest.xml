@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.SearchTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:55" hostname="runnervm48cm3" time="1.359">
+  <properties/>
+  <testcase name="normalizesCaseAccentsArabicFormsAndDigits" classname="app.falak.player.data.SearchTest" time="0.042"/>
+  <testcase name="arabicWithOrWithoutAlAndLetterForms" classname="app.falak.player.data.SearchTest" time="0.022"/>
+  <testcase name="exactTitleFirstThenStartsWithThenContains" classname="app.falak.player.data.SearchTest" time="0.004"/>
+  <testcase name="bareTitleDropsProviderLabels" classname="app.falak.player.data.SearchTest" time="0.001"/>
+  <testcase name="oneEditDistance" classname="app.falak.player.data.SearchTest" time="0.001"/>
+  <testcase name="oneTypoForgivenOnLongerWordsOnly" classname="app.falak.player.data.SearchTest" time="0.003"/>
+  <testcase name="typoMatchesRankBelowRealOnes" classname="app.falak.player.data.SearchTest" time="0.001"/>
+  <testcase name="emptySearchFindsNothingAndFilterApplies" classname="app.falak.player.data.SearchTest" time="0.003"/>
+  <testcase name="programmeTitles" classname="app.falak.player.data.SearchTest" time="0.002"/>
+  <testcase name="accentsApostrophesAndTagsDontMatter" classname="app.falak.player.data.SearchTest" time="0.002"/>
+  <testcase name="wordsInAnyOrderAndJoinedOrSplit" classname="app.falak.player.data.SearchTest" time="0.003"/>
+  <testcase name="fastOnBigPlaylists" classname="app.falak.player.data.SearchTest" time="1.275"/>
+  <system-out><![CDATA[150,000 names searched in 62 ms
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

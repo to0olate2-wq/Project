@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.CrashTextTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:43" hostname="runnervm48cm3" time="0.07">
+  <properties/>
+  <testcase name="personalDetailsAreRemoved" classname="app.falak.player.data.CrashTextTest" time="0.053"/>
+  <testcase name="otherKindsOfStop" classname="app.falak.player.data.CrashTextTest" time="0.015"/>
+  <testcase name="crashSignatureNamesTheRootCauseAndAppCode" classname="app.falak.player.data.CrashTextTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

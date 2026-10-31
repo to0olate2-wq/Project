@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.CrossScriptTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:44" hostname="runnervm48cm3" time="0.09">
+  <properties/>
+  <testcase name="guideTitlesToo" classname="app.falak.player.data.CrossScriptTest" time="0.051"/>
+  <testcase name="sameScriptComesFirstAndLooseOnesStayOut" classname="app.falak.player.data.CrossScriptTest" time="0.008"/>
+  <testcase name="arabicFindsLatin" classname="app.falak.player.data.CrossScriptTest" time="0.019"/>
+  <testcase name="latinFindsArabic" classname="app.falak.player.data.CrossScriptTest" time="0.007"/>
+  <testcase name="numbersMustAgree" classname="app.falak.player.data.CrossScriptTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

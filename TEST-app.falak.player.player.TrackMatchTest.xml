@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.TrackMatchTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:50:03" hostname="runnervm48cm3" time="0.047">
+  <properties/>
+  <testcase name="picksByLanguageThenByName" classname="app.falak.player.player.TrackMatchTest" time="0.046"/>
+  <testcase name="languagesMatchWhateverCodeTheStreamUses" classname="app.falak.player.player.TrackMatchTest" time="0.0"/>
+  <testcase name="rememberedValues" classname="app.falak.player.player.TrackMatchTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

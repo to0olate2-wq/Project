@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.HabitsTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:45" hostname="runnervm48cm3" time="0.53">
+  <properties/>
+  <testcase name="recordKeepsTheLatestAndDropsOldOnes" classname="app.falak.player.data.HabitsTest" time="0.515"/>
+  <testcase name="aroundMidnight" classname="app.falak.player.data.HabitsTest" time="0.01"/>
+  <testcase name="eachProfileAndPlaylistHasItsOwn" classname="app.falak.player.data.HabitsTest" time="0.0"/>
+  <testcase name="usualChannelsForThisTimeOfDay" classname="app.falak.player.data.HabitsTest" time="0.002"/>
+  <testcase name="oneDayIsNotAHabit" classname="app.falak.player.data.HabitsTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

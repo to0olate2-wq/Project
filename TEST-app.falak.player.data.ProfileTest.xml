@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.ProfileTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:48" hostname="runnervm48cm3" time="0.073">
+  <properties/>
+  <testcase name="eachProfileKeepsItsOwnKeys" classname="app.falak.player.data.ProfileTest" time="0.045"/>
+  <testcase name="everyProfileSyncsUnderItsOwnKeys" classname="app.falak.player.data.ProfileTest" time="0.027"/>
+  <testcase name="removingAPlaylistRemovesEveryProfilesData" classname="app.falak.player.data.ProfileTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

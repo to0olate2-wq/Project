@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.AlertsTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:32" hostname="runnervm48cm3" time="0.056">
+  <properties/>
+  <testcase name="alertWordsFindProgrammesOnceWithTheOtherChannelsCounted" classname="app.falak.player.data.AlertsTest" time="0.049"/>
+  <testcase name="aReminderJustStartedIsStillOffered" classname="app.falak.player.data.AlertsTest" time="0.001"/>
+  <testcase name="remindersSetByHandComeFirstAndAreNotRepeatedByWords" classname="app.falak.player.data.AlertsTest" time="0.0"/>
+  <testcase name="whenLabels" classname="app.falak.player.data.AlertsTest" time="0.004"/>
+  <testcase name="wordsMustMatchWholeWordStarts" classname="app.falak.player.data.AlertsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

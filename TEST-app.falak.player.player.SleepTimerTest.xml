@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.SleepTimerTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:50:02" hostname="runnervm48cm3" time="0.012">
+  <properties/>
+  <testcase name="endOfFilmWaitsForThatFilm" classname="app.falak.player.player.SleepTimerTest" time="0.004"/>
+  <testcase name="offIsOff" classname="app.falak.player.player.SleepTimerTest" time="0.0"/>
+  <testcase name="countsDownAndFades" classname="app.falak.player.player.SleepTimerTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

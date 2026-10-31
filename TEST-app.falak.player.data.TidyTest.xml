@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.TidyTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:58" hostname="runnervm48cm3" time="0.088">
+  <properties/>
+  <testcase name="cleanAndMergeTogether" classname="app.falak.player.data.TidyTest" time="0.081"/>
+  <testcase name="offChangesNothing" classname="app.falak.player.data.TidyTest" time="0.0"/>
+  <testcase name="cleanKeepsTheGuideAndLeavesFilmsAlone" classname="app.falak.player.data.TidyTest" time="0.0"/>
+  <testcase name="mergeShowsTheBestVersionOnceInTheFirstPlace" classname="app.falak.player.data.TidyTest" time="0.004"/>
+  <testcase name="cleanNamesDropLabelsTagsAndDecoration" classname="app.falak.player.data.TidyTest" time="0.001"/>
+  <testcase name="qualityFromTheName" classname="app.falak.player.data.TidyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

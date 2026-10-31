@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.AutoCaptionsTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:50:00" hostname="runnervm48cm3" time="0.04">
+  <properties/>
+  <testcase name="stereo48kBecomesMono16k" classname="app.falak.player.player.AutoCaptionsTest" time="0.003"/>
+  <testcase name="otherRatesStayAsTheyAre" classname="app.falak.player.player.AutoCaptionsTest" time="0.0"/>
+  <testcase name="aFinishedLineStaysAboveTheNextOne" classname="app.falak.player.player.AutoCaptionsTest" time="0.027"/>
+  <testcase name="rollsUpTheLastTwoLines" classname="app.falak.player.player.AutoCaptionsTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

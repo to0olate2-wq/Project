@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.KidsTimeTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T08:49:46" hostname="runnervm48cm3" time="0.013">
+  <properties/>
+  <testcase name="durations" classname="app.falak.player.data.KidsTimeTest" time="0.01"/>
+  <testcase name="minutesLeftAndTimeUp" classname="app.falak.player.data.KidsTimeTest" time="0.002"/>
+  <testcase name="bedtimeRunsPastMidnight" classname="app.falak.player.data.KidsTimeTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
