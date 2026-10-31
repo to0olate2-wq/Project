@@ -817,12 +817,18 @@ class PhoneArrangeScreens : ScreenshotBase() {
         check(groups.size >= 2)
         val moved = groups.last()
         vm.moveGroup(Kind.LIVE, moved, 0, toTop = true)
-        waitFor { vm.index.groupsOf(Kind.LIVE).keys.first() == moved }
+        check(vm.index.groupsOf(Kind.LIVE).keys.first() == moved) { "The new group order didn't show at once" }
         vm.openArrange(Kind.LIVE, null)
         shoot("phone-51-arrange-groups")
         val last = vm.index.groupsOf(Kind.LIVE)[moved]!!.last()
         vm.moveChannel(last, 0, toTop = true)
-        waitFor { vm.index.groupsOf(Kind.LIVE)[moved]!!.first().id == last.id }
+        // On screen at once, nothing to wait for.
+        check(vm.index.groupsOf(Kind.LIVE)[moved]!!.first().id == last.id) { "The new order didn't show at once" }
+        // Two presses straight after each other both count.
+        check(vm.moveChannel(last, 1) == 1)
+        check(vm.moveChannel(last, 1) == 2)
+        check(vm.index.groupsOf(Kind.LIVE)[moved]!!.indexOfFirst { it.id == last.id } == 2) { "A quick second press was lost" }
+        check(vm.moveChannel(last, 0, toTop = true) == 0)
         vm.openArrange(Kind.LIVE, moved)
         shoot("phone-52-arrange-channels")
         // A second playlist (its provider can't be reached: left out) and one combining both.

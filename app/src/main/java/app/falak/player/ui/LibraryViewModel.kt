@@ -1014,37 +1014,65 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return index.groupsOf(kind).keys.filter { it !in hidden }
     }
 
-    /** Group [g] of [kind] [delta] places up (−1) or down (1), or to the top. */
-    fun moveGroup(kind: Kind, g: String, delta: Int, toTop: Boolean = false) {
-        val p = playlist ?: return
+    /**
+     * Group [g] of [kind] [delta] places up (−1) or down (1), or to the top. Returns its place
+     * now (−1: it didn't move). The lists show the new order at once.
+     */
+    fun moveGroup(kind: Kind, g: String, delta: Int, toTop: Boolean = false): Int {
+        val p = playlist ?: return -1
         val order = groupOrder(kind).toMutableList()
-        if (!moveIn(order, g, delta, toTop)) return
-        // The playlist's own order: where each group first appears.
+        if (!moveIn(order, g, delta, toTop)) return -1
+        // The playlist's own order of the groups.
         val natural = HashMap<String, Int>()
-        for (ch in index.all) if (ch.kind == kind && ch.group !in natural) natural[ch.group] = natural.size
+        for (name in index.plainGroupNames(kind)) natural[name] = natural.size
         val keep = app.falak.player.data.Arrangement.trimmed(order, natural)
-        repo.arrange(p.id) { a -> a.copy(groups = if (keep.isEmpty()) a.groups - kind.name else a.groups + (kind.name to keep)) }
+        rearrange(p) { a -> a.copy(groups = if (keep.isEmpty()) a.groups - kind.name else a.groups + (kind.name to keep)) }
+        return order.indexOf(g)
     }
 
-    /** Channel (film, series) [ch] [delta] places up or down in its group, or to the top. */
-    fun moveChannel(ch: Channel, delta: Int, toTop: Boolean = false) {
-        val p = playlist ?: return
-        val list = index.groupsOf(ch.kind)[ch.group] ?: return
+    /**
+     * Channel (film, series) [ch] [delta] places up or down in its group, or to the top. Returns
+     * its place now (−1: it didn't move). The lists show the new order at once.
+     */
+    fun moveChannel(ch: Channel, delta: Int, toTop: Boolean = false): Int {
+        val p = playlist ?: return -1
+        val list = index.groupsOf(ch.kind)[ch.group] ?: return -1
         val order = list.map { it.id }.toMutableList()
-        if (!moveIn(order, ch.id, delta, toTop)) return
-        val members = order.toHashSet()
-        val natural = HashMap<String, Int>()
-        index.all.forEachIndexed { i, c -> if (c.id in members) natural[c.id] = i }
+        if (!moveIn(order, ch.id, delta, toTop)) return -1
+        // The group's own order in the playlist.
+        val natural = HashMap<String, Int>(list.size * 2)
+        index.plainGroup(ch.kind, ch.group).forEachIndexed { i, c -> natural[c.id] = i }
         val keep = app.falak.player.data.Arrangement.trimmed(order, natural)
         val key = app.falak.player.data.Arrangement.channelsKey(ch.kind, ch.group)
-        repo.arrange(p.id) { a -> a.copy(channels = if (keep.isEmpty()) a.channels - key else a.channels + (key to keep)) }
+        rearrange(p) { a -> a.copy(channels = if (keep.isEmpty()) a.channels - key else a.channels + (key to keep)) }
+        return order.indexOf(ch.id)
     }
 
     /** Back to the playlist's own order: the groups of [kind] (group null), or one group's channels. */
     fun resetOrder(kind: Kind, group: String?) {
         val p = playlist ?: return
-        repo.arrange(p.id) { a ->
+        rearrange(p) { a ->
             if (group == null) a.copy(groups = a.groups - kind.name) else a.copy(channels = a.channels - app.falak.player.data.Arrangement.channelsKey(kind, group))
+        }
+    }
+
+    /** Keeps the new order, and shows it at once: only the groups it touches are sorted again. */
+    private fun rearrange(p: Playlist, change: (app.falak.player.data.Arrangement) -> app.falak.player.data.Arrangement) {
+        repo.arrange(p.id, change)
+        applyArrangement()
+    }
+
+    /** The lists in the order kept for the open playlist, without building them again. */
+    private fun applyArrangement() {
+        val order = arrangementNow()
+        val old = index
+        if (old.raw.isEmpty() || old.arrangement == order) return
+        val next = old.rearranged(order)
+        index = next
+        if (repo.currentIndex === old) repo.currentIndex = next
+        val p = playlist ?: return
+        repo.openLibrary?.takeIf { it.playlistId == p.id }?.let { kept ->
+            repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(kept.playlistId, next, kept.epgUrl, kept.serverTz, kept.savedAt)
         }
     }
 
@@ -1620,13 +1648,25 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun retidyIfChanged() {
         val want = tidyWanted()
-        val order = arrangementNow()
         val old = index
-        if (old.raw.isEmpty() || (old.tidy == want && old.arrangement == order) || retidyJob?.isActive == true) return
+        if (old.raw.isEmpty()) return
+        // Only the order changed (here, or on a linked device): applied at once, nothing rebuilt.
+        if (old.tidy == want) {
+            applyArrangement()
+            return
+        }
+        if (retidyJob?.isActive == true) return
         val p = playlist ?: return
+        val order = arrangementNow()
         retidyJob = viewModelScope.launch {
             val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second, order) }
-            if (index !== old || playlist?.id != p.id) return@launch
+            if (playlist?.id != p.id) return@launch
+            if (index !== old) {
+                // The lists changed meanwhile (a new order, say): build again from them.
+                retidyJob = null
+                retidyIfChanged()
+                return@launch
+            }
             index = built
             if (repo.currentIndex === old) repo.currentIndex = built
             repo.openLibrary?.takeIf { it.playlistId == p.id }?.let { kept ->
