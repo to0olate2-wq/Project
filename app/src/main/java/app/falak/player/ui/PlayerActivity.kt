@@ -2248,20 +2248,22 @@ class PlayerActivity : ComponentActivity() {
     /** Films and episodes: where it was when subtitles were turned on (their first line can be minutes in). */
     private var captionWatchFrom = 0L
 
-    private val captionWatch = Runnable {
-        val p = exo ?: return@Runnable
-        val textOn = p.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
-        if (captionsSeen || !textOn) return@Runnable
-        val ch = queue.getOrNull(index)
-        if (ch != null && ch.kind != Kind.LIVE) {
-            // Only after three minutes of the film with not a single line.
-            if (p.currentPosition - captionWatchFrom < 180_000L) {
-                handler.postDelayed(captionWatch, 30_000)
-                return@Runnable
+    private val captionWatch = object : Runnable {
+        override fun run() {
+            val p = exo ?: return
+            val textOn = p.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+            if (captionsSeen || !textOn) return
+            val ch = queue.getOrNull(index)
+            if (ch != null && ch.kind != Kind.LIVE) {
+                // Only after three minutes of the film with not a single line.
+                if (p.currentPosition - captionWatchFrom < 180_000L) {
+                    handler.postDelayed(this, 30_000)
+                    return
+                }
+                toast("No subtitles have come from this track in 3 minutes. Try another one, or Subtitles → “Open with VLC”.")
+            } else {
+                toast("This channel isn't sending captions right now. Try another track, or switch the player to VLC.")
             }
-            toast("No subtitles have come from this track in 3 minutes. Try another one, or Subtitles → “Open with VLC”.")
-        } else {
-            toast("This channel isn't sending captions right now. Try another track, or switch the player to VLC.")
         }
     }
 
