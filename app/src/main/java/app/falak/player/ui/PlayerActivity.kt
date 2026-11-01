@@ -914,6 +914,23 @@ class PlayerActivity : ComponentActivity() {
         // word that long before you do (the picture follows the sound, so lips stay in sync).
         val synced = captions && s.syncedCaptions
         val renderers = object : DefaultRenderersFactory(this) {
+            // Subtitles that reach the player still in their file's own format (SRT, ASS, WebVTT,
+            // PGS…) are read here too, instead of the subtitles failing.
+            @Suppress("DEPRECATION")
+            override fun buildTextRenderers(
+                context: android.content.Context,
+                output: androidx.media3.exoplayer.text.TextOutput,
+                outputLooper: android.os.Looper,
+                extensionRendererMode: Int,
+                out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>,
+            ) {
+                val start = out.size
+                super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)
+                for (i in start until out.size) {
+                    (out[i] as? androidx.media3.exoplayer.text.TextRenderer)?.experimentalSetLegacyDecodingEnabled(true)
+                }
+            }
+
             // Volume levelling and night sound run inside the audio output, for every decoder (hardware or FFmpeg).
             override fun buildAudioSink(
                 context: android.content.Context,
@@ -1242,8 +1259,13 @@ class PlayerActivity : ComponentActivity() {
         currentItem = item
         val source = if (url.contains("m3u8", ignoreCase = true)) {
             // Expose closed captions (CEA-608) carried inside HLS video even when the playlist doesn't declare them.
+            @Suppress("DEPRECATION")
             HlsMediaSource.Factory(dataSource)
                 .setExtractorFactory(SniffingHlsExtractorFactory(sniffer))
+                // Subtitles (WebVTT and others) read as they arrive, as DefaultMediaSourceFactory
+                // does: this factory is made by hand and otherwise leaves them in a form Media3 1.5
+                // no longer shows.
+                .experimentalParseSubtitlesDuringExtraction(true)
                 .createMediaSource(item)
         } else {
             DefaultMediaSourceFactory(dataSource, extractors).createMediaSource(item)
@@ -2120,7 +2142,17 @@ class PlayerActivity : ComponentActivity() {
         for (g in p.currentTracks.groups) {
             if (g.type != type) continue
             for (i in 0 until g.length) {
-                if (!g.isTrackSupported(i)) continue
+                if (!g.isTrackSupported(i)) {
+                    // Subtitles this player can't show: offered with VLC rather than left out.
+                    val f = g.getTrackFormat(i)
+                    if (type == C.TRACK_TYPE_TEXT && !Captions.isProbe(f)) {
+                        out += TrackOption("${trackLabel(f)}  (plays with VLC)", false) {
+                            wantVlcSubtitles = true
+                            switchEngine(Engine.VLC)
+                        }
+                    }
+                    continue
+                }
                 if (type == C.TRACK_TYPE_TEXT && !isReal(g.getTrackFormat(i))) continue
                 val base = trackLabel(g.getTrackFormat(i))
                 val n = (seen[base] ?: 0) + 1
@@ -2212,9 +2244,23 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private var captionsSeen = false
+
+    /** Films and episodes: where it was when subtitles were turned on (their first line can be minutes in). */
+    private var captionWatchFrom = 0L
+
     private val captionWatch = Runnable {
-        val textOn = exo?.currentTracks?.groups?.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected } == true
-        if (!captionsSeen && textOn) {
+        val p = exo ?: return@Runnable
+        val textOn = p.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+        if (captionsSeen || !textOn) return@Runnable
+        val ch = queue.getOrNull(index)
+        if (ch != null && ch.kind != Kind.LIVE) {
+            // Only after three minutes of the film with not a single line.
+            if (p.currentPosition - captionWatchFrom < 180_000L) {
+                handler.postDelayed(captionWatch, 30_000)
+                return@Runnable
+            }
+            toast("No subtitles have come from this track in 3 minutes. Try another one, or Subtitles → “Open with VLC”.")
+        } else {
             toast("This channel isn't sending captions right now. Try another track, or switch the player to VLC.")
         }
     }
@@ -2222,6 +2268,7 @@ class PlayerActivity : ComponentActivity() {
     /** Many streams advertise captions but send none; tell the user instead of showing nothing. */
     private fun watchCaptions() {
         captionsSeen = false
+        captionWatchFrom = exo?.currentPosition ?: 0L
         handler.removeCallbacks(captionWatch)
         handler.postDelayed(captionWatch, 25_000)
     }
@@ -2271,6 +2318,13 @@ class PlayerActivity : ComponentActivity() {
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         if (type == C.TRACK_TYPE_TEXT && vod) {
             options += TrackOption("🔎  Find subtitles online…", false) { searchOnlineSubtitles() }
+            // Some films carry subtitles only VLC can read: VLC takes over from here and turns them on.
+            if (exo != null) {
+                options += TrackOption("▶  Open with VLC (finds more subtitles)", false) {
+                    wantVlcSubtitles = true
+                    switchEngine(Engine.VLC)
+                }
+            }
         }
         // The captions' look (and auto captions' place and lines), changed as you watch.
         if (type == C.TRACK_TYPE_TEXT) {
@@ -2390,18 +2444,27 @@ class PlayerActivity : ComponentActivity() {
     private fun maybeAutoSubtitles() {
         val p = exo ?: return
         if (autoSubtitlesDone || !repo.state.value.settings.subtitlesOn) return
-        val groups = p.currentTracks.groups.filter { g ->
-            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { isReal(g.getTrackFormat(it)) }
+        // Only subtitles this player can show (and captions that really carry text).
+        val cands = ArrayList<Pair<androidx.media3.common.Tracks.Group, Int>>()
+        for (g in p.currentTracks.groups) {
+            if (g.type != C.TRACK_TYPE_TEXT) continue
+            for (i in 0 until g.length) if (g.isTrackSupported(i) && isReal(g.getTrackFormat(i))) cands += g to i
         }
-        if (groups.isEmpty()) return
+        if (cands.isEmpty()) return
         autoSubtitlesDone = true
-        if (groups.any { it.isSelected }) return
+        if (cands.any { (g, i) -> g.isTrackSelected(i) }) return
         val lang = repo.state.value.settings.subtitleLang
-        val pick = groups.firstOrNull { g -> lang.isNotEmpty() && (0 until g.length).any { g.getTrackFormat(it).language?.startsWith(lang) == true } }
-            ?: groups.first()
+        fun fmt(c: Pair<androidx.media3.common.Tracks.Group, Int>) = c.first.getTrackFormat(c.second)
+        fun inLang(c: Pair<androidx.media3.common.Tracks.Group, Int>) = lang.isNotEmpty() && fmt(c).language?.startsWith(lang) == true
+        // "Forced" subtitles only translate the odd foreign line: a full track comes first.
+        fun full(c: Pair<androidx.media3.common.Tracks.Group, Int>) = fmt(c).selectionFlags and C.SELECTION_FLAG_FORCED == 0
+        val pick = cands.firstOrNull { inLang(it) && full(it) }
+            ?: cands.firstOrNull { inLang(it) }
+            ?: cands.firstOrNull { full(it) }
+            ?: cands.first()
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .setOverrideForType(TrackSelectionOverride(pick.mediaTrackGroup, 0))
+            .setOverrideForType(TrackSelectionOverride(pick.first.mediaTrackGroup, pick.second))
             .build()
         watchCaptions()
     }

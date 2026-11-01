@@ -243,9 +243,17 @@ private class SniffingOutput(private val delegate: ExtractorOutput, private val 
 }
 
 private class SniffingExtractor(private val delegate: Extractor, private val sniffer: CaptionSniffer) : Extractor {
+    /** MKV: subtitles with older codec names read as ones Media3 knows (see MatroskaSubtitles). */
+    private val mkv: MatroskaSubtitleInput? =
+        if (delegate.underlyingImplementation is androidx.media3.extractor.mkv.MatroskaExtractor) MatroskaSubtitleInput() else null
+
     override fun sniff(input: ExtractorInput): Boolean = delegate.sniff(input)
     override fun init(output: ExtractorOutput) = delegate.init(SniffingOutput(output, sniffer))
-    override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int = delegate.read(input, seekPosition)
+    override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+        val m = mkv ?: return delegate.read(input, seekPosition)
+        m.input = input
+        return delegate.read(m, seekPosition)
+    }
     override fun seek(position: Long, timeUs: Long) = delegate.seek(position, timeUs)
     override fun release() = delegate.release()
     override fun getUnderlyingImplementation(): Extractor = delegate.getUnderlyingImplementation()
