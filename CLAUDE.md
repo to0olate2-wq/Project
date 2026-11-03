@@ -53,6 +53,17 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - **Your own order (Arrange):** `Arrangement.trimmed` keeps only the changed prefix;
   `LibraryIndex.rearranged()` applies an order instantly, without rebuilding the index.
 - **D-pad wrap-around:** `ui/FocusLoop.kt` (`focusLoop` / `loopItem`).
+- **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
+  fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
+  `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on
+  127.0.0.1 (random token, chunked: a failed capture drops the connection, never "ends"). The player plays
+  live through it when `liveBuffer == "on"`; any error → `noShift` and the channel plays directly.
+  `RecordCenter` (recordings.json, device-only, not synced) + `RecordingService` (dataSync FGS, wake lock) +
+  `RecordReceiver` (exact alarm; boot/update re-plan). Exact alarms: github flavor `USE_EXACT_ALARM`, play asks
+  for `SCHEDULE_EXACT_ALARM`. Series rules plan from the guide when it loads (`planRules`).
+- **Channel edits:** `AppState.channelEdits` (sync part `edits`), applied in `LibraryIndex.build` after Tidy;
+  `Channel.edited` keeps the guide key. Home rows: `HomeRows`; remote button jobs: `KeyActions`
+  (`MEDIA_RECORD` = Record by default); "Open when the TV starts": `StartWithTv` (needs the overlay permission).
 - **Media3 is pinned to 1.5.1** with the Jellyfin ffmpeg decoder `1.5.0+1`: bump both together or neither.
   Subtitles: legacy text decoding is turned on in the renderers factory; HLS uses
   `experimentalParseSubtitlesDuringExtraction(true)`; MKV `S_TEXT/SSA`/`S_TEXT/ASCII` are renamed on read.

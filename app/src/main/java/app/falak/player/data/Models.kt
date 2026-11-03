@@ -86,6 +86,17 @@ data class Channel(
             it.tidyQuality = quality
         }
     }
+
+    /** A copy with the name and logo chosen by hand ([edit]); its guide stays the one it had. */
+    fun edited(edit: ChannelEdit): Channel {
+        if (edit.isEmpty()) return this
+        val key = epgKey
+        val quality = tidyQuality
+        return copy(name = edit.name.trim().ifBlank { name }, logo = edit.logo.trim().ifBlank { logo }).also {
+            it.guideKey = key
+            it.tidyQuality = quality
+        }
+    }
 }
 
 @Serializable
@@ -425,7 +436,30 @@ data class Settings(
     val ramadanDates: Map<String, String> = emptyMap(),
     /** Phones: a notification this many minutes before Imsak during Ramadan; 0 = none. */
     val suhoorReminder: Int = 0,
+    /** Pause & rewind live TV: live channels play through a buffer kept on this device; "on" or "off". */
+    val liveBuffer: String = "on",
+    /** How far back live TV can be rewound, in minutes (the buffer is cleared when the channel changes). */
+    val liveBufferMinutes: Int = 30,
+    /** Recordings: where they're saved ("" = this device, else the folder on a USB drive or memory card). */
+    val recordDir: String = "",
+    /** Recordings from the guide start this many minutes early and end this many late (shows rarely run to the minute). */
+    val recordEarly: Int = 2,
+    val recordLate: Int = 5,
+    /** TVs: open The Player when the TV starts (off unless switched on). */
+    val startOnBoot: Boolean = false,
+    /** Home's rows in the order chosen (see HomeRows); empty = the usual order. */
+    val homeRows: List<String> = emptyList(),
+    /** Home's rows switched off. */
+    val homeHidden: List<String> = emptyList(),
+    /** Remote buttons given a job while watching: key code (as text) -> action (see KeyActions). */
+    val keyActions: Map<String, String> = emptyMap(),
 )
+
+/** A channel renamed or given another logo by hand (long-press → Rename or change logo). */
+@Serializable
+data class ChannelEdit(val name: String = "", val logo: String = "") {
+    fun isEmpty(): Boolean = name.isBlank() && logo.isBlank()
+}
 
 /** Watch progress of a movie or episode. */
 @Serializable
@@ -476,6 +510,8 @@ data class AppState(
     val alertWords: List<String> = emptyList(),
     /** Each playlist's groups and channels in the order chosen (Arrange), by playlist id. */
     val arranged: Map<String, Arrangement> = emptyMap(),
+    /** Channels renamed or given another logo by hand: playlist id -> channel id -> the change. */
+    val channelEdits: Map<String, Map<String, ChannelEdit>> = emptyMap(),
 )
 
 /**

@@ -130,10 +130,37 @@ fun ItemSheet(vm: LibraryViewModel, state: AppState, ch: Channel, orderInList: S
                             }
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                     )
+                    if (!vm.kidsActive) {
+                        SheetLine("Record…") {
+                            onDismiss()
+                            vm.recordFor = ch
+                        }
+                        SheetLine("Rename or change logo…") {
+                            onDismiss()
+                            vm.editFor = ch
+                        }
+                    }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+/** A line in the long-press sheet that opens something. */
+@Composable
+private fun SheetLine(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        fontFamily = Sans,
+        fontSize = 15.sp,
+        color = Paper,
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRing(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
     )
 }
 

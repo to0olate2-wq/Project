@@ -52,6 +52,12 @@ class FalakApp : Application(), ImageLoaderFactory {
         super.onCreate()
         repo = Repository(this)
         OfflineCenter.init(this)
+        // Recordings: what's due starts, the next one gets its alarm; old pause buffers go.
+        app.falak.player.record.Captures.clearLeftovers(this)
+        app.falak.player.record.RecordCenter.init(this)
+        app.falak.player.record.RecordCenter.onAppStart()
+        // "Open when the TV starts": also when it wakes from standby with the app left open.
+        app.falak.player.record.StartWithTv.watchWake(this) { visible > 0 }
         watchForSync()
         FreezeWatch.start(filesDir)
         FreezeWatch.note("app started")

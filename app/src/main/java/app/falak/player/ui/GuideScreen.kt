@@ -345,6 +345,8 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                         Spacer(Modifier.height(8.dp))
                         Text(prog.desc, maxLines = 12, overflow = TextOverflow.Ellipsis)
                     }
+                    // Record it (or every episode), or save a past one's replay.
+                    GuideRecordActions(vm, ch, prog, now, replayUrl = { vm.replay(ch, prog, System.currentTimeMillis())?.url }) { details = null }
                 }
             },
             confirmButton = {

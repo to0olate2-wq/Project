@@ -207,6 +207,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.PRAYER -> PrayerScreen(vm, state)
                                 Screen.DOWNLOADS -> DownloadsScreen(vm, state, onPlay = ::play)
                                 Screen.ARRANGE -> ArrangeScreen(vm, state)
+                                Screen.RECORDINGS -> RecordingsScreen(vm, state, onPlay = ::play)
                             }
                         }
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
@@ -292,6 +293,8 @@ class MainActivity : ComponentActivity() {
                         ItemSheet(vm, state, ch, orderInList = if (inSaved) vm.savedList else null) { vm.listSheetFor = null }
                     }
                     vm.guideFixFor?.let { ch -> GuideFixDialog(vm, ch) { vm.guideFixFor = null } }
+                    vm.recordFor?.let { ch -> RecordChannelDialog(vm, ch, vm.epg.value) { vm.recordFor = null } }
+                    vm.editFor?.let { ch -> ChannelEditDialog(vm, ch) { vm.editFor = null } }
                     // A fresh start: the channel watched last plays again.
                     // (Once the profile is chosen; the Kids profile only gets its own groups.)
                     vm.autoPlay?.takeIf { !(vm.choosingProfile && vm.profilesWanted(state)) }?.let { (list, ch) ->
@@ -430,7 +433,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS, Screen.RECORDINGS -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
         Screen.ARRANGE -> 5

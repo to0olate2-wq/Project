@@ -13,6 +13,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Downloads (films and episodes to watch offline) carry on in the background. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Recordings planned from the TV guide start on time with the app closed (Android 12+ asks for it). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- After the device restarts: the next recording's alarm again, and "Open when the TV starts". -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- "Open when the TV starts" (off unless chosen): Android 10+ lets an app open itself only with this allowed. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Voice search: is there a speech recognizer on this device (Android 11+ asks apps to say what they look for)? -->
     <queries>
@@ -82,6 +88,23 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/offline_paths" />
         </provider>
+
+        <!-- Recordings in the background (shown as a notification while they record). -->
+        <service
+            android:name=".record.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- The next recording's alarm, and the device starting (alarms are cleared then). -->
+        <receiver
+            android:name=".record.RecordReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Programme reminders while the app is closed (an ordinary, inexact alarm). -->
         <receiver

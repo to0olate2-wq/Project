@@ -262,6 +262,33 @@ class PlayerActivity : ComponentActivity() {
     private var liveBeforeStartOver: Pair<List<Channel>, Int>? = null
     private val hideStartOver = Runnable { startOverOffer = null }
     private lateinit var liveButton: TextView
+    /** Live TV: record this channel (or stop recording it). */
+    private lateinit var recordButton: TextView
+
+    /** Pause & rewind live TV: the buffer the live channel plays from (null: it plays directly). */
+    private var shift: app.falak.player.record.Timeshift? = null
+
+    /** Live channels that wouldn't play through the buffer this time: they play directly. */
+    private val noShift = HashSet<String>()
+
+    /** "A recording uses a connection" said once. */
+    private var recordHintShown = false
+    private val shiftTick = object : Runnable {
+        override fun run() {
+            // The provider refused the buffer's connection: the channel plays directly, at once.
+            val t = shift
+            val ch = queue.getOrNull(index)
+            if (t != null && t.failed && ch != null) {
+                FreezeWatch.note("buffer couldn't start: " + t.capture.problem)
+                noShift += ch.id
+                releaseShift()
+                playCurrent(showInfo = false)
+                return
+            }
+            updateShiftViews()
+            if (shift != null) handler.postDelayed(this, 500)
+        }
+    }
 
     // ---- Listen mode (phones): the sound carries on in the background ----
 
@@ -398,6 +425,7 @@ class PlayerActivity : ComponentActivity() {
         }
         applySubtitleStyle()
         lifecycleScope.launch { SpeechModel.state.collect { onSpeechModel(it) } }
+        lifecycleScope.launch { app.falak.player.record.RecordCenter.book.collect { if (::recordButton.isInitialized) updateRecordButton() } }
 
         bannerView = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -464,7 +492,11 @@ class PlayerActivity : ComponentActivity() {
         // Live TV: a second channel beside this one.
         twoButton = pill("Two screens", R.drawable.ic_pl_two) { startPickingSecond() }.apply { visibility = View.GONE }
         // Watching a show from its start: back to the live channel.
-        liveButton = pill("Back to live", R.drawable.ic_nav_live) { backToLive() }.apply { visibility = View.GONE }
+        // (Or, paused or rewound on a live channel: back to what's on now.)
+        liveButton = pill("Back to live", R.drawable.ic_nav_live) {
+            if (liveBeforeStartOver != null) backToLive() else shiftToLive()
+        }.apply { visibility = View.GONE }
+        recordButton = pill("Record", R.drawable.ic_pl_record) { showRecordDialog() }.apply { visibility = View.GONE }
         // Add what's playing to Favorites without leaving the player.
         favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
@@ -485,7 +517,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)) {
+            for (b in listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -1053,6 +1085,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** Releases whichever engine is running (keeps the activity's views). */
     private fun releaseEngine() {
+        // The buffer goes with the player (Listen mode, the mini player and the next start play directly or anew).
+        releaseShift()
         stopAutoCaptions()
         exoCaptions = false
         exoSynced = false
@@ -1117,6 +1151,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun playCurrent(showInfo: Boolean, overrideUrl: String? = null) {
         val ch = queue.getOrNull(index) ?: return
+        // Another item: the buffer of the one before goes (a recording of it carries on).
+        releaseShift()
         // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
         deleteWatchedCopies(except = ch.id)
         serviceStarting(ch)
@@ -1185,6 +1221,11 @@ class PlayerActivity : ComponentActivity() {
         val ua = ch.userAgent
             .ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }
             .ifBlank { Repository.DEFAULT_UA }
+        // Pause & rewind live TV: the channel plays from the buffer kept on this device (one
+        // connection to the provider, shared with a recording of the same channel).
+        val playUrl = openShift(ch, url, ua, savedCopy != null) ?: url
+        updateRecordButton()
+        hintRecording(ch, url)
 
         // Playing again after the sleep timer stopped it; "at the end of this episode" was for another one.
         if (sleptByTimer) {
@@ -1204,7 +1245,7 @@ class PlayerActivity : ComponentActivity() {
         twoButton.visibility = if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null) View.VISIBLE else View.GONE
         // A replay of our own "From the start" keeps the way back to live; anything else forgets it.
         if (!ch.id.startsWith("cu:")) liveBeforeStartOver = null
-        liveButton.visibility = if (liveBeforeStartOver != null) View.VISIBLE else View.GONE
+        updateShiftViews()
         offerStartOver(ch)
         if (captions) startAutoCaptions() else stopAutoCaptions()
         // Two minutes on a live channel count towards Home's "For this hour".
@@ -1226,7 +1267,7 @@ class PlayerActivity : ComponentActivity() {
         if (v != null) {
             currentItem = null
             currentDataSource = null
-            v.load(url, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = true)
+            v.load(playUrl, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = true)
             updateTrackButtons()
             applySpeed()
             if (showInfo) showBanner(ch)
@@ -1249,15 +1290,15 @@ class PlayerActivity : ComponentActivity() {
         currentExtractors = extractors
 
         val itemBuilder = MediaItem.Builder()
-            .setUri(url)
+            .setUri(playUrl)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(ch.name).build())
         when {
-            url.contains("m3u8", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            url.contains(".mpd", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            playUrl.contains("m3u8", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            playUrl.contains(".mpd", ignoreCase = true) -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
         val item = itemBuilder.build()
         currentItem = item
-        val source = if (url.contains("m3u8", ignoreCase = true)) {
+        val source = if (playUrl.contains("m3u8", ignoreCase = true)) {
             // Expose closed captions (CEA-608) carried inside HLS video even when the playlist doesn't declare them.
             @Suppress("DEPRECATION")
             HlsMediaSource.Factory(dataSource)
@@ -1297,6 +1338,14 @@ class PlayerActivity : ComponentActivity() {
                 return
             }
             val ch = queue.getOrNull(index) ?: return
+            // Through the buffer it didn't work: the channel plays directly, as before.
+            if (shift != null) {
+                FreezeWatch.note("buffer didn't play: " + (shift?.capture?.problem ?: error.errorCodeName))
+                noShift += ch.id
+                releaseShift()
+                handler.post { playCurrent(showInfo = false) }
+                return
+            }
             if (!retried) {
                 retried = true
                 // Xtream live TV comes as .ts or HLS; if one format fails, try the other once.
@@ -1444,17 +1493,27 @@ class PlayerActivity : ComponentActivity() {
         )
         private fun liveNow() = queue.getOrNull(index)?.kind == Kind.LIVE
 
+        /** A live channel playing from the buffer: the rewind and forward buttons move in it. */
+        private fun shifting() = shift != null && liveNow()
+
         override fun getAvailableCommands(): Player.Commands {
             var b = super.getAvailableCommands().buildUpon()
             if (queue.size > 1) b = b.addAll(*zapCommands)
             if (liveNow()) b = b.removeAll(*seekCommands)
+            if (shifting()) b = b.addAll(Player.COMMAND_SEEK_BACK, Player.COMMAND_SEEK_FORWARD)
             return b.build()
         }
 
         override fun isCommandAvailable(command: Int): Boolean {
+            if (shifting() && (command == Player.COMMAND_SEEK_BACK || command == Player.COMMAND_SEEK_FORWARD)) return true
             if (liveNow() && command in seekCommands) return false
             return (queue.size > 1 && command in zapCommands) || super.isCommandAvailable(command)
         }
+
+        override fun seekBack() = if (shifting()) shiftBy(-SEEK_STEP_MS) else super.seekBack()
+        override fun seekForward() = if (shifting()) shiftBy(SEEK_STEP_MS) else super.seekForward()
+        override fun getSeekBackIncrement(): Long = if (shifting()) SEEK_STEP_MS else super.getSeekBackIncrement()
+        override fun getSeekForwardIncrement(): Long = if (shifting()) SEEK_STEP_MS else super.getSeekForwardIncrement()
 
         override fun hasNextMediaItem(): Boolean = queue.size > 1
         override fun hasPreviousMediaItem(): Boolean = queue.size > 1
@@ -1674,6 +1733,15 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         if (dual != null) return dualKey(event)
+        // Remote buttons given a job (Settings → Remote buttons), and the remote's Record key.
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            val job = repo.state.value.settings.keyActions[event.keyCode.toString()]
+                ?: if (event.keyCode == KeyEvent.KEYCODE_MEDIA_RECORD) KeyActions.RECORD else null
+            if (job != null && runKeyAction(job)) {
+                swallowUpKey = event.keyCode
+                return true
+            }
+        }
         val live = queue.getOrNull(index)?.kind == Kind.LIVE
         val controlsShown = playerView.isControllerFullyVisible
         // Up next / Skip intro on screen: OK takes it, Back keeps watching.
@@ -1746,8 +1814,8 @@ class PlayerActivity : ComponentActivity() {
                     seekBy(dir * step)
                     return true
                 }
-                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (canSeek()) { seekBy(30_000L); return true }
-                KeyEvent.KEYCODE_MEDIA_REWIND -> if (canSeek()) { seekBy(-30_000L); return true }
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (canSeek()) { seekBy(30_000L); return true } else if (live && shift != null) { shiftBy(30_000L); return true }
+                KeyEvent.KEYCODE_MEDIA_REWIND -> if (canSeek()) { seekBy(-30_000L); return true } else if (live && shift != null) { shiftBy(-30_000L); return true }
                 KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> {
                     queue.getOrNull(index)?.let { showBanner(it) }
                     return true
@@ -1993,7 +2061,7 @@ class PlayerActivity : ComponentActivity() {
         val group = if (show != null && ch.kind == Kind.SERIES) show.group else ch.group
         val onHome = !repo.kidsActive && group !in repo.excludedGroups &&
             group !in s.lockedGroups[pl.id].orEmpty() && !app.falak.player.data.ADULT_GROUP.containsMatchIn(group)
-        app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome)
+        app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome && !ch.id.startsWith("rec:"))
         if (finished && ch.kind == Kind.SERIES) {
             // Watched to the end: the next episode waits in Continue watching (and on the TV's
             // Play next row), and the show is followed for new episodes.
@@ -2536,6 +2604,8 @@ class PlayerActivity : ComponentActivity() {
         setOnFocusChangeListener { v, focused ->
             val s = if (focused) 1.08f else 1f
             v.animate().scaleX(s).scaleY(s).setDuration(120).start()
+            // TV, a row too long for the screen: the button the remote is on shows its name.
+            if (tvLayout && tvCompact) applyTvLabels()
         }
     }
 
@@ -2543,18 +2613,24 @@ class PlayerActivity : ComponentActivity() {
     private var compactPills = false
 
     private fun pills(): List<TextView> =
-        listOf(menuButton, liveButton, browseButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
+        listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
 
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
         b.contentDescription = label
-        b.text = if (compactPills) "" else label
+        // (TV, a row too long for the screen: a short button keeps showing its icon only.)
+        val iconOnly = tvLayout && tvCompact && ::sleepButton.isInitialized && b in tvShortPills() && !b.isFocused
+        b.text = if (compactPills || iconOnly) "" else label
         b.post { fitPills() }
     }
 
     /** Labels when the row fits the screen's width, icons only when it doesn't (never on TV). */
     private fun fitPills() {
-        if (tvLayout || !::toolbar.isInitialized) return
+        if (tvLayout) {
+            fitTvPills()
+            return
+        }
+        if (!::toolbar.isInitialized) return
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
@@ -2571,6 +2647,38 @@ class PlayerActivity : ComponentActivity() {
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
             if (compact) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(14), 0, dp(16), 0)
+        }
+    }
+
+    /** TV: the row doesn't fit across (live TV has the most buttons): these show their icon only, until the remote is on them. */
+    private var tvCompact = false
+
+    private fun tvShortPills(): List<TextView> = listOf(twoButton, favButton, sleepButton, aspectButton, rotateButton, engineButton)
+
+    private fun fitTvPills() {
+        if (!::toolbar.isInitialized || !::sleepButton.isInitialized) return
+        val avail = toolbar.width
+        if (avail <= 0) return
+        var need = dp(32)
+        for (b in pills() + sleepButton) {
+            if (b.visibility != View.VISIBLE) continue
+            val label = b.tag as? String ?: ""
+            need += dp(12) + dp(20) + dp(18) + dp(20) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
+        }
+        tvCompact = need > avail
+        applyTvLabels()
+    }
+
+    private fun applyTvLabels() {
+        if (!::sleepButton.isInitialized) return
+        for (b in tvShortPills()) {
+            val label = b.tag as? String ?: ""
+            val show = !tvCompact || b.isFocused || label.isEmpty()
+            val text = if (show) label else ""
+            if (b.text?.toString() == text) continue
+            b.text = text
+            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
+            if (text.isEmpty()) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(18), 0, dp(20), 0)
         }
     }
 
@@ -3104,6 +3212,7 @@ class PlayerActivity : ComponentActivity() {
             if (idx.live.isNotEmpty()) add(MenuPlace("GUIDE", "TV guide"))
             // Kids mode: no way out to grown-up pages from the player.
             if (!repo.kidsActive) {
+                if (app.falak.player.record.RecordCenter.book.value.recordings.isNotEmpty()) add(MenuPlace("RECORDINGS", "Recordings"))
                 add(MenuPlace("NOTICES", "What's new"))
                 add(MenuPlace("SETTINGS", "Settings"))
             }
@@ -4000,7 +4109,12 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
         val ch = queue.getOrNull(index)
         val p = player
-        if (ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) p?.stop() else p?.pause()
+        if (ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) {
+            p?.stop()
+            releaseShift()
+        } else {
+            p?.pause()
+        }
         stopAutoCaptions()
         if (dual == null) setSleepVolume(1f)
         sleptByTimer = true
@@ -4074,6 +4188,232 @@ class PlayerActivity : ComponentActivity() {
         retried = false
         resumePositionMs = C.TIME_UNSET
         playCurrent(showInfo = true)
+    }
+
+    // ---- pause & rewind live TV ----
+
+    /** Plays [ch] from the buffer when it can: the address to play, or null to play [url] directly. */
+    private fun openShift(ch: Channel, url: String, ua: String, saved: Boolean): String? {
+        val s = repo.state.value.settings
+        if (s.liveBuffer != "on" || ch.kind != Kind.LIVE || ch.id.startsWith("cu:") || ch.id.startsWith("rec:") || saved) return null
+        if (dual != null || ch.id in noShift || url.contains(".mpd", ignoreCase = true) || !url.startsWith("http")) return null
+        return try {
+            val t = app.falak.player.record.Timeshift.open(this, url, ua, ch.referrer, s.liveBufferMinutes)
+            shift = t
+            handler.removeCallbacks(shiftTick)
+            handler.postDelayed(shiftTick, 300)
+            FreezeWatch.note("live from the buffer")
+            t.live()
+        } catch (e: Exception) {
+            shift = null
+            null
+        }
+    }
+
+    /** The buffer goes (a recording of the same channel keeps its connection). */
+    private fun releaseShift() {
+        val t = shift ?: return
+        shift = null
+        handler.removeCallbacks(shiftTick)
+        runCatching { t.release() }
+        updateShiftViews()
+    }
+
+    /** Back or forward [deltaMs] in the buffer; catching up with live goes to live. */
+    private fun shiftBy(deltaMs: Long) {
+        val t = shift ?: return
+        val p = player ?: return
+        val now = System.currentTimeMillis()
+        val target = t.showingAt(p.currentPosition) + deltaMs
+        if (target >= now - 5_000) {
+            shiftToLive()
+            return
+        }
+        val oldest = t.oldest()
+        val at = if (oldest != null) maxOf(target, oldest) else target
+        reopenShift(t.at(at))
+        val edge = if (oldest != null && target < oldest) "  ·  as far back as it goes" else ""
+        showShiftNote((if (deltaMs < 0) "⏪  " else "⏩  ") + clock((now - at).coerceAtLeast(0)) + " behind live" + edge)
+    }
+
+    /** From a paused or rewound live channel to what's on now. */
+    private fun shiftToLive() {
+        val t = shift ?: return
+        reopenShift(t.live())
+        showShiftNote("Live")
+    }
+
+    /** Opens the buffer at another point (the rest of the player stays as it is). */
+    private fun reopenShift(url: String) {
+        val ch = queue.getOrNull(index) ?: return
+        val v = vlc
+        if (v != null) {
+            v.load(url, ch.name, headersFor(ch).first, ch.referrer, 0L, hardware = true)
+            updateShiftViews()
+            return
+        }
+        val p = exo ?: return
+        val ds = currentDataSource ?: return
+        val ex = currentExtractors ?: return
+        val item = MediaItem.Builder()
+            .setUri(url)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(ch.name).build())
+            .build()
+        currentItem = item
+        p.setMediaSource(DefaultMediaSourceFactory(ds, ex).createMediaSource(item))
+        p.prepare()
+        p.playWhenReady = true
+        updateShiftViews()
+    }
+
+    private fun showShiftNote(text: String) {
+        if (!::seekView.isInitialized || pendingSeek != null) return
+        seekView.text = text
+        seekView.visibility = View.VISIBLE
+        handler.removeCallbacks(hideSeek)
+        handler.postDelayed(hideSeek, 1_800)
+    }
+
+    /** "Live · −1:20" on the button while paused or rewound; "Back to live" after From the start. */
+    private fun updateShiftViews() {
+        if (!::liveButton.isInitialized) return
+        val t = shift
+        val p = player
+        val behind = if (t != null && p != null) t.behind(p.currentPosition) else 0L
+        val label = when {
+            liveBeforeStartOver != null -> "Back to live"
+            t != null && behind > 10_000 -> "Live  ·  −" + clock(behind)
+            else -> null
+        }
+        liveButton.visibility = if (label != null) View.VISIBLE else View.GONE
+        if (label != null && liveButton.tag != label) setPillLabel(liveButton, label)
+    }
+
+    // ---- recording ----
+
+    /** Live TV: the Record button, and "Recording" while this channel is being recorded. */
+    private fun updateRecordButton() {
+        if (!::recordButton.isInitialized) return
+        val ch = queue.getOrNull(index)
+        val show = ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null &&
+            repo.currentPlaylist != null && !repo.kidsActive && !inPip
+        recordButton.visibility = if (show) View.VISIBLE else View.GONE
+        if (ch == null || !show) return
+        val label = if (app.falak.player.record.RecordCenter.busyNow(ch.id) != null) "● Recording" else "Record"
+        if (recordButton.tag != label) setPillLabel(recordButton, label)
+    }
+
+    /** Record this channel: the programme on now (from its start when the buffer has it), or for a while; or stop. */
+    private fun showRecordDialog() {
+        val ch = queue.getOrNull(index) ?: return
+        val pl = repo.currentPlaylist ?: return
+        if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) return
+        val rc = app.falak.player.record.RecordCenter
+        val busy = rc.busyNow(ch.id)
+        if (busy != null) {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Recording “${busy.title}”")
+                .setMessage(
+                    "Since ${time(busy.startedAt.takeIf { it > 0 } ?: busy.start)}, until ${time(busy.stop)}  ·  " +
+                        app.falak.player.OfflineCenter.sizeLabel(busy.size),
+                )
+                .setPositiveButton("Stop recording") { _, _ ->
+                    rc.stop(busy.id)
+                    toast("Saved in Recordings")
+                }
+                .setNegativeButton("Keep recording", null)
+                .setNeutralButton("Recordings") { _, _ -> leaveTo("RECORDINGS") }
+                .show()
+            return
+        }
+        val now = System.currentTimeMillis()
+        val late = repo.state.value.settings.recordLate.coerceIn(0, 60) * 60_000L
+        val prog = repo.epg.value[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop }
+        val choices = ArrayList<Pair<String, () -> Unit>>()
+        if (prog != null && prog.stop > now + 60_000L) {
+            // From its start when the buffer still has it.
+            val fromStart = shift?.oldest()?.let { it <= prog.start } == true
+            choices += "“${prog.title}” until ${time(prog.stop + late)}" + (if (fromStart) " (from its start)" else "") to {
+                startRecording(pl, ch, prog, prog.stop + late)
+            }
+        }
+        for ((label, minutes) in listOf("30 minutes" to 30, "1 hour" to 60, "2 hours" to 120, "3 hours" to 180)) {
+            choices += "For $label" to { startRecording(pl, ch, null, System.currentTimeMillis() + minutes * 60_000L) }
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Record ${ch.name}")
+            .setItems(choices.map { it.first }.toTypedArray()) { d, which ->
+                d.dismiss()
+                choices[which].second()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun startRecording(pl: app.falak.player.data.Playlist, ch: Channel, prog: app.falak.player.data.Program?, until: Long) {
+        val r = app.falak.player.record.RecordCenter.recordNow(pl, ch, prog, until)
+        if (r == null) {
+            toast("This channel can't be recorded")
+            return
+        }
+        FreezeWatch.note("record now")
+        toast("Recording “${r.title}” until ${time(r.stop)}. It's saved in Recordings.")
+        updateRecordButton()
+    }
+
+    /** A recording of another channel uses a connection: said once (many providers allow only one). */
+    private fun hintRecording(ch: Channel, url: String) {
+        if (recordHintShown || ch.kind != Kind.LIVE) return
+        val rec = app.falak.player.record.RecordCenter.book.value.recordings.firstOrNull {
+            it.state == app.falak.player.record.RecState.RECORDING && it.channelId != ch.id && it.url != url
+        } ?: return
+        recordHintShown = true
+        toast("Recording “${rec.title}” on ${rec.channelName}. If your subscription allows one connection, this channel may not play until it ends.")
+    }
+
+    // ---- remote buttons given a job (Settings → Remote buttons) ----
+
+    /** Does what [job] says; false when it doesn't apply here (the button does what it usually does). */
+    private fun runKeyAction(job: String): Boolean {
+        val ch = queue.getOrNull(index)
+        val live = ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+        when (job) {
+            KeyActions.CHANNELS -> openBrowser()
+            KeyActions.GUIDE -> leaveTo("GUIDE")
+            KeyActions.FAVORITE -> if (ch != null && canFavorite(ch)) toggleFavorite(ch) else return false
+            KeyActions.RECORD -> if (live) showRecordDialog() else return false
+            KeyActions.RECORDINGS -> leaveTo("RECORDINGS")
+            KeyActions.AUDIO -> showTrackDialog(C.TRACK_TYPE_AUDIO)
+            KeyActions.SUBTITLES -> showTrackDialog(C.TRACK_TYPE_TEXT)
+            KeyActions.PICTURE -> cycleAspect()
+            KeyActions.LAST -> recallPrevious()
+            KeyActions.TWO -> if (live && dual == null) startPickingSecond() else return false
+            KeyActions.SLEEP -> showSleepDialog()
+            KeyActions.REWIND -> when {
+                canSeek() -> seekBy(-30_000L)
+                live && shift != null -> shiftBy(-30_000L)
+                else -> return false
+            }
+            KeyActions.FORWARD -> when {
+                canSeek() -> seekBy(30_000L)
+                live && shift != null -> shiftBy(30_000L)
+                else -> return false
+            }
+            KeyActions.LIVE -> when {
+                liveBeforeStartOver != null -> backToLive()
+                shift != null -> shiftToLive()
+                else -> return false
+            }
+            KeyActions.PLAY_PAUSE -> {
+                val p = player ?: return false
+                if (p.isPlaying) p.pause() else p.play()
+            }
+            KeyActions.INFO -> if (ch != null) showBanner(ch) else return false
+            KeyActions.MENU -> showAppMenu()
+            KeyActions.PLAYER -> showEngineDialog()
+            else -> return false
+        }
+        return true
     }
 
     // ---- Subscription watch: why a channel was refused ----
