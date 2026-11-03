@@ -2604,6 +2604,8 @@ class PlayerActivity : ComponentActivity() {
         setOnFocusChangeListener { v, focused ->
             val s = if (focused) 1.08f else 1f
             v.animate().scaleX(s).scaleY(s).setDuration(120).start()
+            // TV, a row too long for the screen: the button the remote is on shows its name.
+            if (tvLayout && tvCompact) applyTvLabels()
         }
     }
 
@@ -2616,13 +2618,19 @@ class PlayerActivity : ComponentActivity() {
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
         b.contentDescription = label
-        b.text = if (compactPills) "" else label
+        // (TV, a row too long for the screen: a short button keeps showing its icon only.)
+        val iconOnly = tvLayout && tvCompact && ::sleepButton.isInitialized && b in tvShortPills() && !b.isFocused
+        b.text = if (compactPills || iconOnly) "" else label
         b.post { fitPills() }
     }
 
     /** Labels when the row fits the screen's width, icons only when it doesn't (never on TV). */
     private fun fitPills() {
-        if (tvLayout || !::toolbar.isInitialized) return
+        if (tvLayout) {
+            fitTvPills()
+            return
+        }
+        if (!::toolbar.isInitialized) return
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
@@ -2639,6 +2647,38 @@ class PlayerActivity : ComponentActivity() {
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
             if (compact) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(14), 0, dp(16), 0)
+        }
+    }
+
+    /** TV: the row doesn't fit across (live TV has the most buttons): these show their icon only, until the remote is on them. */
+    private var tvCompact = false
+
+    private fun tvShortPills(): List<TextView> = listOf(twoButton, favButton, sleepButton, aspectButton, rotateButton, engineButton)
+
+    private fun fitTvPills() {
+        if (!::toolbar.isInitialized || !::sleepButton.isInitialized) return
+        val avail = toolbar.width
+        if (avail <= 0) return
+        var need = dp(32)
+        for (b in pills() + sleepButton) {
+            if (b.visibility != View.VISIBLE) continue
+            val label = b.tag as? String ?: ""
+            need += dp(12) + dp(20) + dp(18) + dp(20) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
+        }
+        tvCompact = need > avail
+        applyTvLabels()
+    }
+
+    private fun applyTvLabels() {
+        if (!::sleepButton.isInitialized) return
+        for (b in tvShortPills()) {
+            val label = b.tag as? String ?: ""
+            val show = !tvCompact || b.isFocused || label.isEmpty()
+            val text = if (show) label else ""
+            if (b.text?.toString() == text) continue
+            b.text = text
+            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
+            if (text.isEmpty()) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(18), 0, dp(20), 0)
         }
     }
 
