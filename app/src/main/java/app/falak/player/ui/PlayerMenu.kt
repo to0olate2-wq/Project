@@ -116,5 +116,6 @@ private fun placeIcon(place: MenuPlace): Painter = when {
     place.section != null -> navIcon(place.section)
     place.key == "GUIDE" -> rememberVectorPainter(Icons.Outlined.DateRange)
     place.key == "NOTICES" -> rememberVectorPainter(Icons.Outlined.Notifications)
+    place.key == "RECORDINGS" -> androidx.compose.ui.res.painterResource(app.falak.player.R.drawable.ic_pl_record)
     else -> rememberVectorPainter(Icons.Outlined.Settings)
 }

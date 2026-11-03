@@ -30,6 +30,8 @@ class LibraryIndex(
     private val plainLists: Map<Kind, List<Channel>> = emptyMap(),
     /** Shared with the copies [rearranged] makes (the names to search don't change). */
     private val searchHolder: Lazy<SearchIndex> = lazy { SearchIndex(all) },
+    /** The names and logos chosen by hand this was built with (channel id -> the change). */
+    val edits: Map<String, ChannelEdit> = emptyMap(),
 ) {
     /** Search over every name, prepared on the first search (see [SearchIndex]). */
     val search: SearchIndex get() = searchHolder.value
@@ -53,6 +55,7 @@ class LibraryIndex(
             newMovies = newMovies, newSeries = newSeries, trending = trending,
             raw = raw, tidy = tidy, versions = versions,
             arrangement = a, plainGroups = plainGroups, plainLists = plainLists, searchHolder = searchHolder,
+            edits = edits,
         )
     }
 
@@ -82,9 +85,13 @@ class LibraryIndex(
             cleanNames: Boolean = false,
             mergeDuplicates: Boolean = false,
             arrangement: Arrangement = Arrangement.NONE,
+            edits: Map<String, ChannelEdit> = emptyMap(),
         ): LibraryIndex {
             val tidy = if (cleanNames || mergeDuplicates) Tidy.apply(list, cleanNames, mergeDuplicates) else null
-            val shown = tidy?.shown ?: list
+            // Names and logos chosen by hand go over whatever Tidy made of them.
+            fun edit(l: List<Channel>): List<Channel> =
+                if (edits.isEmpty()) l else l.map { ch -> edits[ch.id]?.let { ch.edited(it) } ?: ch }
+            val shown = edit(tidy?.shown ?: list)
             val live = ArrayList<Channel>()
             val movies = ArrayList<Channel>()
             val series = ArrayList<Channel>()
@@ -107,7 +114,7 @@ class LibraryIndex(
             return LibraryIndex(
                 all = shown,
                 // Merged-away channels stay findable (favorites, recents, the guide point at them).
-                byId = (tidy?.all ?: list).associateBy { it.id },
+                byId = (if (tidy == null) shown else edit(tidy.all)).associateBy { it.id },
                 live = inOrder(Kind.LIVE, live, liveGroups),
                 movies = inOrder(Kind.MOVIE, movies, movieGroups),
                 series = inOrder(Kind.SERIES, series, seriesGroups),
@@ -121,6 +128,7 @@ class LibraryIndex(
                 tidy = cleanNames to mergeDuplicates,
                 versions = tidy?.versions ?: emptyMap(),
                 arrangement = arrangement,
+                edits = edits,
                 plainGroups = mapOf(Kind.LIVE to plainLive, Kind.MOVIE to plainMovies, Kind.SERIES to plainSeries),
                 plainLists = mapOf(Kind.LIVE to live, Kind.MOVIE to movies, Kind.SERIES to series),
             )

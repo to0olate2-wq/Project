@@ -82,9 +82,10 @@ object SyncMerge {
     const val FOLLOWED = "followed"
     const val INTROS = "intros"
     const val ARRANGED = "arranged"
+    const val EDITS = "edits"
 
     /** The parts of a playlist. */
-    private val PARTS = setOf(PL, FAV, LISTS, HIDDEN, GUIDE, RECENTS, LOCKED, KIDS_GROUPS, FOLLOWED, INTROS, ARRANGED)
+    private val PARTS = setOf(PL, FAV, LISTS, HIDDEN, GUIDE, RECENTS, LOCKED, KIDS_GROUPS, FOLLOWED, INTROS, ARRANGED, EDITS)
 
     /** Parts kept per profile: "<playlist id>" for the main one, "<playlist id>@<profile>" for the others. */
     private val PER_PROFILE = setOf(FAV, LISTS, RECENTS)
@@ -103,6 +104,8 @@ object SyncMerge {
         "aspect", "bigBuffer", "softwareAudio", "preferHls", "frameRate", "theme", "layout", "player",
         "downloadWifiOnly", "downloadDeleteWatched", "kidsMode", "syncOn", "askedNotify",
         "hiddenGroups", "guideOverrides", "lockedGroups", "kidsGroups",
+        // 8.7: the buffer, recordings' folder, starting with the TV and the remote's buttons are this device's.
+        "liveBuffer", "liveBufferMinutes", "recordDir", "startOnBoot", "keyActions",
     )
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
@@ -110,6 +113,7 @@ object SyncMerge {
     private val introsSerializer = MapSerializer(String.serializer(), Intro.serializer())
     private val profilesSerializer = ListSerializer(Profile.serializer())
     private val remindersSerializer = ListSerializer(Reminder.serializer())
+    private val editsSerializer = MapSerializer(String.serializer(), ChannelEdit.serializer())
 
     /** The settings that sync, by name, as they'd be written. */
     internal fun sharedSettings(s: Settings): Map<String, JsonElement> =
@@ -175,6 +179,7 @@ object SyncMerge {
                 if (old.settings.kidsGroups[id] != new.settings.kidsGroups[id]) bump("$KIDS_GROUPS|$id")
                 if (old.followed[id] != new.followed[id]) bump("$FOLLOWED|$id")
                 if (old.arranged[id] != new.arranged[id]) bump("$ARRANGED|$id")
+                if (old.channelEdits[id] != new.channelEdits[id]) bump("$EDITS|$id")
                 if (old.intros !== new.intros && introsOf(old, id) != introsOf(new, id)) bump("$INTROS|$id")
             }
             fun perProfile(kind: String, a: Map<String, Any>, b: Map<String, Any>) {
@@ -221,6 +226,7 @@ object SyncMerge {
             if (!s.followed[id].isNullOrEmpty()) stamps["$FOLLOWED|$id"] = now
             if (introsOf(s, id).isNotEmpty()) stamps["$INTROS|$id"] = now
             if (s.arranged[id]?.isEmpty() == false) stamps["$ARRANGED|$id"] = now
+            if (!s.channelEdits[id].isNullOrEmpty()) stamps["$EDITS|$id"] = now
         }
         val ids = s.playlists.mapTo(HashSet()) { it.id }
         for ((kind, m) in listOf(FAV to s.favorites, LISTS to s.favLists, RECENTS to s.recents)) {
@@ -247,6 +253,7 @@ object SyncMerge {
             parts["$FOLLOWED|$key"] = SyncPart(at("$FOLLOWED|$id"), json = json.encodeToJsonElement(followedSerializer, s.followed[id].orEmpty()))
             parts["$INTROS|$key"] = SyncPart(at("$INTROS|$id"), json = json.encodeToJsonElement(introsSerializer, introsOf(s, id)))
             parts["$ARRANGED|$key"] = SyncPart(at("$ARRANGED|$id"), json = json.encodeToJsonElement(Arrangement.serializer(), s.arranged[id] ?: Arrangement.NONE))
+            parts["$EDITS|$key"] = SyncPart(at("$EDITS|$id"), json = json.encodeToJsonElement(editsSerializer, s.channelEdits[id].orEmpty()))
             // The main profile's always go (empty too); other profiles' where they have some.
             parts["$FAV|$key"] = SyncPart(at("$FAV|$id"), ids = s.favorites[id].orEmpty())
             parts["$LISTS|$key"] = SyncPart(at("$LISTS|$id"), lists = s.favLists[id].orEmpty())
@@ -405,6 +412,7 @@ object SyncMerge {
         val followed = out.followed.toMutableMap()
         val intros = out.intros.toMutableMap()
         val arranged = out.arranged.toMutableMap()
+        val edits = out.channelEdits.toMutableMap()
         for ((key, part) in r.parts) {
             val kind = key.substringBefore('|')
             if (kind !in PARTS) continue
@@ -425,6 +433,7 @@ object SyncMerge {
                 FOLLOWED -> followed[local].isNullOrEmpty()
                 INTROS -> intros.keys.none { it.startsWith("$local|") }
                 ARRANGED -> arranged[local]?.isEmpty() ?: true
+                EDITS -> edits[local].isNullOrEmpty()
                 else -> false
             }
             val mine = stamps["$kind|$local"] ?: 0L
@@ -452,6 +461,10 @@ object SyncMerge {
                 ARRANGED -> {
                     val theirs = part.json?.let { runCatching { json.decodeFromJsonElement(Arrangement.serializer(), it) }.getOrNull() } ?: continue
                     if (theirs.isEmpty()) arranged.remove(local) else arranged[local] = theirs
+                }
+                EDITS -> {
+                    val theirs = part.json?.let { runCatching { json.decodeFromJsonElement(editsSerializer, it) }.getOrNull() } ?: continue
+                    if (theirs.isEmpty()) edits.remove(local) else edits[local] = theirs
                 }
                 else -> continue
             }
@@ -540,6 +553,7 @@ object SyncMerge {
             followed = followed,
             intros = if (intros == out.intros) out.intros else intros,
             arranged = if (arranged == out.arranged) out.arranged else arranged,
+            channelEdits = if (edits == out.channelEdits) out.channelEdits else edits,
             profiles = profiles,
             reminders = reminders,
             alertWords = alertWords,
@@ -604,6 +618,7 @@ object SyncMerge {
         intros = s.intros.filterKeys { !it.startsWith("$id|") },
         reminders = s.reminders.filterNot { it.playlistId == id },
         arranged = s.arranged - id,
+        channelEdits = s.channelEdits - id,
     )
 
     /** The parts of two states that sync, for telling whether a merge changed anything. */
@@ -611,5 +626,6 @@ object SyncMerge {
         a.playlists == b.playlists && a.favorites == b.favorites && a.favLists == b.favLists &&
             a.recents == b.recents && a.settings == b.settings && a.progress == b.progress &&
             a.followed == b.followed && a.intros == b.intros && a.profiles == b.profiles &&
-            a.reminders == b.reminders && a.alertWords == b.alertWords && a.arranged == b.arranged
+            a.reminders == b.reminders && a.alertWords == b.alertWords && a.arranged == b.arranged &&
+            a.channelEdits == b.channelEdits
 }

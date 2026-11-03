@@ -51,13 +51,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS, Screen.ARRANGE)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS, Screen.ARRANGE, Screen.RECORDINGS)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -715,7 +715,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         // thread), not here: the lists show as soon as the index is ready.
         val tidy = tidyWanted()
         val order = arrangementNow()
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.first, tidy.second, order) }
+        val edits = editsNow()
+        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.first, tidy.second, order, edits) }
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index
@@ -1210,6 +1211,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             "SETTINGS" -> screen = Screen.SETTINGS
             "NOTICES" -> screen = Screen.NOTICES
             "DOWNLOADS" -> screen = Screen.DOWNLOADS
+            "RECORDINGS" -> screen = Screen.RECORDINGS
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
             else -> {
                 val s = Section.entries.firstOrNull { it.name == where } ?: return
@@ -1441,6 +1443,30 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Channel whose guide is being fixed by hand. */
     var guideFixFor by mutableStateOf<Channel?>(null)
 
+    // ---- recording and renaming a channel (its long-press) ----
+
+    /** Live channel being recorded from its long-press. */
+    var recordFor by mutableStateOf<Channel?>(null)
+
+    /** Channel being renamed or given another logo. */
+    var editFor by mutableStateOf<Channel?>(null)
+
+    /** The channel as the provider names it (before Tidy channel list and any name chosen by hand). */
+    fun providerChannel(ch: Channel): Channel = index.raw.firstOrNull { it.id == ch.id } ?: ch
+
+    /** A name and logo chosen by hand for [ch] ([name] or [logo] blank: the provider's). Null puts both back. */
+    fun editChannel(ch: Channel, name: String?, logo: String?) {
+        val p = playlist ?: return
+        val edit = app.falak.player.data.ChannelEdit(name?.trim().orEmpty(), logo?.trim().orEmpty())
+        repo.update { s ->
+            val mine = s.channelEdits[p.id].orEmpty()
+            val next = if (edit.isEmpty()) mine - ch.id else mine + (ch.id to edit)
+            s.copy(channelEdits = if (next.isEmpty()) s.channelEdits - p.id else s.channelEdits + (p.id to next))
+        }
+    }
+
+    fun channelEdit(ch: Channel): app.falak.player.data.ChannelEdit? = playlist?.let { state.value.channelEdits[it.id]?.get(ch.id) }
+
     fun guideChoices(): List<app.falak.player.data.GuideChannel> = repo.guideChannels
 
     /** guideId: a guide channel id, "" for no guide, null to go back to automatic. */
@@ -1638,6 +1664,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return s.cleanNames to (s.mergeDuplicates || playlist?.isCombined == true)
     }
 
+    /** Names and logos chosen by hand for the open playlist's channels. */
+    private fun editsNow(): Map<String, app.falak.player.data.ChannelEdit> =
+        playlist?.let { state.value.channelEdits[it.id] }.orEmpty()
+
     /** The order chosen for the open playlist (Arrange). */
     private fun arrangementNow(): app.falak.player.data.Arrangement =
         playlist?.let { state.value.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
@@ -1650,8 +1680,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val want = tidyWanted()
         val old = index
         if (old.raw.isEmpty()) return
+        val edits = editsNow()
         // Only the order changed (here, or on a linked device): applied at once, nothing rebuilt.
-        if (old.tidy == want) {
+        if (old.tidy == want && old.edits == edits) {
             applyArrangement()
             return
         }
@@ -1659,7 +1690,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val p = playlist ?: return
         val order = arrangementNow()
         retidyJob = viewModelScope.launch {
-            val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second, order) }
+            val built = withContext(Dispatchers.Default) { LibraryIndex.build(old.raw, want.first, want.second, order, edits) }
             if (playlist?.id != p.id) return@launch
             if (index !== old) {
                 // The lists changed meanwhile (a new order, say): build again from them.
@@ -1683,7 +1714,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             state.collect { s ->
                 val order = playlist?.let { s.arranged[it.id] } ?: app.falak.player.data.Arrangement.NONE
                 val tidy = s.settings.cleanNames to (s.settings.mergeDuplicates || playlist?.isCombined == true)
-                if (tidy != index.tidy || order != index.arrangement) retidyIfChanged()
+                val edits = playlist?.let { s.channelEdits[it.id] }.orEmpty()
+                if (tidy != index.tidy || order != index.arrangement || edits != index.edits) retidyIfChanged()
             }
         }
         // Hiding or showing live groups (here or from the phone page) changes which channels get
@@ -1720,8 +1752,25 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Series recordings plan the episodes in the guide each time it loads (and as the library changes). */
+    private fun planSeriesRecordings() {
+        viewModelScope.launch {
+            var last: Pair<Any?, Any?>? = null
+            epg.collect { guide ->
+                val p = playlist ?: return@collect
+                val key = guide to index
+                if (last?.first === key.first && last?.second === key.second) return@collect
+                last = key
+                if (guide.isEmpty()) return@collect
+                val byId = index.byId
+                runCatching { app.falak.player.record.RecordCenter.planRules(p, { k -> guide[k] }, byId) }
+            }
+        }
+    }
+
     // Runs last, after every property above exists (opening a playlist touches many of them).
     init {
+        planSeriesRecordings()
         followOutsideChanges()
         watchAlerts()
         forgetDetourOnLeave()

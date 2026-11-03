@@ -298,6 +298,7 @@ fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel
                 vm.updateSettings { it.copy(downloadDeleteWatched = !it.downloadDeleteWatched) }
             }
             if (items.isNotEmpty()) TagChip("Delete all", false) { confirmAll = true }
+            if (rememberRecordings().isNotEmpty()) TagChip("Recordings", false) { vm.screen = Screen.RECORDINGS }
         }
         val done = items.count { it.state == OfflineState.DONE }
         Text(

@@ -89,6 +89,7 @@ const val PRIVACY_URL = "https://github.com/to0olate2-wq/Project/blob/main/PRIVA
 enum class SettingsPage(val title: String) {
     APPEARANCE("Appearance"),
     PLAYBACK("Picture & playback"),
+    RECORDINGS("Recordings & pause live TV"),
     SOUND("Sound & subtitles"),
     PLAYLISTS("Playlists & TV guide"),
     REMINDERS("Reminders & alerts"),
@@ -117,6 +118,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var removeSpeech by remember { mutableStateOf(false) }
     var serviceReport by remember { mutableStateOf(false) }
     var addAlertWord by remember { mutableStateOf(false) }
+    var homeRowsOpen by remember { mutableStateOf(false) }
+    var remoteButtonsOpen by remember { mutableStateOf(false) }
+    // Coming back from Android's settings (overlay, alarms): what they allow is read again.
+    var resumed by remember { mutableStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        resumed++
+        onPauseOrDispose { }
+    }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     // Changing parental settings needs the PIN once per session.
     val guarded: (() -> Unit) -> Unit = { action ->
@@ -201,6 +210,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     "$engine · Picture: $picture · ${if (s.autoNextEpisode) "Auto next episode" else "Next episode by hand"}",
                     focusAt(SettingsPage.PLAYBACK.name),
                 ) { openPage(SettingsPage.PLAYBACK) }
+            }
+            item {
+                val recs = app.falak.player.record.RecordCenter.book.collectAsState().value.recordings
+                val saved = recs.count { it.state == app.falak.player.record.RecState.DONE }
+                val planned = recs.count { it.state == app.falak.player.record.RecState.SCHEDULED || it.state == app.falak.player.record.RecState.RECORDING }
+                HubRow(
+                    { HubIcon(painterResource(R.drawable.ic_pl_record)) },
+                    "Recordings & pause live TV",
+                    listOf(
+                        if (s.liveBuffer == "on") "Pause & rewind on" else "Pause & rewind off",
+                        when (saved) {
+                            0 -> "No recordings"
+                            1 -> "1 recording"
+                            else -> "$saved recordings"
+                        },
+                        if (planned > 0) "$planned planned" else null,
+                    ).filterNotNull().joinToString(" · "),
+                    focusAt(SettingsPage.RECORDINGS.name),
+                ) { openPage(SettingsPage.RECORDINGS) }
             }
             item {
                 val night = when (s.nightSound) {
@@ -383,6 +411,50 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         item {
+            ClickRow(
+                "Home rows",
+                if (s.homeRows.isEmpty() && s.homeHidden.isEmpty()) "Choose which rows Home shows, and their order"
+                else "${HomeRows.shown(s).size} of ${HomeRows.ALL.size} rows shown, in your order",
+                focusAt("homeRows"),
+            ) { homeRowsOpen = true }
+        }
+        if (tvLayout) {
+            item {
+                val allowed = remember(page, resumed) { app.falak.player.record.StartWithTv.allowed(appContext) }
+                val askOverlay = {
+                    val opened = app.falak.player.record.StartWithTv.askIntent(appContext).any { intent ->
+                        runCatching { appContext.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+                    }
+                    if (!opened) {
+                        android.widget.Toast.makeText(
+                            appContext,
+                            "Allow it in the TV's Settings → Apps → Special app access → Display over other apps",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+                Column {
+                    SwitchRow(
+                        "Open when the TV starts",
+                        when {
+                            !s.startOnBoot -> "Off: The Player opens when you choose it"
+                            !allowed -> "Needs “Display over other apps” allowed for The Player"
+                            else -> "The Player opens by itself when the TV starts (and when it wakes, if it was left open)"
+                        },
+                        s.startOnBoot,
+                        focusAt("boot"),
+                    ) {
+                        val on = !s.startOnBoot
+                        vm.updateSettings { it.copy(startOnBoot = on) }
+                        if (on && !allowed) askOverlay()
+                    }
+                    if (s.startOnBoot && !allowed) {
+                        ClickRow("Allow “Display over other apps”", "Android lets an app open by itself only with this allowed") { askOverlay() }
+                    }
+                }
+            }
+        }
+        item {
             SwitchRow(
                 "Ambient screen",
                 "A slideshow with the clock after 5 minutes idle, or 90 seconds with a video paused",
@@ -487,6 +559,95 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         "with play and pause on the lock screen. Coming back brings the picture back.",
                     s.listenMode,
                 ) { vm.updateSettings { it.copy(listenMode = !it.listenMode) } }
+            }
+        }
+        }
+
+        SettingsPage.RECORDINGS -> {
+        item { SectionTitle("Pause & rewind live TV", first = true) }
+        item {
+            SwitchRow(
+                "Pause & rewind live TV",
+                if (s.liveBuffer == "on") {
+                    "Live channels play from a buffer on this device: pause, rewind up to ${s.liveBufferMinutes} minutes and catch up again. " +
+                        "It uses storage while you watch and is cleared when you change channel."
+                } else {
+                    "Off: live channels play straight from your provider (pausing may jump back to live)."
+                },
+                s.liveBuffer == "on",
+                focusAt("first"),
+            ) { vm.updateSettings { it.copy(liveBuffer = if (it.liveBuffer == "on") "off" else "on") } }
+        }
+        if (s.liveBuffer == "on") {
+            item {
+                Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                    Text("How far back", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                    Text("Since you tuned in, at most. An hour of HD takes about 2 GB.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Spacer(Modifier.height(8.dp))
+                    ChipFlow {
+                        listOf(15, 30, 60, 120).forEach { m ->
+                            TagChip(if (m < 60) "$m min" else "${m / 60} h", s.liveBufferMinutes == m) { vm.updateSettings { it.copy(liveBufferMinutes = m) } }
+                        }
+                    }
+                }
+            }
+        }
+        item { SectionTitle("Recordings") }
+        item {
+            val recs = app.falak.player.record.RecordCenter.book.collectAsState().value.recordings
+            ClickRow(
+                "Recordings",
+                recs.size.let { n -> if (n == 0) "Record from the player (Record), a channel's long-press or the TV guide" else "What's recording, planned and saved" },
+                focusAt("recordings"),
+                arrow = true,
+            ) { go("recordings") { vm.screen = Screen.RECORDINGS } }
+        }
+        item {
+            val places = remember(page, resumed) { app.falak.player.record.RecordCenter.places() }
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Save recordings to", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "A USB drive or memory card shows here while it's plugged in. Recordings stay until you delete them (removing the app removes them too).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    val chosen = places.firstOrNull { it.path == s.recordDir }?.path ?: places.firstOrNull()?.path
+                    places.forEach { pl ->
+                        TagChip("${pl.label} · ${app.falak.player.OfflineCenter.sizeLabel(pl.free)} free", pl.path == chosen) {
+                            app.falak.player.record.RecordCenter.setPlace(if (pl == places.first()) "" else pl.path)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Start early, end late", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text("Programmes recorded from the guide start a little before and end a little after, as shows rarely run to the minute.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Spacer(Modifier.height(8.dp))
+                Kicker("Early", color = Muted)
+                Spacer(Modifier.height(4.dp))
+                ChipFlow {
+                    listOf(0, 1, 2, 5, 10).forEach { m -> TagChip("$m min", s.recordEarly == m) { vm.updateSettings { it.copy(recordEarly = m) } } }
+                }
+                Spacer(Modifier.height(8.dp))
+                Kicker("Late", color = Muted)
+                Spacer(Modifier.height(4.dp))
+                ChipFlow {
+                    listOf(0, 2, 5, 10, 15, 30).forEach { m -> TagChip("$m min", s.recordLate == m) { vm.updateSettings { it.copy(recordLate = m) } } }
+                }
+            }
+        }
+        item {
+            val onTime = remember(page, resumed) { app.falak.player.record.RecordCenter.canWakeOnTime() }
+            if (!onTime) {
+                ClickRow(
+                    "Allow alarms & reminders",
+                    "So planned recordings start on time while the app is closed",
+                    focusAt("alarms"),
+                ) { askForAlarms(appContext) }
             }
         }
         }
@@ -941,6 +1102,16 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 arrow = true,
             ) { go("remote") { vm.screen = Screen.REMOTE } }
         }
+        if (tvLayout) {
+            item {
+                ClickRow(
+                    "Remote buttons",
+                    if (s.keyActions.isEmpty()) "Give your remote's buttons (the colour ones, say) a job while watching"
+                    else s.keyActions.entries.joinToString(" · ") { (k, v) -> "${KeyActions.keyName(k.toIntOrNull() ?: 0)}: ${KeyActions.label(v)}" },
+                    focusAt("keys"),
+                ) { remoteButtonsOpen = true }
+            }
+        }
         }
 
         SettingsPage.SUBTITLE_STYLE -> {
@@ -1192,6 +1363,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             },
         )
     }
+
+    if (homeRowsOpen) HomeRowsDialog(vm, state) { homeRowsOpen = false }
+    if (remoteButtonsOpen) RemoteButtonsDialog(vm, state) { remoteButtonsOpen = false }
 
     if (editPin) {
         EditPinDialog(

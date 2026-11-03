@@ -170,6 +170,10 @@ fun HomeContent(
     // Saved on this device to watch without internet (not shown in kids mode).
     val downloads = rememberDownloads()
     val hasDownloads = !vm.kidsActive && downloads.any { it.state == app.falak.player.data.OfflineState.DONE }
+    // Recordings saved on this device (not in kids mode either).
+    val recordings = rememberRecordings()
+    val hasRecordings = !vm.kidsActive && recordings.any { it.state == app.falak.player.record.RecState.DONE || it.state == app.falak.player.record.RecState.RECORDING }
+    val rows = HomeRows.shown(state.settings)
 
     MarqueePage(vm, Section.HOME, hero, onPlay) {
         if (ramadan != null) {
@@ -183,83 +187,87 @@ fun HomeContent(
                 }
             }
         }
-        // Films and episodes you started, then the playlist's most popular.
-        if (continueWatching.isNotEmpty()) {
-            item(key = "continue") {
-                Box(Modifier.padding(top = 16.dp)) {
-                    ContinueRow(
-                        continueWatching, vm.heroArt, state.progress, me,
-                        title = "Continue watching",
-                        width = if (tvHome) 220.dp else 180.dp,
-                    ) { ch -> onPlay(listOf(ch), ch) }
+        // The rows in the order chosen (Settings → Appearance → Home rows), without those switched off.
+        for (row in rows) {
+            when (row) {
+                "continue" -> if (continueWatching.isNotEmpty()) {
+                    item(key = "continue") {
+                        Box(Modifier.padding(top = 16.dp)) {
+                            ContinueRow(
+                                continueWatching, vm.heroArt, state.progress, me,
+                                title = "Continue watching",
+                                width = if (tvHome) 220.dp else 180.dp,
+                            ) { ch -> onPlay(listOf(ch), ch) }
+                        }
+                    }
                 }
-            }
-        }
-        if (hasDownloads) {
-            item(key = "downloads") { DownloadsShelf(vm, downloads, onPlay) }
-        }
-        if (top.isNotEmpty()) {
-            item(key = "top") {
-                RankShelf("Top 10 on your playlist", top, watched, { ch -> openItem(top, ch) }, sheet)
-            }
-        }
-        // What you watch.
-        if (forThisHour.isNotEmpty()) {
-            item(key = "forThisHour") {
-                LiveShelf("For this hour", forThisHour, epg, now, onPlay, onLongPress = sheet, onSeeAll = null)
-            }
-        }
-        if (recentLive.isNotEmpty()) {
-            item(key = "recentLive") {
-                LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
-            }
-        }
-        // What's new.
-        if (newMovies.isNotEmpty()) {
-            item(key = "newMovies") {
-                Shelf("New films", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
-                    items(newMovies, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(newMovies, ch) }, onLongClick = { sheet(ch) }) }
+                "downloads" -> if (hasDownloads) {
+                    item(key = "downloads") { DownloadsShelf(vm, downloads, onPlay) }
                 }
-            }
-        }
-        if (newSeries.isNotEmpty()) {
-            item(key = "newSeries") {
-                Shelf("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
-                    items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }, onLongClick = { sheet(ch) }) }
+                "recordings" -> if (hasRecordings) {
+                    item(key = "recordings") { RecordingsShelf(vm, recordings, onPlay) }
                 }
-            }
-        }
-        // Your own picks.
-        if (favLive.isNotEmpty()) {
-            item(key = "favLive") {
-                LiveShelf("Favorite channels", favLive, epg, now, onPlay, onLongPress = sheet) {
-                    vm.savedList = app.falak.player.data.DEFAULT_LIST
-                    seeAll(Section.FAVORITES, null, Sort.DEFAULT)
+                "top" -> if (top.isNotEmpty()) {
+                    item(key = "top") {
+                        RankShelf("Top 10 on your playlist", top, watched, { ch -> openItem(top, ch) }, sheet)
+                    }
                 }
-            }
-        }
-        if (favVod.isNotEmpty()) {
-            item(key = "favVod") {
-                Shelf("Favorite films & series", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
-                    items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }, onLongClick = { sheet(ch) }) }
+                "forThisHour" -> if (forThisHour.isNotEmpty()) {
+                    item(key = "forThisHour") {
+                        LiveShelf("For this hour", forThisHour, epg, now, onPlay, onLongPress = sheet, onSeeAll = null)
+                    }
                 }
-            }
-        }
-        items(myLists, key = { "list:" + it.first.id }) { (l, live, vod) ->
-            val open = { vm.section = Section.FAVORITES; vm.savedList = l.id }
-            Column {
-                if (live.isNotEmpty()) {
-                    LiveShelf(l.name, live.take(30), epg, now, { _, ch -> onPlay(live, ch) }, onLongPress = sheet) { open() }
+                "recentLive" -> if (recentLive.isNotEmpty()) {
+                    item(key = "recentLive") {
+                        LiveShelf("Recently watched", recentLive, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.RECENT, null, Sort.DEFAULT) }
+                    }
                 }
-                if (vod.isNotEmpty()) {
-                    Shelf(if (live.isNotEmpty()) "${l.name} · films & series" else l.name, onSeeAll = open) {
-                        items(vod.take(30), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(vod, ch) }, onLongClick = { sheet(ch) }) }
+                "newMovies" -> if (newMovies.isNotEmpty()) {
+                    item(key = "newMovies") {
+                        Shelf("New films", onSeeAll = { seeAll(Section.MOVIES, null, Sort.NEWEST) }) {
+                            items(newMovies, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(newMovies, ch) }, onLongClick = { sheet(ch) }) }
+                        }
+                    }
+                }
+                "newSeries" -> if (newSeries.isNotEmpty()) {
+                    item(key = "newSeries") {
+                        Shelf("New series", onSeeAll = { seeAll(Section.SERIES, null, Sort.NEWEST) }) {
+                            items(newSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(newSeries, ch) }, onLongClick = { sheet(ch) }) }
+                        }
+                    }
+                }
+                "favLive" -> if (favLive.isNotEmpty()) {
+                    item(key = "favLive") {
+                        LiveShelf("Favorite channels", favLive, epg, now, onPlay, onLongPress = sheet) {
+                            vm.savedList = app.falak.player.data.DEFAULT_LIST
+                            seeAll(Section.FAVORITES, null, Sort.DEFAULT)
+                        }
+                    }
+                }
+                "favVod" -> if (favVod.isNotEmpty()) {
+                    item(key = "favVod") {
+                        Shelf("Favorite films & series", onSeeAll = { seeAll(Section.FAVORITES, null, Sort.DEFAULT) }) {
+                            items(favVod, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(favVod, ch) }, onLongClick = { sheet(ch) }) }
+                        }
+                    }
+                }
+                "lists" -> items(myLists, key = { "list:" + it.first.id }) { (l, live, vod) ->
+                    val open = { vm.section = Section.FAVORITES; vm.savedList = l.id }
+                    Column {
+                        if (live.isNotEmpty()) {
+                            LiveShelf(l.name, live.take(30), epg, now, { _, ch -> onPlay(live, ch) }, onLongPress = sheet) { open() }
+                        }
+                        if (vod.isNotEmpty()) {
+                            Shelf(if (live.isNotEmpty()) "${l.name} · films & series" else l.name, onSeeAll = open) {
+                                items(vod.take(30), key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(vod, ch) }, onLongClick = { sheet(ch) }) }
+                            }
+                        }
                     }
                 }
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = hero.isEmpty() && !hasDownloads && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+        val empty = hero.isEmpty() && !hasDownloads && !hasRecordings && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
             top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {
