@@ -275,8 +275,18 @@ class PlayerActivity : ComponentActivity() {
     private var recordHintShown = false
     private val shiftTick = object : Runnable {
         override fun run() {
+            // The provider refused the buffer's connection: the channel plays directly, at once.
+            val t = shift
+            val ch = queue.getOrNull(index)
+            if (t != null && t.failed && ch != null) {
+                FreezeWatch.note("buffer couldn't start: " + t.capture.problem)
+                noShift += ch.id
+                releaseShift()
+                playCurrent(showInfo = false)
+                return
+            }
             updateShiftViews()
-            if (shift != null) handler.postDelayed(this, 1_000)
+            if (shift != null) handler.postDelayed(this, 500)
         }
     }
 
@@ -4151,7 +4161,7 @@ class PlayerActivity : ComponentActivity() {
             val t = app.falak.player.record.Timeshift.open(this, url, ua, ch.referrer, s.liveBufferMinutes)
             shift = t
             handler.removeCallbacks(shiftTick)
-            handler.postDelayed(shiftTick, 1_000)
+            handler.postDelayed(shiftTick, 300)
             FreezeWatch.note("live from the buffer")
             t.live()
         } catch (e: Exception) {

@@ -32,12 +32,42 @@ class RecordingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var stopped = false
 
+    /** The device stays awake (and on Wi-Fi) while something records, even with the screen off. */
+    private var wake: android.os.PowerManager.WakeLock? = null
+    private var wifi: android.net.wifi.WifiManager.WifiLock? = null
+
+    private fun stayAwake() {
+        runCatching {
+            val w = wake ?: (getSystemService(POWER_SERVICE) as android.os.PowerManager)
+                .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ThePlayer:recording")
+                .apply { setReferenceCounted(false) }
+                .also { wake = it }
+            // Renewed on every check, so it can't outlive the recorder by much.
+            w.acquire(2 * 60_000L)
+        }
+        runCatching {
+            if (wifi == null) {
+                @Suppress("DEPRECATION")
+                wifi = (applicationContext.getSystemService(WIFI_SERVICE) as android.net.wifi.WifiManager)
+                    .createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ThePlayer:recording")
+                    .apply { setReferenceCounted(false) }
+            }
+            if (wifi?.isHeld == false) wifi?.acquire()
+        }
+    }
+
+    private fun letSleep() {
+        runCatching { if (wake?.isHeld == true) wake?.release() }
+        runCatching { if (wifi?.isHeld == true) wifi?.release() }
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             RecordCenter.tickAsync { busy ->
                 handler.post {
                     if (stopped) return@post
                     if (busy) {
+                        stayAwake()
                         show()
                         handler.removeCallbacks(this)
                         handler.postDelayed(this, 5_000)
@@ -74,6 +104,7 @@ class RecordingService : Service() {
 
     private fun finishUp() {
         stopped = true
+        letSleep()
         handler.removeCallbacksAndMessages(null)
         RecordCenter.planAlarm()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -81,6 +112,7 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        letSleep()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
