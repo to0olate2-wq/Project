@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.record.HlsTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-03T22:34:33" hostname="runnervm48cm3" time="0.035">
+  <properties/>
+  <testcase name="ivFromThePartNumberWhenNoneIsGiven" classname="app.falak.player.record.HlsTest" time="0.003"/>
+  <testcase name="noVersionWhenAllHaveSeparateSound" classname="app.falak.player.record.HlsTest" time="0.021"/>
+  <testcase name="readsPartsKeysHeadersAndTheEnd" classname="app.falak.player.record.HlsTest" time="0.008"/>
+  <testcase name="attributesWithQuotedCommas" classname="app.falak.player.record.HlsTest" time="0.0"/>
+  <testcase name="picksTheBestVersionWhoseSoundIsInItsParts" classname="app.falak.player.record.HlsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

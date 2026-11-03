@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.player.SubtitleExtractionTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-03T22:34:24" hostname="runnervm48cm3" time="4.855">
+  <properties/>
+  <testcase name="movTextInMp4" classname="app.falak.player.player.SubtitleExtractionTest" time="4.462"/>
+  <testcase name="oldNamesSwappedForSameLengthOnes" classname="app.falak.player.player.SubtitleExtractionTest" time="0.057"/>
+  <testcase name="assInMkv" classname="app.falak.player.player.SubtitleExtractionTest" time="0.074"/>
+  <testcase name="srtInMkv" classname="app.falak.player.player.SubtitleExtractionTest" time="0.211"/>
+  <testcase name="olderSsaNameInMkv" classname="app.falak.player.player.SubtitleExtractionTest" time="0.051"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

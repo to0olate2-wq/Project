@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.PhoneHiddenGroupsScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-03T22:36:26" hostname="runnervm48cm3" time="10.652">
+  <properties/>
+  <testcase name="phoneHidden" classname="app.falak.player.screens.PhoneHiddenGroupsScreens" time="10.652"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
