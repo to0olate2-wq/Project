@@ -278,7 +278,7 @@ fun DownloadsShelf(vm: LibraryViewModel, items: List<OfflineItem>, onPlay: (List
 @Composable
 fun DownloadsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
     val items = rememberDownloads()
-    val back = { vm.screen = if (vm.playlist != null) Screen.LIBRARY else Screen.PLAYLISTS }
+    val back = { vm.closePage() }
     BackHandler { back() }
     var confirm by remember { mutableStateOf<OfflineItem?>(null) }
     val wifiOnly = state.settings.downloadWifiOnly

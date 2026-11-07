@@ -1,17 +1,10 @@
 package app.falak.player.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.runtime.rememberCoroutineScope
 import app.falak.player.data.mine
 import app.falak.player.data.AppState
-import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -125,7 +118,7 @@ fun qualityTag(ch: Channel): String? {
 
 fun countLabel(n: Int): String = String.format(java.util.Locale.US, "%,d", n)
 
-// ---------- the frame: side menu (or drawer on a phone held upright) + top bar ----------
+// ---------- the frame: top bar and page (the menu around it is the app's, see AppShell) ----------
 
 @Composable
 fun SidebarFrame(
@@ -144,83 +137,37 @@ fun SidebarFrame(
 ) {
     val tv = isTv()
     val index = vm.index
-    val favIds = state.favorites[state.mine(p.id)].orEmpty()
-    val recentIds = state.recents[state.mine(p.id)].orEmpty()
-    val counts = remember(index, favIds, recentIds) {
-        mapOf(
-            Section.LIVE to index.live.size,
-            Section.MOVIES to index.movies.size,
-            Section.SERIES to index.series.size,
-            Section.FAVORITES to favIds.size,
-            Section.RECENT to recentIds.size,
-        )
-    }
-    val recent = remember(recentIds, index, excluded) {
-        recentIds.mapNotNull { index.byId[it] }.filter { it.group !in excluded }.take(6)
-    }
-    val scope = rememberCoroutineScope()
-    val drawer = rememberDrawerState(DrawerValue.Closed)
-    BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
     val hasGuide = index.live.isNotEmpty()
-    val openRecent: (Channel) -> Unit = { ch ->
-        when {
-            ch.isSeriesFolder -> vm.openSeries(ch)
-            ch.kind == Kind.MOVIE -> vm.openDetails(ch)
-            else -> onPlay(recent.filter { it.kind == Kind.LIVE }, ch)
-        }
+    val shell = LocalShell.current
+    // TV: the page's name (a greeting on Home) at the top left; the search is a box beside it.
+    val title = if (!tv) null else when {
+        vm.query.isNotEmpty() -> "Search"
+        section == Section.HOME -> greeting()
+        else -> navLabel(section)
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        // TV, tablets and phones on their side keep the menu open; upright phones slide it in.
-        val permanent = tv || maxWidth >= 600.dp
-        val side: @Composable (Modifier) -> Unit = { m ->
-            Sidebar(
-                p, sections, section, counts, recent, hasGuide,
-                onSelect = { s ->
-                    vm.section = s
-                    vm.group = null
-                    scope.launch { drawer.close() }
-                },
-                onRecent = { ch ->
-                    scope.launch { drawer.close() }
-                    openRecent(ch)
-                },
-                onGuide = { vm.screen = Screen.GUIDE },
-                onPlaylists = { vm.screen = Screen.PLAYLISTS },
-                onSettings = { vm.screen = Screen.SETTINGS },
-                modifier = m,
-            )
-        }
-        // TV, tablets, phones on their side: a slim rail of icons, so the page keeps the room.
-        val rail: @Composable (Modifier) -> Unit = { m ->
-            SideRail(
-                sections, section, hasGuide,
-                onSelect = { s ->
-                    vm.section = s
-                    vm.group = null
-                },
-                onGuide = { vm.screen = Screen.GUIDE },
-                onPlaylists = { vm.screen = Screen.PLAYLISTS },
-                onSettings = { vm.screen = Screen.SETTINGS },
-                modifier = m,
-            )
-        }
-        val openMenu: () -> Unit = { scope.launch { drawer.open() } }
-        val main: @Composable (Modifier) -> Unit = { m ->
-            // The Films and Series pages' picture goes behind the top bar too.
-            MarqueeStage(vm, landing, excluded, m) {
+    val subtitle = if (!tv || vm.query.isNotEmpty()) null else when (val g = vm.group) {
+        null, ALL_FILTER -> null
+        FAV_FILTER -> "Favorites"
+        else -> g
+    }
+    CompositionLocalProvider(LocalCardDetails provides true) {
+        // The Films and Series pages' picture goes behind the top bar too.
+        MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp)) {
                 SidebarTopBar(
                     query = vm.query,
                     scope = section.label,
                     onQuery = { vm.query = it },
-                    onMenu = if (permanent) null else openMenu,
-                    hasGuide = hasGuide,
+                    onMenu = null,
+                    // The rail has the guide; the bottom bar hasn't.
+                    hasGuide = hasGuide && shell != ShellMode.RAIL,
                     loading = vm.loading,
                     onGuide = { vm.screen = Screen.GUIDE },
                     onRefresh = { vm.open(p, refresh = true) },
                     unread = state.notices.count { !it.read },
                     onNotices = { vm.screen = Screen.NOTICES },
-                    onDownloads = if (hasDownloads) ({ vm.screen = Screen.DOWNLOADS }) else null,
+                    // (Phones with the bottom bar: Downloads is under More.)
+                    onDownloads = if (hasDownloads && shell != ShellMode.BAR) ({ vm.screen = Screen.DOWNLOADS }) else null,
                     profileButton = if (vm.profilesWanted(state)) {
                         { ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true } }
                     } else {
@@ -230,24 +177,11 @@ fun SidebarFrame(
                     onSearchFocus = { vm.searchFocused = it },
                     voiceLang = VoiceSearch.language(state.settings.voiceLang),
                     onVoiceLang = { vm.switchVoiceLanguage() },
+                    title = title,
+                    subtitle = subtitle,
+                    brand = shell == ShellMode.BAR,
                 )
                 body(Modifier.fillMaxSize())
-            }
-            }
-        }
-        CompositionLocalProvider(LocalCardDetails provides true) {
-            if (permanent) {
-                Row(Modifier.fillMaxSize()) {
-                    rail(Modifier.fillMaxHeight())
-                    main(Modifier.weight(1f).fillMaxHeight())
-                }
-            } else {
-                ModalNavigationDrawer(
-                    drawerState = drawer,
-                    drawerContent = {
-                        ModalDrawerSheet(drawerContainerColor = Ink2, modifier = Modifier.width(290.dp)) { side(Modifier.fillMaxHeight()) }
-                    },
-                ) { main(Modifier.fillMaxSize()) }
             }
         }
     }
@@ -256,29 +190,36 @@ fun SidebarFrame(
 // ---------- slim side rail (TV, tablets, phones on their side) ----------
 
 @Composable
-private fun railWidth(): Dp = if (isTv()) 76.dp else 64.dp
+internal fun railWidth(): Dp = if (isTv()) 76.dp else 64.dp
 
 /**
- * Icons only (no names or counts), so the page gets the width: the sections in the middle, the
- * playlist and Settings at the bottom. The section you're in is orange with a mark at the edge;
- * the one the remote is on turns white.
+ * Icons only (no names or counts), so the page gets the width: the sections in the middle, then
+ * the guide and Recordings; the playlist and Settings at the bottom. Where you are is orange with
+ * a mark at the edge; the one the remote is on turns white.
  */
 @Composable
 fun SideRail(
     sections: List<Section>,
-    selected: Section,
+    /** The section open (null: a page such as Settings is open instead). */
+    selected: Section?,
     hasGuide: Boolean,
     onSelect: (Section) -> Unit,
     onGuide: () -> Unit,
     onPlaylists: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    settingsOpen: Boolean = false,
+    /** The Recordings page (null: no button, e.g. no live channels or the Kids profile). */
+    onRecordings: (() -> Unit)? = null,
+    recordingsOpen: Boolean = false,
+    /** Something is being recorded: a red dot on Recordings. */
+    recordingNow: Boolean = false,
 ) {
     val tv = isTv()
     Row(modifier.width(railWidth()).background(Ink2)) {
         // Short screens (a phone on its side): the icons shrink so every one stays in view.
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-            val slots = sections.size + (if (hasGuide) 1 else 0) + 2
+            val slots = sections.size + (if (hasGuide) 1 else 0) + (if (onRecordings != null) 1 else 0) + 2
             val fixed = (if (tv) 20 + 32 + 14 + 16 else 14 + 28 + 10 + 10) + 9
             val fit = (maxHeight - fixed.dp - 6.dp * (slots + 1)) / slots
             val box = fit.coerceIn(32.dp, if (tv) 46.dp else 44.dp)
@@ -293,6 +234,9 @@ fun SideRail(
                 ) {
                     sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box) { onSelect(s) } }
                     if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, onClick = onGuide)
+                    if (onRecordings != null) {
+                        RailIcon(painterResource(R.drawable.ic_pl_record), "Recordings", recordingsOpen, box, dot = recordingNow, onClick = onRecordings)
+                    }
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -301,7 +245,7 @@ fun SideRail(
                     // A short rule sets the playlist and Settings apart from the sections.
                     Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
                     RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, box, onClick = onPlaylists)
-                    RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", false, box, onClick = onSettings)
+                    RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", settingsOpen, box, onClick = onSettings)
                 }
                 Spacer(Modifier.height(if (tv) 16.dp else 10.dp))
             }
@@ -312,7 +256,7 @@ fun SideRail(
 
 /** One square icon button of the rail (its name is read out by TalkBack, not shown). */
 @Composable
-private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, onClick: () -> Unit) {
+private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, dot: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(box * 0.3f)
     val bg by animateColorAsState(
@@ -351,11 +295,21 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, o
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size((box * 0.52f).coerceIn(18.dp, 24.dp)))
+            if (dot) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = box * 0.2f, end = box * 0.2f)
+                        .size(7.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Signal),
+                )
+            }
         }
     }
 }
 
-// ---------- side menu (the drawer on phones held upright) ----------
+// ---------- menu items (the rail, the player's Menu) ----------
 
 @Composable
 internal fun navIcon(s: Section): Painter = when (s) {
@@ -368,84 +322,6 @@ internal fun navIcon(s: Section): Painter = when (s) {
 }
 
 internal fun navLabel(s: Section): String = if (s == Section.LIVE) "Live TV" else s.label
-
-@Composable
-fun Sidebar(
-    playlist: Playlist,
-    sections: List<Section>,
-    selected: Section,
-    counts: Map<Section, Int>,
-    recent: List<Channel>,
-    hasGuide: Boolean,
-    onSelect: (Section) -> Unit,
-    onRecent: (Channel) -> Unit,
-    onGuide: () -> Unit,
-    onPlaylists: () -> Unit,
-    onSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val tv = isTv()
-    Column(modifier.fillMaxHeight().background(Ink2)) {
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = if (tv) 22.dp else 14.dp, bottom = 12.dp),
-        ) {
-            item(key = "brand") {
-                Row(Modifier.padding(start = 6.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BrandMark(if (tv) 34.dp else 30.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Wordmark(if (tv) 21 else 19)
-                }
-            }
-            items(sections, key = { "nav:" + it.name }) { s ->
-                NavItem(navIcon(s), navLabel(s), counts[s], s == selected) { onSelect(s) }
-            }
-            if (hasGuide) {
-                item(key = "guide") { NavItem(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", null, false, onClick = onGuide) }
-            }
-            if (recent.isNotEmpty()) {
-                item(key = "recentTitle") {
-                    Box(Modifier.padding(start = 10.dp, top = 22.dp, bottom = 6.dp)) { Kicker("Recently watched", color = Faint) }
-                }
-                items(recent, key = { "recent:" + it.id }) { ch -> RecentItem(ch, onClick = { onRecent(ch) }) }
-            }
-        }
-        // The playlist and Settings stay at the bottom, however long the menu gets.
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
-        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            val shape = RoundedCornerShape(10.dp)
-            Row(
-                Modifier
-                    .weight(1f)
-                    .focusRing(shape)
-                    .clip(shape)
-                    .background(Ink3)
-                    .clickable(onClick = onPlaylists)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(playlist.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        when {
-                            playlist.isCombined -> "Combined"
-                            playlist.type == SourceType.XTREAM -> "Xtream"
-                            playlist.type == SourceType.M3U_URL -> "M3U link"
-                            else -> "M3U file"
-                        } + "  ·  Switch",
-                        fontFamily = Sans,
-                        fontSize = 11.sp,
-                        color = Faint,
-                        maxLines = 1,
-                    )
-                }
-            }
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Muted)
-            }
-        }
-    }
-}
 
 @Composable
 internal fun NavItem(
@@ -487,39 +363,6 @@ internal fun NavItem(
     }
 }
 
-@Composable
-private fun RecentItem(ch: Channel, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
-    val live = ch.kind == Kind.LIVE
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .focusRing(shape)
-            .clip(shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(if (live) 34.dp else 24.dp, if (live) 22.dp else 34.dp).clip(RoundedCornerShape(4.dp)).background(Ink3),
-            contentAlignment = Alignment.Center,
-        ) {
-            AsyncImage(
-                model = ch.logo.ifBlank { null },
-                contentDescription = null,
-                contentScale = if (live) ContentScale.Fit else ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().padding(if (live) 2.dp else 0.dp),
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(ch.name, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (live) {
-            Spacer(Modifier.width(6.dp))
-            LiveDot(6.dp)
-        }
-    }
-}
-
 // ---------- top bar ----------
 
 @Composable
@@ -544,6 +387,11 @@ fun SidebarTopBar(
     onVoiceLang: () -> Unit = {},
     /** The Downloads page, when there are downloads. */
     onDownloads: (() -> Unit)? = null,
+    /** TV: the page's name at the left (the search box then sits beside it, narrower). */
+    title: String? = null,
+    subtitle: String? = null,
+    /** Phones with the bottom bar: the app's mark at the left. */
+    brand: Boolean = false,
 ) {
     val tv = isTv()
     Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -552,12 +400,21 @@ fun SidebarTopBar(
                 Icon(Icons.Outlined.Menu, contentDescription = "Menu", tint = Paper)
             }
         }
+        if (brand) {
+            BrandMark(28.dp)
+            Spacer(Modifier.width(10.dp))
+        }
+        if (title != null) {
+            Column(Modifier.weight(1f).padding(end = 16.dp)) {
+                Text(title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null) Text(subtitle, fontFamily = Sans, fontSize = 13.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         val shape = RoundedCornerShape(12.dp)
         Row(
             // Takes the free width up to a comfortable 560 dp; the buttons stay at the far right.
-            Modifier
-                .weight(1f)
-                .widthIn(max = 560.dp)
+            // With a title beside it (TV): a narrower box.
+            (if (title != null) Modifier.width(330.dp) else Modifier.weight(1f).widthIn(max = 560.dp))
                 .panel(shape)
                 .padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,

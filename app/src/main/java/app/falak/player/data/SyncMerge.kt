@@ -106,6 +106,8 @@ object SyncMerge {
         "hiddenGroups", "guideOverrides", "lockedGroups", "kidsGroups",
         // 8.7: the buffer, recordings' folder, starting with the TV and the remote's buttons are this device's.
         "liveBuffer", "liveBufferMinutes", "recordDir", "startOnBoot", "keyActions",
+        // 8.8: the TV's live preview.
+        "livePreview",
     )
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

@@ -65,6 +65,12 @@ object RecordCenter {
 
     private fun file() = File(app.filesDir, "recordings.json")
 
+    /** Screenshot tests: recordings to show (nothing is recorded or written). */
+    @androidx.annotation.VisibleForTesting
+    fun showForTest(book: RecordBook) {
+        _book.value = book
+    }
+
     fun recording(id: String): Recording? = _book.value.recordings.firstOrNull { it.id == id }
 
     private fun change(persist: Boolean = true, f: (RecordBook) -> RecordBook) {

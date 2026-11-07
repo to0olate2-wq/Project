@@ -56,7 +56,7 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun NoticesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
-    val back: () -> Unit = { if (!vm.leaveDetour()) vm.screen = if (vm.playlist != null) Screen.LIBRARY else Screen.PLAYLISTS }
+    val back: () -> Unit = { vm.closePage() }
     BackHandler { back() }
     val notices = state.notices
     // Seen: the bell's count goes once the page has been looked at for a moment.

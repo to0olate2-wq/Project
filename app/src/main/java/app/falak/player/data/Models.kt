@@ -421,6 +421,8 @@ data class Settings(
     val mergeDuplicates: Boolean = false,
     /** Back from a live channel keeps it playing small in a corner of the lists. */
     val miniPlayer: Boolean = true,
+    /** TV, Live (list): the channel the remote rests on plays small in the preview beside the list. */
+    val livePreview: Boolean = true,
     /** Phones: the sound carries on with the screen off or the app left (lock-screen controls). */
     val listenMode: Boolean = false,
     /** Voice search listens for "ar" or "en"; "" = the device's language. */
