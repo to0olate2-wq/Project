@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import app.falak.player.update.Updater
@@ -85,6 +88,15 @@ import androidx.compose.foundation.layout.aspectRatio
 /** Public privacy policy (also linked from the Google Play listing). */
 const val PRIVACY_URL = "https://github.com/to0olate2-wq/Project/blob/main/PRIVACY.md"
 
+/** TV, Settings: whether the remote has been placed yet, and whether it should go into the page next. */
+private class SettingsNav {
+    var started = false
+    var wantPanel = false
+}
+
+/** The rows of the list of pages (TV: coming back to one of these puts the remote on the list). */
+private val HUB_KEYS: Set<String> = SettingsPage.entries.filter { it.parent == null }.map { it.name }.toSet() + "PRAYER"
+
 /** The pages of Settings, each opened from the list on its first page. */
 enum class SettingsPage(val title: String) {
     APPEARANCE("Appearance"),
@@ -135,22 +147,51 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             action()
         }
     }
-    val page = vm.settingsPage
+    // TV: the list of pages on the left and the page picked on the right, both on screen.
+    val tvLayout = isTv()
+    val twoPane = tvLayout
+    // (TV: a page is always open on the right; the first until another is picked.)
+    val page = vm.settingsPage ?: if (twoPane) {
+        vm.settingsFocus?.let { k -> SettingsPage.entries.firstOrNull { it.name == k && it.parent == null } } ?: SettingsPage.APPEARANCE
+    } else {
+        null
+    }
     val appContext = androidx.compose.ui.platform.LocalContext.current
     // Checked each time a page opens (the user may have changed it in Android's settings).
     val notificationsOff = remember(page) {
         !androidx.core.app.NotificationManagerCompat.from(appContext).areNotificationsEnabled()
     }
+    // TV: where the remote is (the list or the page), and asking for it to go into the page.
+    var panelFocused by remember { mutableStateOf(false) }
+    var panelTick by remember { mutableIntStateOf(0) }
+    val nav = remember { SettingsNav() }
+    val hubFocus = remember { LinkedHashMap<String, FocusRequester>() }
     // Back: from a page to the list of pages; from the list, out of Settings.
+    // (TV: from the page to its place in the list; from the list, out of Settings.)
     val back: () -> Unit = {
-        if (page != null) {
-            vm.settingsFocus = page.name
-            vm.settingsPage = page.parent
-        } else if (!vm.leaveDetour()) {
-            vm.screen = if (p != null) Screen.LIBRARY else Screen.PLAYLISTS
+        when {
+            twoPane && panelFocused && page != null && page.parent != null -> {
+                vm.settingsFocus = page.name
+                vm.settingsPage = page.parent
+                nav.wantPanel = true
+            }
+            twoPane && panelFocused && page != null -> runCatching { hubFocus[page.name]?.requestFocus() }
+            twoPane -> vm.closePage()
+            page != null -> {
+                vm.settingsFocus = page.name
+                vm.settingsPage = page.parent
+            }
+            else -> vm.closePage()
         }
     }
-    val openPage: (SettingsPage) -> Unit = { vm.settingsFocus = it.name; vm.settingsPage = it }
+    val openPage: (SettingsPage) -> Unit = {
+        vm.settingsFocus = it.name
+        vm.settingsPage = it
+        if (twoPane) {
+            nav.wantPanel = true
+            panelTick++
+        }
+    }
     // A page of its own (Profiles, Phone remote…): Back from there comes back to this row.
     val go: (String, () -> Unit) -> Unit = { key, action -> vm.settingsFocus = key; action() }
     val index = vm.index
@@ -162,8 +203,45 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     // The remote's focus: the row last opened when coming back to a page, otherwise its first row.
     val focus = remember(page) { LinkedHashMap<String, FocusRequester>() }
     fun focusAt(key: String): Modifier = Modifier.focusRequester(focus.getOrPut(key) { FocusRequester() })
-    LaunchedEffect(page) {
+    // TV: the remote resting on a page in the list shows that page on the right (a moment later,
+    // so running down the list doesn't redraw every page on the way).
+    var hovered by remember { mutableStateOf<String?>(null) }
+    fun hubAt(key: String): Modifier = if (!twoPane) {
+        focusAt(key)
+    } else {
+        Modifier
+            .focusRequester(hubFocus.getOrPut(key) { FocusRequester() })
+            .onFocusChanged { if (it.isFocused) hovered = key }
+    }
+    LaunchedEffect(hovered) {
+        val target = SettingsPage.entries.firstOrNull { it.name == hovered && it.parent == null } ?: return@LaunchedEffect
+        delay(160)
+        if (vm.settingsPage != target && vm.settingsPage?.parent != target) {
+            vm.settingsFocus = null
+            vm.settingsPage = target
+        }
+    }
+    LaunchedEffect(page, panelTick) {
         val want = vm.settingsFocus
+        if (twoPane) {
+            // Coming in: the list, at the page last opened, unless coming back to a row of a page
+            // (from a page of its own, e.g. Hidden groups). Later: only when asked to go in.
+            val first = !nav.started
+            val toPanel = if (first) want != null && want !in HUB_KEYS else nav.wantPanel
+            nav.started = true
+            nav.wantPanel = false
+            if (!first && !toPanel) return@LaunchedEffect
+            repeat(10) {
+                delay(50)
+                val order = if (toPanel) {
+                    listOfNotNull(want?.let { focus[it] }) + focus.values
+                } else {
+                    listOfNotNull((want ?: page?.let { (it.parent ?: it).name })?.let { hubFocus[it] }) + hubFocus.values
+                }
+                if (order.any { runCatching { it.requestFocus() }.isSuccess }) return@LaunchedEffect
+            }
+            return@LaunchedEffect
+        }
         repeat(10) {
             delay(50)
             val order = listOfNotNull(want?.let { focus[it] }) + focus.values
@@ -171,22 +249,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
 
-    val tvLayout = isTv()
-    // TV: a centred column of comfortable reading width; phone: the full width.
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    key(page) {
-    LazyColumn(
-        Modifier
-            .fillMaxHeight()
-            .then(if (tvLayout) Modifier.widthIn(max = 780.dp) else Modifier)
-            .fillMaxWidth()
-            .padding(horizontal = if (tvLayout) 24.dp else 16.dp),
-        contentPadding = PaddingValues(bottom = 32.dp),
-    ) {
-        item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader(page?.title ?: "Settings", onBack = back) } }
-
-        when (page) {
-        null -> {
+    // The list of pages: each with what's set now.
+    val hubItems: LazyListScope.() -> Unit = {
             item { Spacer(Modifier.height(6.dp)) }
             item {
                 val theme = when (s.themeMode) {
@@ -198,7 +262,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     { ThemeGlyph(Paper) },
                     "Appearance",
                     "$theme theme · ${if (s.look == "sidebar") "Sidebar" else "Classic"} look · Ambient screen ${if (s.ambient) "on" else "off"}",
-                    focusAt(SettingsPage.APPEARANCE.name),
+                    hubAt(SettingsPage.APPEARANCE.name),
+                    selected = twoPane && (page == SettingsPage.APPEARANCE || page?.parent == SettingsPage.APPEARANCE),
                 ) { openPage(SettingsPage.APPEARANCE) }
             }
             item {
@@ -208,7 +273,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     { HubIcon(painterResource(R.drawable.ic_pl_player)) },
                     "Picture & playback",
                     "$engine · Picture: $picture · ${if (s.autoNextEpisode) "Auto next episode" else "Next episode by hand"}",
-                    focusAt(SettingsPage.PLAYBACK.name),
+                    hubAt(SettingsPage.PLAYBACK.name),
+                    selected = twoPane && (page == SettingsPage.PLAYBACK || page?.parent == SettingsPage.PLAYBACK),
                 ) { openPage(SettingsPage.PLAYBACK) }
             }
             item {
@@ -227,7 +293,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         },
                         if (planned > 0) "$planned planned" else null,
                     ).filterNotNull().joinToString(" · "),
-                    focusAt(SettingsPage.RECORDINGS.name),
+                    hubAt(SettingsPage.RECORDINGS.name),
+                    selected = twoPane && (page == SettingsPage.RECORDINGS || page?.parent == SettingsPage.RECORDINGS),
                 ) { openPage(SettingsPage.RECORDINGS) }
             }
             item {
@@ -242,7 +309,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     "Sound & subtitles",
                     "Night sound $night · Audio: $audio · " +
                         if (s.subtitlesOn) "Subtitles shown automatically" else "Subtitles when you choose them",
-                    focusAt(SettingsPage.SOUND.name),
+                    hubAt(SettingsPage.SOUND.name),
+                    selected = twoPane && (page == SettingsPage.SOUND || page?.parent == SettingsPage.SOUND),
                 ) { openPage(SettingsPage.SOUND) }
             }
             item {
@@ -256,7 +324,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     "Playlists & TV guide",
                     "Refresh $refresh · What's new alerts ${if (s.notifyNew) "on" else "off"}" +
                         if (p != null && p.epgShiftMinutes != 0) " · Guide ${formatShift(p.epgShiftMinutes)}" else "",
-                    focusAt(SettingsPage.PLAYLISTS.name),
+                    hubAt(SettingsPage.PLAYLISTS.name),
+                    selected = twoPane && (page == SettingsPage.PLAYLISTS || page?.parent == SettingsPage.PLAYLISTS),
                 ) { openPage(SettingsPage.PLAYLISTS) }
             }
             item {
@@ -272,7 +341,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         },
                         if (state.alertWords.isEmpty()) "No alert words" else "Alerts: " + state.alertWords.joinToString(", "),
                     ).joinToString(" · "),
-                    focusAt(SettingsPage.REMINDERS.name),
+                    hubAt(SettingsPage.REMINDERS.name),
+                    selected = twoPane && (page == SettingsPage.REMINDERS || page?.parent == SettingsPage.REMINDERS),
                 ) { openPage(SettingsPage.REMINDERS) }
             }
             item { HubGap() }
@@ -285,7 +355,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         if (pinSet) "PIN on" else "No PIN",
                         if (s.kidsMode) "Kids mode on" else "Kids mode off",
                     ).joinToString(" · "),
-                    focusAt(SettingsPage.FAMILY.name),
+                    hubAt(SettingsPage.FAMILY.name),
+                    selected = twoPane && (page == SettingsPage.FAMILY || page?.parent == SettingsPage.FAMILY),
                 ) { openPage(SettingsPage.FAMILY) }
             }
             item {
@@ -298,7 +369,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         1 -> "1 phone paired"
                         else -> "${state.remotes.size} phones paired"
                     },
-                    focusAt(SettingsPage.DEVICES.name),
+                    hubAt(SettingsPage.DEVICES.name),
+                    selected = twoPane && (page == SettingsPage.DEVICES || page?.parent == SettingsPage.DEVICES),
                 ) { openPage(SettingsPage.DEVICES) }
             }
             item {
@@ -310,7 +382,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         "pause" -> "On: a reminder, and the player pauses"
                         else -> "Off"
                     },
-                    focusAt("PRAYER"),
+                    hubAt("PRAYER"),
                 ) { go("PRAYER") { vm.screen = Screen.PRAYER } }
             }
             item { HubGap() }
@@ -320,11 +392,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     "About",
                     "The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})" +
                         if (Updater.enabled) " · Check for updates" else "",
-                    focusAt(SettingsPage.ABOUT.name),
+                    hubAt(SettingsPage.ABOUT.name),
+                    selected = twoPane && page == SettingsPage.ABOUT,
                 ) { openPage(SettingsPage.ABOUT) }
             }
-        }
+    }
 
+    // One page of Settings.
+    val pageItems: LazyListScope.(SettingsPage) -> Unit = { shown ->
+        when (shown) {
         SettingsPage.APPEARANCE -> {
         item {
             val context = androidx.compose.ui.platform.LocalContext.current
@@ -548,6 +624,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     (if (tvLayout) "OK on it goes back to full screen, Back closes it." else "Tap it for full screen; × closes it."),
                 s.miniPlayer,
             ) { vm.updateSettings { it.copy(miniPlayer = !it.miniPlayer) } }
+        }
+        if (tvLayout) {
+            item {
+                SwitchRow(
+                    "Live preview",
+                    "In Live TV, the channel the remote rests on plays small beside the list",
+                    s.livePreview,
+                ) { vm.updateSettings { it.copy(livePreview = !it.livePreview) } }
+            }
         }
         // Phones and tablets: sound in the background (a TV keeps the picture on screen anyway).
         item {
@@ -1253,7 +1338,67 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
         }
     }
-    }
+
+    val shell = LocalShell.current
+    if (twoPane) {
+        // TV: the list on the left, the page on the right.
+        Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL) 28.dp else pageMargin())) {
+            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Settings",
+                    fontFamily = Serif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 24.sp,
+                    color = Paper,
+                    modifier = Modifier.weight(1f),
+                )
+                Clock()
+            }
+            Row(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    Modifier.width(330.dp).fillMaxHeight(),
+                    contentPadding = PaddingValues(bottom = 32.dp),
+                ) { hubItems() }
+                Spacer(Modifier.width(18.dp))
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
+                Spacer(Modifier.width(26.dp))
+                Box(Modifier.weight(1f).fillMaxHeight().onFocusChanged { panelFocused = it.hasFocus }) {
+                    key(page) {
+                        val shown = page ?: SettingsPage.APPEARANCE
+                        LazyColumn(
+                            Modifier.fillMaxHeight().widthIn(max = 760.dp).fillMaxWidth(),
+                            contentPadding = PaddingValues(bottom = 32.dp),
+                        ) {
+                            item {
+                                if (shown.parent != null) {
+                                    Box(Modifier.padding(horizontal = 4.dp)) { PageHeader(shown.title, onBack = back) }
+                                } else {
+                                    Text(
+                                        shown.title,
+                                        fontFamily = Serif,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 20.sp,
+                                        color = Paper,
+                                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
+                                    )
+                                }
+                            }
+                            pageItems(shown)
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        key(page) {
+            LazyColumn(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 32.dp),
+            ) {
+                item { Box(Modifier.padding(horizontal = 4.dp)) { PageHeader(page?.title ?: "Settings", onBack = back) } }
+                if (page == null) hubItems() else pageItems(page)
+            }
+        }
     }
 
     pendingAction?.let { action ->
@@ -1488,15 +1633,24 @@ private fun HubGap() {
 
 /** One page of Settings in its list: an icon, the name, what's set now, and an arrow. */
 @Composable
-private fun HubRow(icon: @Composable () -> Unit, title: String, summary: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun HubRow(
+    icon: @Composable () -> Unit,
+    title: String,
+    summary: String,
+    modifier: Modifier = Modifier,
+    /** TV: the page shown beside the list. */
+    selected: Boolean = false,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier
             .fillMaxWidth()
             .focusRing(shape)
             .clip(shape)
+            .background(if (selected) Ink3.copy(alpha = 0.7f) else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(vertical = 11.dp, horizontal = 4.dp),
+            .padding(vertical = 11.dp, horizontal = if (selected) 8.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Ink3), contentAlignment = Alignment.Center) { icon() }

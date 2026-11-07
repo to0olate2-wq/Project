@@ -53,6 +53,15 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - **Your own order (Arrange):** `Arrangement.trimmed` keeps only the changed prefix;
   `LibraryIndex.rearranged()` applies an order instantly, without rebuilding the index.
 - **D-pad wrap-around:** `ui/FocusLoop.kt` (`focusLoop` / `loopItem`).
+- **The menu stays (8.8), `ui/Shell.kt`:** Sidebar look with a playlist open: `AppShell` (in `MainActivity`, around
+  the pages) draws the rail (TV, ≥600 dp) or a bottom bar (phones upright: Home, Live, Films, Series, More) for
+  `SHELL_SCREENS` (lists, More, Recordings, Downloads, What's new, Settings and its pages). `SidebarFrame` is only the
+  top bar + page now (no drawer). `LocalShell` tells pages which; Back from those pages is `vm.closePage()` (player
+  detour → player, opened from More → More, else the lists). TV Settings: list of pages left, page right
+  (`twoPane`; focus moves on OK, the page follows the remote after 160 ms). Classic look: unchanged, full pages.
+- **TV player row (8.8):** Live, Channels, Record, Audio, Subtitles, Speed, More; More (`showMoreMenu`) holds
+  Two screens, Favorites, Sleep, Picture size, Player, Menu (those buttons exist but aren't in the TV row). Phones
+  keep every button. `LiveTimeline` (live from the buffer) sits where the seek bar is.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on

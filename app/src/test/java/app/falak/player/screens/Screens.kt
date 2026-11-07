@@ -44,6 +44,11 @@ import app.falak.player.data.Settings
 import app.falak.player.player.CaptionLayout
 import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
+import app.falak.player.record.RecState
+import app.falak.player.record.RecordBook
+import app.falak.player.record.RecordCenter
+import app.falak.player.record.Recording
+import app.falak.player.record.SeriesRule
 import app.falak.player.RamadanNow
 import app.falak.player.data.KidsClock
 import app.falak.player.data.KidsTime
@@ -1555,5 +1560,96 @@ class PhoneCaptionSettingsScreens : ScreenshotBase() {
         vm.screen = Screen.SETTINGS
         vm.settingsPage = SettingsPage.SUBTITLE_STYLE
         shoot("phone-40-settings-caption-style")
+    }
+}
+
+// ---- 8.8: the menu stays (rail on TV, bar on phones), Settings beside its list, live preview, recordings as cards, the live bar ----
+
+/** Recordings of every kind, for the Recordings page (nothing is recorded). */
+private fun sampleRecordings(): RecordBook {
+    val now = System.currentTimeMillis()
+    fun rec(id: String, title: String, channel: String, state: RecState, start: Long, minutes: Int, replay: Boolean = false, note: String = "") =
+        Recording(
+            id = id, playlistId = "sample", channelId = stableId(channel), channelName = channel, title = title,
+            start = start, stop = start + minutes * 60_000L, progStart = start, progStop = start + minutes * 60_000L,
+            url = "http://127.0.0.1:1/live/x.ts", replay = replay, state = state,
+            size = minutes * 22L * 1024 * 1024, startedAt = start, endedAt = if (state == RecState.DONE) start + minutes * 60_000L else 0, note = note,
+        )
+    return RecordBook(
+        recordings = listOf(
+            rec("a", "World Today", "Atlas News", RecState.DONE, now - 26 * 3_600_000L, 58),
+            rec("b", "Nature Hour", "Northwind World", RecState.DONE, now - 4 * 86_400_000L, 65),
+            rec("c", "Ocean Life", "Civic Report", RecState.DONE, now - 5 * 86_400_000L, 45, replay = true),
+            rec("d", "Night Desk", "Harbor News", RecState.FAILED, now - 2 * 86_400_000L, 30, note = "The provider stopped sending"),
+            rec("e", "The Big Match", "Pulse Sports 1", RecState.RECORDING, now - 32 * 60_000L, 110),
+            rec("f", "Evening Report", "Atlas News", RecState.SCHEDULED, now + 90 * 60_000L, 30),
+        ),
+        rules = listOf(SeriesRule("r", "sample", stableId("Pulse Sports 1"), "Pulse Sports 1", "Match Night")),
+    )
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvShellScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvShell() = mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
+        // Settings inside the menu: the list of pages and the page beside it.
+        vm.screen = Screen.SETTINGS
+        shoot("tv-60-sidebar-settings")
+        vm.settingsPage = SettingsPage.RECORDINGS
+        shoot("tv-61-sidebar-settings-recordings")
+        // Recordings as cards, with the rail.
+        RecordCenter.showForTest(sampleRecordings())
+        vm.screen = Screen.RECORDINGS
+        shoot("tv-62-recordings")
+        // Live TV with the channel beside the list.
+        vm.screen = Screen.LIBRARY
+        vm.section = Section.LIVE
+        shoot("tv-63-live-preview")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneShellScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneShell() = mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
+        shoot("phone-60-bottom-bar-home")
+        vm.section = Section.LIVE
+        shoot("phone-61-bottom-bar-live")
+        RecordCenter.showForTest(sampleRecordings())
+        vm.screen = Screen.MORE
+        shoot("phone-62-more")
+        vm.backToMore = true
+        vm.screen = Screen.SETTINGS
+        shoot("phone-63-settings-in-bar")
+        vm.screen = Screen.RECORDINGS
+        shoot("phone-64-recordings")
+        // Back from a page opened from More goes back to More.
+        vm.closePage()
+        waitFor { vm.screen == Screen.MORE }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvLiveBarScreens : ScreenshotBase() {
+    // Paused 1 min 20 s behind live, 12 minutes in the buffer: the live bar and the More button.
+    @Test @Config(qualifiers = TV)
+    fun tvLiveBar() = playerSteps(tv = true) { activity, shoot ->
+        activity.previewLiveBar(held = 12 * 60_000L, behind = 80_000L)
+        settle()
+        shoot("tv-64-player-live-bar")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneLiveBarScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneLiveBar() = playerSteps(tv = false) { activity, shoot ->
+        activity.previewLiveBar(held = 30 * 60_000L, behind = 0L)
+        settle()
+        shoot("phone-65-player-live-bar")
     }
 }

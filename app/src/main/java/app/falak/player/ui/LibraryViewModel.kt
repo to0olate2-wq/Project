@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
@@ -1191,6 +1191,23 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /** A page opened from the phone's More tab: Back there goes back to More. */
+    var backToMore = false
+
+    /**
+     * Back from a page opened from the lists (Settings, Recordings, Downloads, What's new, the
+     * guide): to the player when it was a detour from it, to More when opened from there,
+     * otherwise to the lists.
+     */
+    fun closePage() {
+        if (leaveDetour()) return
+        screen = when {
+            playlist == null -> Screen.PLAYLISTS
+            backToMore -> Screen.MORE
+            else -> Screen.LIBRARY
+        }
+    }
+
     fun markNoticesRead() = repo.markNoticesRead()
 
     fun clearNotices() = repo.clearNotices()
@@ -1212,6 +1229,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             "NOTICES" -> screen = Screen.NOTICES
             "DOWNLOADS" -> screen = Screen.DOWNLOADS
             "RECORDINGS" -> screen = Screen.RECORDINGS
+            "MORE" -> if (playlist != null) screen = Screen.MORE
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
             else -> {
                 val s = Section.entries.firstOrNull { it.name == where } ?: return
@@ -1647,6 +1665,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             androidx.compose.runtime.snapshotFlow { screen }.collect { s ->
                 if (s == Screen.LIBRARY || s == Screen.PLAYLISTS || s == Screen.SERIES || s == Screen.DETAILS) backToPlayer = null
+                if (s == Screen.LIBRARY || s == Screen.PLAYLISTS || s == Screen.MORE) backToMore = false
                 // Kids mode: the PIN opens the locked pages for one visit only.
                 if (s == Screen.LIBRARY || s == Screen.SERIES || s == Screen.DETAILS || s == Screen.GUIDE) kidsUnlocked = false
             }

@@ -172,7 +172,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val back: () -> Unit = {
         vm.guidePreview = null
         vm.guideSearch = null
-        if (!vm.leaveDetour()) vm.screen = Screen.LIBRARY
+        vm.closePage()
     }
     // Back stops the preview first, then closes the search, then leaves the guide.
     BackHandler {

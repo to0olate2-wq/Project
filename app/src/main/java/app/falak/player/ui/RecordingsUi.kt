@@ -3,6 +3,15 @@ package app.falak.player.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -150,18 +159,54 @@ private fun AlarmNote() {
 fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
     val all = rememberRecordings()
     val rules = rememberRules()
-    val back = { vm.screen = if (vm.playlist != null) Screen.LIBRARY else Screen.PLAYLISTS }
+    val back = { vm.closePage() }
     BackHandler { back() }
     val tv = isTv()
+    val shell = LocalShell.current
     var confirm by remember { mutableStateOf<Recording?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
     var stopRule by remember { mutableStateOf<SeriesRule?>(null) }
+    // Which kind the chips show: everything, or only what's recording, planned, saved, or the series.
+    var filter by rememberSaveable { mutableStateOf(RecFilter.ALL) }
     val now = all.filter { it.state == RecState.RECORDING }
     val planned = all.filter { it.state == RecState.SCHEDULED }.sortedBy { it.start }
     val saved = all.filter { it.state == RecState.DONE || it.state == RecState.FAILED }.asReversed()
-    Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader("Recordings", onBack = back)
-        ChipFlow(Modifier.padding(bottom = 10.dp)) {
+    fun shows(f: RecFilter) = filter == RecFilter.ALL || filter == f
+    val play: (Recording) -> Unit = { r -> RecordCenter.playable(r)?.let { onPlay(listOf(it), it) } }
+    val place = remember(state.settings.recordDir) { RecordCenter.places().firstOrNull { it.path == state.settings.recordDir }?.label ?: "This device" }
+    val storage = listOfNotNull(
+        place + " · " + OfflineCenter.sizeLabel(RecordCenter.freeSpace()) + " free",
+        if (saved.isNotEmpty()) "${saved.count { it.state == RecState.DONE }} saved use ${OfflineCenter.sizeLabel(RecordCenter.usedSpace())}" else null,
+    ).joinToString("  ·  ")
+    Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL && tv) 28.dp else pageMargin())) {
+        if (tv) {
+            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Recordings", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, color = Paper)
+                    Text(storage, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Clock()
+            }
+        } else {
+            PageHeader("Recordings", onBack = back, subtitle = storage)
+        }
+        // TV: the chips wrap; phones: one row that scrolls sideways.
+        val chipRow: @Composable (@Composable () -> Unit) -> Unit = { chips ->
+            if (tv) {
+                ChipFlow(Modifier.padding(top = 6.dp, bottom = 10.dp)) { chips() }
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) { chips() }
+            }
+        }
+        chipRow {
+            TagChip("All", filter == RecFilter.ALL) { filter = RecFilter.ALL }
+            if (now.isNotEmpty()) TagChip("Recording now  ${now.size}", filter == RecFilter.NOW) { filter = RecFilter.NOW }
+            if (planned.isNotEmpty()) TagChip("Planned  ${planned.size}", filter == RecFilter.PLANNED) { filter = RecFilter.PLANNED }
+            if (saved.isNotEmpty()) TagChip("Saved  ${saved.size}", filter == RecFilter.SAVED) { filter = RecFilter.SAVED }
+            if (rules.isNotEmpty()) TagChip("Series  ${rules.size}", filter == RecFilter.SERIES) { filter = RecFilter.SERIES }
             TagChip("Recording settings", false) {
                 vm.settingsFocus = SettingsPage.RECORDINGS.name
                 vm.settingsPage = SettingsPage.RECORDINGS
@@ -169,18 +214,6 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
             }
             if (saved.isNotEmpty()) TagChip("Delete all saved", false) { confirmAll = true }
         }
-        val place = remember(state.settings.recordDir) { RecordCenter.places().firstOrNull { it.path == state.settings.recordDir }?.label ?: "This device" }
-        Text(
-            listOfNotNull(
-                if (saved.isNotEmpty()) "${saved.count { it.state == RecState.DONE }} saved · ${OfflineCenter.sizeLabel(RecordCenter.usedSpace())}" else null,
-                "Saved to $place",
-                "${OfflineCenter.sizeLabel(RecordCenter.freeSpace())} free",
-            ).joinToString("  ·  "),
-            fontFamily = Sans,
-            fontSize = 13.sp,
-            color = Muted,
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
         if (planned.isNotEmpty() || rules.isNotEmpty()) AlarmNote()
         if (all.isEmpty() && rules.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -197,29 +230,57 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
             }
             return@Column
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (now.isNotEmpty()) {
-                item(key = "h-now") { Kicker("Recording now", color = Signal) }
-                items(now, key = { it.id }) { r ->
-                    RecordingRow(r, tv, onPlay = { RecordCenter.playable(r)?.let { onPlay(listOf(it), it) } }, onStop = { RecordCenter.stop(r.id) }, onDelete = { confirm = r })
-                }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Saved recordings as cards: four across a TV, three on a tablet, two on a phone.
+            val columns = when {
+                maxWidth >= 840.dp -> 4
+                maxWidth >= 560.dp -> 3
+                else -> 2
             }
-            if (planned.isNotEmpty()) {
-                item(key = "h-planned") { Kicker("Planned", color = Muted) }
-                items(planned, key = { it.id }) { r ->
-                    RecordingRow(r, tv, onPlay = null, onStop = { RecordCenter.cancel(r.id) }, onDelete = null)
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (shows(RecFilter.NOW)) {
+                    items(now, key = { "now:" + it.id }) { r ->
+                        RecordingNowCard(r, tv, onWatch = { play(r) }, onStop = { RecordCenter.stop(r.id) })
+                    }
                 }
-            }
-            if (rules.isNotEmpty()) {
-                item(key = "h-rules") { Kicker("Series being recorded", color = Muted) }
-                items(rules, key = { "rule:" + it.id }) { rule ->
-                    RuleRow(rule, onStop = { stopRule = rule })
+                if (shows(RecFilter.SAVED) && saved.isNotEmpty()) {
+                    item(key = "h-saved") {
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Kicker("Saved", color = Muted)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                if (tv) "Hold OK on one to delete it" else "Long-press one to delete it",
+                                fontFamily = Sans,
+                                fontSize = 12.sp,
+                                color = Faint,
+                            )
+                        }
+                    }
+                    items(saved.chunked(columns), key = { row -> "saved:" + row.first().id }) { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            row.forEach { r ->
+                                SavedCard(
+                                    r,
+                                    onPlay = if (r.state == RecState.DONE) ({ play(r) }) else null,
+                                    onDelete = { confirm = r },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
-            }
-            if (saved.isNotEmpty()) {
-                item(key = "h-saved") { Kicker("Saved", color = Muted) }
-                items(saved, key = { it.id }) { r ->
-                    RecordingRow(r, tv, onPlay = if (r.state == RecState.DONE) ({ RecordCenter.playable(r)?.let { onPlay(listOf(it), it) } }) else null, onStop = null, onDelete = { confirm = r })
+                if (shows(RecFilter.PLANNED) && planned.isNotEmpty()) {
+                    item(key = "h-planned") { Box(Modifier.padding(top = 6.dp)) { Kicker("Planned", color = Muted) } }
+                    items(planned, key = { it.id }) { r ->
+                        RecordingRow(r, tv, onPlay = null, onStop = { RecordCenter.cancel(r.id) }, onDelete = null)
+                    }
+                }
+                if (shows(RecFilter.SERIES) && rules.isNotEmpty()) {
+                    item(key = "h-rules") { Box(Modifier.padding(top = 6.dp)) { Kicker("Series being recorded", color = Muted) } }
+                    items(rules, key = { "rule:" + it.id }) { rule ->
+                        RuleRow(rule, onStop = { stopRule = rule })
+                    }
                 }
             }
         }
@@ -255,6 +316,136 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
             confirm = "Delete all",
             onConfirm = { RecordCenter.deleteMany(done.map { it.id }) },
         ) { confirmAll = false }
+    }
+}
+
+/** What the Recordings page's chips show. */
+private enum class RecFilter { ALL, NOW, PLANNED, SAVED, SERIES }
+
+/** "58 min", "1 h 05". */
+private fun lengthLabel(ms: Long): String {
+    val minutes = (ms / 60_000L).toInt().coerceAtLeast(0)
+    return if (minutes < 60) "$minutes min" else String.format(Locale.US, "%d h %02d", minutes / 60, minutes % 60)
+}
+
+/** How long a saved recording runs (as recorded; the planned times if it didn't say). */
+private fun recordedLength(r: Recording): Long =
+    if (r.startedAt > 0 && r.endedAt > r.startedAt) r.endedAt - r.startedAt else (r.stop - r.start).coerceAtLeast(0)
+
+/** The channel's logo on a dark 16:9 tile (recordings have no picture of their own). */
+@Composable
+private fun RecordingTile(r: Recording, modifier: Modifier, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
+    Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Ink3)) {
+        AsyncImage(
+            model = r.logo.ifBlank { null },
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).fillMaxHeight(0.5f),
+        )
+        content()
+    }
+}
+
+/** A recording under way: big, with Watch from the start and Stop (phones: the buttons under it). */
+@Composable
+private fun RecordingNowCard(r: Recording, tv: Boolean, onWatch: () -> Unit, onStop: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    val time = rememberTimeFormat()
+    val buttons: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PaperButton("Watch from the start", Icons.Filled.PlayArrow, onClick = onWatch)
+            GhostButton("Stop", onClick = onStop)
+        }
+    }
+    Column(Modifier.fillMaxWidth().panel(shape).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RecordingTile(r, Modifier.width(if (tv) 240.dp else 112.dp)) {
+                Text(
+                    "● REC",
+                    fontFamily = Sans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(if (tv) 8.dp else 5.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Signal)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.width(if (tv) 16.dp else 12.dp))
+            Column(Modifier.weight(1f)) {
+                Kicker(if (r.replay) "Saving replay" else "Recording now", color = Signal)
+                Spacer(Modifier.height(4.dp))
+                Text(r.title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 22.sp else 18.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(
+                        r.channelName,
+                        r.startedAt.takeIf { it > 0 }?.let { "since " + time.format(Date(it)) },
+                        if (!r.replay) "until " + time.format(Date(r.stop)) else null,
+                        OfflineCenter.sizeLabel(r.size) + " so far",
+                    ).joinToString(" · "),
+                    fontFamily = Sans,
+                    fontSize = 13.sp,
+                    color = Muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (tv) {
+                    Spacer(Modifier.height(12.dp))
+                    buttons()
+                }
+            }
+        }
+        if (!tv) {
+            Spacer(Modifier.height(12.dp))
+            buttons()
+        }
+    }
+}
+
+/** A saved recording as a card: OK (a tap) plays it; holding it deletes. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SavedCard(r: Recording, onPlay: (() -> Unit)?, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    val failed = r.state == RecState.FAILED
+    Column(
+        modifier
+            .focusRing(shape)
+            .clip(shape)
+            .combinedClickable(onClick = { onPlay?.invoke() ?: onDelete() }, onLongClick = onDelete)
+            .padding(4.dp),
+    ) {
+        RecordingTile(r, Modifier.fillMaxWidth()) {
+            if (r.replay) {
+                CardBadge("Replay", Paper, Modifier.align(Alignment.TopStart).padding(6.dp))
+            }
+            if (!failed) {
+                Text(
+                    lengthLabel(recordedLength(r)),
+                    style = Tabular.copy(fontSize = 11.sp),
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(r.title, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            if (failed) r.note.ifBlank { "Couldn't record" } else r.channelName + " · " + whenLabel(r.progStart.takeIf { it > 0 } ?: r.startedAt.takeIf { it > 0 } ?: r.start),
+            fontFamily = Sans,
+            fontSize = 12.sp,
+            color = if (failed) Amber else Faint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

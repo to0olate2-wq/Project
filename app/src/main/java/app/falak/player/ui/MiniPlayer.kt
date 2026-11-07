@@ -63,7 +63,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * or the app leaves the screen.
  */
 object MiniPlayerState {
-    class Request(val list: List<Channel>, val index: Int, val userAgent: String, val playlistId: String?) {
+    class Request(
+        val list: List<Channel>,
+        val index: Int,
+        val userAgent: String,
+        val playlistId: String?,
+        /** TVs: the remote goes onto it (not when the player was left for a page such as Settings). */
+        val takeFocus: Boolean = true,
+    ) {
         val channel: Channel get() = list[index]
     }
 
@@ -72,8 +79,8 @@ object MiniPlayerState {
     /** The mini's own player while it plays (main thread only), so closing it lets go of the stream at once. */
     internal var player: Player? = null
 
-    fun show(list: List<Channel>, index: Int, userAgent: String, playlistId: String?) {
-        if (index in list.indices) request.value = Request(list, index, userAgent, playlistId)
+    fun show(list: List<Channel>, index: Int, userAgent: String, playlistId: String?, takeFocus: Boolean = true) {
+        if (index in list.indices) request.value = Request(list, index, userAgent, playlistId, takeFocus)
     }
 
     /** Stops the stream now (many providers allow one connection at a time) and closes the mini player. */
@@ -128,7 +135,7 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
     var focused by remember { mutableStateOf(false) }
     // TVs: the remote lands on it (after the list has put its focus back on the channel), so OK is
     // all it takes to go back; any arrow moves on to the page.
-    if (tv) LaunchedEffect(r) {
+    if (tv && r.takeFocus) LaunchedEffect(r) {
         delay(700)
         runCatching { focus.requestFocus() }
     }

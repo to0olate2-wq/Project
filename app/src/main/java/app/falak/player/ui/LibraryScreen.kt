@@ -128,18 +128,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     var pinForGroup by remember { mutableStateOf<String?>(null) }
     var groupMenu by remember { mutableStateOf<String?>(null) }
 
-    val hasFav = favIds.isNotEmpty() || lists.isNotEmpty()
-    val hasRecent = recentIds.isNotEmpty()
-    val sections = remember(index, hasFav, hasRecent) {
-        Section.entries.filter { s ->
-            when (s) {
-                Section.HOME -> index.all.isNotEmpty()
-                Section.FAVORITES -> hasFav
-                Section.RECENT -> hasRecent
-                else -> s.kind != null && index.ofKind(s.kind).isNotEmpty()
-            }
-        }
-    }
+    val sections = rememberSections(vm, state)
     val section = vm.section.takeIf { it in sections } ?: sections.firstOrNull() ?: Section.LIVE
     val kind = section.kind
     val showGroups = kind != null
@@ -384,6 +373,36 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             val content: @Composable (Modifier) -> Unit = { m ->
                                 when {
                                     visible == null -> Box(m)
+                                    // TV, Live TV as a list: the channel the remote is on, beside it.
+                                    sidebarLook && shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections) -> {
+                                        var focusedId by remember { mutableStateOf<String?>(null) }
+                                        var here by remember { mutableStateOf(false) }
+                                        // Opened full screen from here: no preview until the remote moves on.
+                                        var opened by remember { mutableStateOf(false) }
+                                        LaunchedEffect(focusedId) { opened = false }
+                                        val focusedCh = remember(list, focusedId) { list.firstOrNull { it.id == focusedId } ?: list.firstOrNull() }
+                                        Row(m.onFocusChanged { here = it.hasFocus }) {
+                                            ChannelList(
+                                                list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                                progress = state.progress, playlistId = state.mine(p.id),
+                                                onOpen = { ch -> opened = true; openItem(ch) }, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                                focusId = focusId, modifier = Modifier.weight(0.6f).fillMaxHeight(),
+                                                onFocus = { ch -> focusedId = ch.id },
+                                            )
+                                            Spacer(Modifier.width(24.dp))
+                                            LivePreviewPane(
+                                                vm = vm,
+                                                ch = focusedCh,
+                                                list = list,
+                                                epg = epg,
+                                                now = now,
+                                                active = here && !opened,
+                                                livePreview = state.settings.livePreview,
+                                                onPlay = { l, ch -> opened = true; openFrom(l, ch) },
+                                                modifier = Modifier.weight(0.4f).fillMaxHeight(),
+                                            )
+                                        }
+                                    }
                                     sidebarLook && shown.kind != null && !(shown.name in state.settings.gridSections) -> ChannelList(
                                         list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                         progress = state.progress, playlistId = state.mine(p.id),
@@ -784,6 +803,8 @@ private fun ChannelList(
     focusId: String?,
     modifier: Modifier,
     emptyText: String = "Nothing here yet",
+    /** The remote moved onto a row. */
+    onFocus: ((Channel) -> Unit)? = null,
 ) {
     if (list.isEmpty()) {
         Box(modifier.padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
@@ -797,7 +818,10 @@ private fun ChannelList(
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
-            ChannelRow(i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId, Modifier.loopItem(loop, i))
+            ChannelRow(
+                i + 1, ch, current, watched, ch.id in favIds, now, { onOpen(ch) }, { onFav(ch) }, { onLongPress(ch) }, ch.id == focusId,
+                Modifier.loopItem(loop, i).then(if (onFocus != null) Modifier.onFocusChanged { if (it.isFocused) onFocus(ch) } else Modifier),
+            )
             Rule()
         }
     }

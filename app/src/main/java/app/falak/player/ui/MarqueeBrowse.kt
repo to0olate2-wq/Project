@@ -98,8 +98,15 @@ class MarqueeStageInfo(val height: Dp, val wide: Boolean, val top: () -> Float)
 
 val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 
-/** How much of the page the picture covers: most of a TV, a little more of a short screen. */
-private fun marqueeFraction(height: Dp): Float = if (height < 480.dp) 0.84f else 0.74f
+/**
+ * How much of the page the picture covers: most of a TV, a little more of a short screen. Home's
+ * is shorter, so the row under it (Continue watching) is in view at once.
+ */
+private fun marqueeFraction(height: Dp, section: Section? = null): Float = when {
+    height < 480.dp -> 0.84f
+    section == Section.HOME -> 0.6f
+    else -> 0.74f
+}
 
 /**
  * The titles a page features: new ones with a picture, else any with one; never from hidden,
@@ -148,7 +155,7 @@ fun MarqueeStage(
         val wide = tv || maxWidth >= 640.dp
         val info = remember(height, wide) { MarqueeStageInfo(height, wide) { top[0] } }
         if (wide && landing != null) {
-            MarqueeBackdropFor(vm, landing, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height)))
+            MarqueeBackdropFor(vm, landing, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height, landing)))
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
     }
@@ -374,7 +381,7 @@ fun MarqueePage(
         // The hero's height: from the top of this list down to where the picture fades out.
         val heroHeight = if (stage == null) 0.dp else {
             val offset = if (myTop < 0) 110.dp else with(density) { (myTop - stage.top()).toDp() }
-            (stage.height * marqueeFraction(stage.height) - offset).coerceAtLeast(200.dp)
+            (stage.height * marqueeFraction(stage.height, section) - offset).coerceAtLeast(200.dp)
         }
         if (wide && item != null) {
             // A new title every 7 seconds while the top of the page is in view (and the remote isn't on it).
@@ -410,6 +417,7 @@ fun MarqueePage(
                             onPrimary = onPrimary,
                             onDetails = { ch -> vm.openDetails(ch) },
                             onFocus = { heroFocused = it },
+                            compact = section == Section.HOME && (stage?.height ?: 0.dp) >= 480.dp,
                         )
                     }
                 } else if (featured.isNotEmpty()) {
@@ -590,6 +598,8 @@ private fun MarqueeHero(
     onDetails: (Channel) -> Unit,
     /** The remote is on the featured title's buttons (it stops changing meanwhile). */
     onFocus: (Boolean) -> Unit,
+    /** Home: a shorter picture, so the name takes one line. */
+    compact: Boolean = false,
 ) {
     val tv = isTv()
     val tap = LocalCardTap.current
@@ -622,10 +632,10 @@ private fun MarqueeHero(
                         ch.name,
                         fontFamily = Serif,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (tv) 44.sp else 32.sp,
-                        lineHeight = if (tv) 48.sp else 36.sp,
+                        fontSize = if (compact) 36.sp else if (tv) 44.sp else 32.sp,
+                        lineHeight = if (compact) 40.sp else if (tv) 48.sp else 36.sp,
                         color = Paper,
-                        maxLines = 2,
+                        maxLines = if (compact) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     val meta = listOfNotNull(

@@ -159,13 +159,17 @@ class MainActivity : ComponentActivity() {
                 }
                 androidx.compose.runtime.CompositionLocalProvider(LocalVoiceSearch provides voiceSearch) {
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
-                    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
                         val tv = isTv()
+                        val picking = vm.choosingProfile && vm.profilesWanted(state)
+                        // Sidebar look: the menu stays beside the lists and the pages opened from them
+                        // (a rail on the left, or a bar along the bottom of a phone held upright).
+                        val shell = if (picking) ShellMode.NONE else shellMode(s.look, vm.playlist != null, vm.screen, tv, maxWidth)
                         // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
-                        if (vm.choosingProfile && vm.profilesWanted(state)) {
+                        if (picking) {
                             ProfilePicker(vm, state, onBack = { vm.confirmExit = true })
-                        } else AnimatedContent(
+                        } else AppShell(vm, state, shell) { AnimatedContent(
                             targetState = vm.screen,
                             transitionSpec = {
                                 if (tv) {
@@ -208,8 +212,11 @@ class MainActivity : ComponentActivity() {
                                 Screen.DOWNLOADS -> DownloadsScreen(vm, state, onPlay = ::play)
                                 Screen.ARRANGE -> ArrangeScreen(vm, state)
                                 Screen.RECORDINGS -> RecordingsScreen(vm, state, onPlay = ::play)
+                                Screen.MORE -> MoreScreen(vm, state)
                             }
-                        }
+                        } }
+                        // Cards and the mini player stay above the bottom bar.
+                        Box(Modifier.fillMaxSize().padding(bottom = if (shell == ShellMode.BAR) BAR_HEIGHT else 0.dp)) {
                         // Prayer time reminder (Settings → Prayer times), over whatever is on screen.
                         val prayer by app.falak.player.PrayerAlerts.current.collectAsStateWithLifecycle()
                         PrayerBanner(prayer, paused = false) { app.falak.player.PrayerAlerts.dismiss() }
@@ -255,6 +262,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
                         }
                         // One small picture at a time: the guide's preview takes over from the mini player.
                         LaunchedEffect(vm.guidePreview) { if (vm.guidePreview != null) MiniPlayerState.close() }
@@ -433,7 +441,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS, Screen.RECORDINGS -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS, Screen.RECORDINGS, Screen.MORE -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
         Screen.ARRANGE -> 5

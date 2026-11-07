@@ -149,6 +149,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var sleepButton: TextView
     private lateinit var favButton: TextView
     private lateinit var menuButton: TextView
+
+    /** TV: "More" holds the buttons used less often (two screens, favorites, sleep, picture, player, Menu). */
+    private lateinit var moreButton: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
 
@@ -262,6 +265,9 @@ class PlayerActivity : ComponentActivity() {
     private var liveBeforeStartOver: Pair<List<Channel>, Int>? = null
     private val hideStartOver = Runnable { startOverOffer = null }
     private lateinit var liveButton: TextView
+
+    /** Pause & rewind live TV: the buffer as a bar where the seek bar is for films. */
+    private lateinit var liveBar: LiveTimeline
     /** Live TV: record this channel (or stop recording it). */
     private lateinit var recordButton: TextView
 
@@ -510,6 +516,14 @@ class PlayerActivity : ComponentActivity() {
         speedButton = pill(speedLabel(speed), R.drawable.ic_pl_speed) { showSpeedDialog() }.apply { visibility = View.GONE }
         // Stop after a while, or at the end of what's on (the sound fades out over the last minute).
         sleepButton = pill(SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime()), R.drawable.ic_pl_sleep) { showSleepDialog() }
+        moreButton = pill("More", R.drawable.ic_pl_more) { showMoreMenu() }
+        // TV: the buttons used most in the row, the rest under More (one row that always fits).
+        // Phones keep every button in the row (it scrolls sideways when it doesn't fit).
+        val row = if (tvLayout) {
+            listOf(liveButton, browseButton, recordButton, audioButton, ccButton, speedButton, moreButton)
+        } else {
+            listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)
+        }
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -517,7 +531,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)) {
+            for (b in row) {
                 addView(
                     b,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
@@ -1872,6 +1886,17 @@ class PlayerActivity : ComponentActivity() {
         if (menu) showAppMenu()
     }
 
+    /** Screenshot tests: the live bar of a channel paused [behind] ms behind live, with [held] ms in the buffer. */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewLiveBar(held: Long, behind: Long) {
+        if (!::liveBar.isInitialized) return
+        liveBar.visibility = View.VISIBLE
+        liveBar.set(repo.state.value.settings.liveBufferMinutes.coerceAtLeast(1) * 60_000L, held, behind)
+        setPillLabel(liveButton, "Live  ·  −" + clock(behind))
+        liveButton.visibility = View.VISIBLE
+        playerView.showController()
+    }
+
     /** Screenshot tests: the Up next card over the picture. */
     @androidx.annotation.VisibleForTesting
     internal fun previewUpNext(next: Channel) {
@@ -2634,7 +2659,8 @@ class PlayerActivity : ComponentActivity() {
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
-        for (b in pills()) {
+        // (Sleep too: it used to keep its name when the others showed icons only.)
+        for (b in pills() + sleepButton) {
             if (b.visibility != View.VISIBLE) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
@@ -2642,7 +2668,7 @@ class PlayerActivity : ComponentActivity() {
         val compact = need > avail
         if (compact == compactPills) return
         compactPills = compact
-        for (b in pills()) {
+        for (b in pills() + sleepButton) {
             val label = b.tag as? String ?: ""
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
@@ -2660,8 +2686,9 @@ class PlayerActivity : ComponentActivity() {
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
-        for (b in pills() + sleepButton) {
-            if (b.visibility != View.VISIBLE) continue
+        for (b in pills() + sleepButton + moreButton) {
+            // (Buttons under More aren't in the row.)
+            if (b.visibility != View.VISIBLE || b.parent == null) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(20) + dp(18) + dp(20) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
         }
@@ -3232,6 +3259,37 @@ class PlayerActivity : ComponentActivity() {
         browserView.requestFocus()
     }
 
+    /**
+     * TV: the buttons that don't fit in the row, as a list (each with what's set now). Picking one
+     * does what its button would.
+     */
+    private fun showMoreMenu() {
+        if (inPip) return
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        fun add(label: String, action: () -> Unit) {
+            items += label to action
+        }
+        if (twoButton.visibility == View.VISIBLE) add("Two screens  ·  a second channel beside this one") { startPickingSecond() }
+        if (favButton.visibility == View.VISIBLE) {
+            val fav = (favButton.tag as? String) == "Favorited"
+            add(if (fav) "Remove from Favorites" else "Add to Favorites") { queue.getOrNull(index)?.let { toggleFavorite(it) } }
+        }
+        // "Sleep 20 min" → "20 min"; "Sleep" → "Off".
+        val sleep = (sleepButton.tag as? String).orEmpty().removePrefix("Sleep").trim().removePrefix("·").trim()
+        add("Sleep timer  ·  " + sleep.ifEmpty { "Off" }) { showSleepDialog() }
+        add("Picture size  ·  " + aspectNames[aspect]) { cycleAspect() }
+        add("Player  ·  " + engine.short) { showEngineDialog() }
+        add("Menu  ·  Home, Films, Series, Settings…") { showAppMenu() }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("More")
+            .setItems(items.map { it.first }.toTypedArray()) { d, which ->
+                d.dismiss()
+                items.getOrNull(which)?.second?.invoke()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
     private fun closeMenu() {
         if (!menuOpen) return
         menuOpen = false
@@ -3245,6 +3303,9 @@ class PlayerActivity : ComponentActivity() {
         repo.pendingNav = where
         // Settings, the guide and What's new are a detour: Back there brings this back.
         repo.pendingReturnIndex = if (where in setOf("SETTINGS", "GUIDE", "NOTICES")) index else null
+        // Settings, Recordings, What's new: a live channel carries on in the mini player meanwhile
+        // (the guide has its own preview).
+        if (where in setOf("SETTINGS", "NOTICES", "RECORDINGS", "DOWNLOADS")) offerMini(takeFocus = false)
         finish()
     }
 
@@ -3319,6 +3380,13 @@ class PlayerActivity : ComponentActivity() {
                 bar.layoutParams = lp
             }
         }
+        // Live from the buffer: how far back it goes, where the picture is, and LIVE.
+        liveBar = LiveTimeline(this, onSeek = { behind -> shiftToBehind(behind) }, onLive = { shiftToLive() }).apply {
+            visibility = View.GONE
+            val pad = dp(if (tvLayout) 40 else 20)
+            setPadding(pad, 0, pad, 0)
+        }
+        controls.addView(liveBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48), Gravity.BOTTOM).apply { bottomMargin = dp(52) })
         for ((label, edge) in listOf(position to Gravity.START, duration to Gravity.END)) {
             if (label == null) continue
             (label.parent as? ViewGroup)?.removeView(label)
@@ -4030,7 +4098,7 @@ class PlayerActivity : ComponentActivity() {
     private fun updateSleepButton() {
         if (!::sleepButton.isInitialized) return
         val label = SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime())
-        if (sleepButton.text?.toString() != label) setPillLabel(sleepButton, label)
+        if (sleepButton.tag != label) setPillLabel(sleepButton, label)
     }
 
     private fun showSleepDialog() {
@@ -4236,6 +4304,14 @@ class PlayerActivity : ComponentActivity() {
         showShiftNote((if (deltaMs < 0) "⏪  " else "⏩  ") + clock((now - at).coerceAtLeast(0)) + " behind live" + edge)
     }
 
+    /** To [behind] ms behind live (the live bar tapped or dragged on a phone). */
+    private fun shiftToBehind(behind: Long) {
+        val t = shift ?: return
+        val p = player ?: return
+        val now = System.currentTimeMillis()
+        shiftBy((now - behind) - t.showingAt(p.currentPosition))
+    }
+
     /** From a paused or rewound live channel to what's on now. */
     private fun shiftToLive() {
         val t = shift ?: return
@@ -4287,6 +4363,17 @@ class PlayerActivity : ComponentActivity() {
         }
         liveButton.visibility = if (label != null) View.VISIBLE else View.GONE
         if (label != null && liveButton.tag != label) setPillLabel(liveButton, label)
+        // The live bar: playing from the buffer, on a live channel (not a show from its start).
+        if (::liveBar.isInitialized) {
+            val bar = t != null && p != null && liveBeforeStartOver == null && queue.getOrNull(index)?.kind == Kind.LIVE && !inPip
+            liveBar.visibility = if (bar) View.VISIBLE else View.GONE
+            if (bar && t != null) {
+                val now = System.currentTimeMillis()
+                val window = repo.state.value.settings.liveBufferMinutes.coerceAtLeast(1) * 60_000L
+                val held = t.oldest()?.let { now - it } ?: 0L
+                liveBar.set(window, held, behind)
+            }
+        }
     }
 
     // ---- recording ----
@@ -4802,7 +4889,7 @@ class PlayerActivity : ComponentActivity() {
      * Mini player). This player lets go of the stream first, as many providers allow one
      * connection at a time.
      */
-    private fun offerMini() {
+    private fun offerMini(takeFocus: Boolean = true) {
         val ch = queue.getOrNull(index) ?: return
         val p = player ?: return
         if (!repo.state.value.settings.miniPlayer || inPip || dual != null) return
@@ -4811,7 +4898,7 @@ class PlayerActivity : ComponentActivity() {
         val at = index
         val ua = headersFor(ch).first
         releasePlayer()
-        MiniPlayerState.show(list, at, ua, repo.currentPlaylist?.id)
+        MiniPlayerState.show(list, at, ua, repo.currentPlaylist?.id, takeFocus)
     }
 
     // ---- programme reminders ----
