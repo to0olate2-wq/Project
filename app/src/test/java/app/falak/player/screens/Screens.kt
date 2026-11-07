@@ -44,6 +44,11 @@ import app.falak.player.data.Settings
 import app.falak.player.player.CaptionLayout
 import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
+import app.falak.player.record.RecState
+import app.falak.player.record.RecordBook
+import app.falak.player.record.RecordCenter
+import app.falak.player.record.Recording
+import app.falak.player.record.SeriesRule
 import app.falak.player.RamadanNow
 import app.falak.player.data.KidsClock
 import app.falak.player.data.KidsTime
@@ -1561,25 +1566,25 @@ class PhoneCaptionSettingsScreens : ScreenshotBase() {
 // ---- 8.8: the menu stays (rail on TV, bar on phones), Settings beside its list, live preview, recordings as cards, the live bar ----
 
 /** Recordings of every kind, for the Recordings page (nothing is recorded). */
-private fun sampleRecordings(): app.falak.player.record.RecordBook {
+private fun sampleRecordings(): RecordBook {
     val now = System.currentTimeMillis()
-    fun rec(id: String, title: String, channel: String, state: app.falak.player.record.RecState, start: Long, minutes: Int, replay: Boolean = false, note: String = "") =
-        app.falak.player.record.Recording(
+    fun rec(id: String, title: String, channel: String, state: RecState, start: Long, minutes: Int, replay: Boolean = false, note: String = "") =
+        Recording(
             id = id, playlistId = "sample", channelId = stableId(channel), channelName = channel, title = title,
             start = start, stop = start + minutes * 60_000L, progStart = start, progStop = start + minutes * 60_000L,
             url = "http://127.0.0.1:1/live/x.ts", replay = replay, state = state,
-            size = minutes * 22L * 1024 * 1024, startedAt = start, endedAt = if (state == app.falak.player.record.RecState.DONE) start + minutes * 60_000L else 0, note = note,
+            size = minutes * 22L * 1024 * 1024, startedAt = start, endedAt = if (state == RecState.DONE) start + minutes * 60_000L else 0, note = note,
         )
-    return app.falak.player.record.RecordBook(
+    return RecordBook(
         recordings = listOf(
-            rec("a", "World Today", "Atlas News", app.falak.player.record.RecState.DONE, now - 26 * 3_600_000L, 58),
-            rec("b", "Nature Hour", "Northwind World", app.falak.player.record.RecState.DONE, now - 4 * 86_400_000L, 65),
-            rec("c", "Ocean Life", "Civic Report", app.falak.player.record.RecState.DONE, now - 5 * 86_400_000L, 45, replay = true),
-            rec("d", "Night Desk", "Harbor News", app.falak.player.record.RecState.FAILED, now - 2 * 86_400_000L, 30, note = "The provider stopped sending"),
-            rec("e", "The Big Match", "Pulse Sports 1", app.falak.player.record.RecState.RECORDING, now - 32 * 60_000L, 110),
-            rec("f", "Evening Report", "Atlas News", app.falak.player.record.RecState.SCHEDULED, now + 90 * 60_000L, 30),
+            rec("a", "World Today", "Atlas News", RecState.DONE, now - 26 * 3_600_000L, 58),
+            rec("b", "Nature Hour", "Northwind World", RecState.DONE, now - 4 * 86_400_000L, 65),
+            rec("c", "Ocean Life", "Civic Report", RecState.DONE, now - 5 * 86_400_000L, 45, replay = true),
+            rec("d", "Night Desk", "Harbor News", RecState.FAILED, now - 2 * 86_400_000L, 30, note = "The provider stopped sending"),
+            rec("e", "The Big Match", "Pulse Sports 1", RecState.RECORDING, now - 32 * 60_000L, 110),
+            rec("f", "Evening Report", "Atlas News", RecState.SCHEDULED, now + 90 * 60_000L, 30),
         ),
-        rules = listOf(app.falak.player.record.SeriesRule("r", "sample", stableId("Pulse Sports 1"), "Pulse Sports 1", "Match Night")),
+        rules = listOf(SeriesRule("r", "sample", stableId("Pulse Sports 1"), "Pulse Sports 1", "Match Night")),
     )
 }
 
@@ -1594,7 +1599,7 @@ class TvShellScreens : ScreenshotBase() {
         vm.settingsPage = SettingsPage.RECORDINGS
         shoot("tv-61-sidebar-settings-recordings")
         // Recordings as cards, with the rail.
-        app.falak.player.record.RecordCenter.showForTest(sampleRecordings())
+        RecordCenter.showForTest(sampleRecordings())
         vm.screen = Screen.RECORDINGS
         shoot("tv-62-recordings")
         // Live TV with the channel beside the list.
@@ -1612,7 +1617,7 @@ class PhoneShellScreens : ScreenshotBase() {
         shoot("phone-60-bottom-bar-home")
         vm.section = Section.LIVE
         shoot("phone-61-bottom-bar-live")
-        app.falak.player.record.RecordCenter.showForTest(sampleRecordings())
+        RecordCenter.showForTest(sampleRecordings())
         vm.screen = Screen.MORE
         shoot("phone-62-more")
         vm.backToMore = true
