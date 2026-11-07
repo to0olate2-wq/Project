@@ -2659,7 +2659,8 @@ class PlayerActivity : ComponentActivity() {
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
-        for (b in pills()) {
+        // (Sleep too: it used to keep its name when the others showed icons only.)
+        for (b in pills() + sleepButton) {
             if (b.visibility != View.VISIBLE) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
@@ -2667,7 +2668,7 @@ class PlayerActivity : ComponentActivity() {
         val compact = need > avail
         if (compact == compactPills) return
         compactPills = compact
-        for (b in pills()) {
+        for (b in pills() + sleepButton) {
             val label = b.tag as? String ?: ""
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
@@ -4097,7 +4098,7 @@ class PlayerActivity : ComponentActivity() {
     private fun updateSleepButton() {
         if (!::sleepButton.isInitialized) return
         val label = SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime())
-        if (sleepButton.text?.toString() != label) setPillLabel(sleepButton, label)
+        if (sleepButton.tag != label) setPillLabel(sleepButton, label)
     }
 
     private fun showSleepDialog() {

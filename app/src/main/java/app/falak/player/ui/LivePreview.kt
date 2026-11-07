@@ -120,6 +120,13 @@ fun LivePreviewPane(
                     )
                 }
             }
+            // How far into the programme on now, along the picture's bottom edge.
+            if (current != null && current.stop > current.start) {
+                val done = ((now - current.start).toFloat() / (current.stop - current.start)).coerceIn(0f, 1f)
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.18f))) {
+                    Box(Modifier.fillMaxWidth(done).fillMaxHeight().background(Signal))
+                }
+            }
             Text(
                 "LIVE",
                 fontFamily = Sans,
@@ -151,32 +158,10 @@ fun LivePreviewPane(
             fontSize = 21.sp,
             lineHeight = 26.sp,
             color = Paper,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (current != null && current.stop > current.start) {
-            val done = ((now - current.start).toFloat() / (current.stop - current.start)).coerceIn(0f, 1f)
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Hairline)) {
-                Box(Modifier.fillMaxWidth(done).fillMaxHeight().background(Signal))
-            }
-        }
-        current?.desc?.takeIf { it.isNotBlank() }?.let { desc ->
-            Spacer(Modifier.height(8.dp))
-            Text(desc, fontFamily = Sans, fontSize = 13.sp, lineHeight = 18.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        if (next != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Next · ${timeFormat.format(Date(next.start))}  ${next.title}",
-                fontFamily = Sans,
-                fontSize = 12.sp,
-                color = Faint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PaperButton("Watch", Icons.Filled.PlayArrow, onClick = watch)
             if (current != null && Catchup.canReplay(ch, current, now)) {
@@ -189,6 +174,21 @@ fun LivePreviewPane(
                 playing = null
                 vm.screen = Screen.GUIDE
             }
+        }
+        current?.desc?.takeIf { it.isNotBlank() }?.let { desc ->
+            Spacer(Modifier.height(12.dp))
+            Text(desc, fontFamily = Sans, fontSize = 13.sp, lineHeight = 18.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        if (next != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Next · ${timeFormat.format(Date(next.start))}  ${next.title}",
+                fontFamily = Sans,
+                fontSize = 12.sp,
+                color = Faint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.height(24.dp))
     }

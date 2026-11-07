@@ -386,7 +386,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                                 list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                                 progress = state.progress, playlistId = state.mine(p.id),
                                                 onOpen = { ch -> opened = true; openItem(ch) }, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
-                                                focusId = focusId, modifier = Modifier.weight(0.58f).fillMaxHeight(),
+                                                focusId = focusId, modifier = Modifier.weight(0.6f).fillMaxHeight(),
                                                 onFocus = { ch -> focusedId = ch.id },
                                             )
                                             Spacer(Modifier.width(24.dp))
@@ -399,7 +399,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                                 active = here && !opened,
                                                 livePreview = state.settings.livePreview,
                                                 onPlay = { l, ch -> opened = true; openFrom(l, ch) },
-                                                modifier = Modifier.weight(0.42f).fillMaxHeight(),
+                                                modifier = Modifier.weight(0.4f).fillMaxHeight(),
                                             )
                                         }
                                     }

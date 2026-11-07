@@ -3,6 +3,8 @@ package app.falak.player.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.combinedClickable
@@ -188,7 +190,18 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
         } else {
             PageHeader("Recordings", onBack = back, subtitle = storage)
         }
-        ChipFlow(Modifier.padding(top = 6.dp, bottom = 10.dp)) {
+        // TV: the chips wrap; phones: one row that scrolls sideways.
+        val chipRow: @Composable (@Composable () -> Unit) -> Unit = { chips ->
+            if (tv) {
+                ChipFlow(Modifier.padding(top = 6.dp, bottom = 10.dp)) { chips() }
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) { chips() }
+            }
+        }
+        chipRow {
             TagChip("All", filter == RecFilter.ALL) { filter = RecFilter.ALL }
             if (now.isNotEmpty()) TagChip("Recording now  ${now.size}", filter == RecFilter.NOW) { filter = RecFilter.NOW }
             if (planned.isNotEmpty()) TagChip("Planned  ${planned.size}", filter == RecFilter.PLANNED) { filter = RecFilter.PLANNED }
@@ -333,50 +346,61 @@ private fun RecordingTile(r: Recording, modifier: Modifier, content: @Composable
     }
 }
 
-/** A recording under way: big, with Watch from the start and Stop. */
+/** A recording under way: big, with Watch from the start and Stop (phones: the buttons under it). */
 @Composable
 private fun RecordingNowCard(r: Recording, tv: Boolean, onWatch: () -> Unit, onStop: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     val time = rememberTimeFormat()
-    Row(Modifier.fillMaxWidth().panel(shape).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        RecordingTile(r, Modifier.width(if (tv) 240.dp else 132.dp)) {
-            Text(
-                "● REC",
-                fontFamily = Sans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                color = androidx.compose.ui.graphics.Color.White,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Signal)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
+    val buttons: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PaperButton("Watch from the start", Icons.Filled.PlayArrow, onClick = onWatch)
+            GhostButton("Stop", onClick = onStop)
         }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Kicker(if (r.replay) "Saving replay" else "Recording now", color = Signal)
-            Spacer(Modifier.height(4.dp))
-            Text(r.title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 22.sp else 18.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOfNotNull(
-                    r.channelName,
-                    r.startedAt.takeIf { it > 0 }?.let { "since " + time.format(Date(it)) },
-                    if (!r.replay) "until " + time.format(Date(r.stop)) else null,
-                    OfflineCenter.sizeLabel(r.size) + " so far",
-                ).joinToString(" · "),
-                fontFamily = Sans,
-                fontSize = 13.sp,
-                color = Muted,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(12.dp))
-            ChipFlow {
-                PaperButton("Watch from the start", Icons.Filled.PlayArrow, onClick = onWatch)
-                GhostButton("Stop", onClick = onStop)
+    }
+    Column(Modifier.fillMaxWidth().panel(shape).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RecordingTile(r, Modifier.width(if (tv) 240.dp else 112.dp)) {
+                Text(
+                    "● REC",
+                    fontFamily = Sans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(if (tv) 8.dp else 5.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Signal)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
+            Spacer(Modifier.width(if (tv) 16.dp else 12.dp))
+            Column(Modifier.weight(1f)) {
+                Kicker(if (r.replay) "Saving replay" else "Recording now", color = Signal)
+                Spacer(Modifier.height(4.dp))
+                Text(r.title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 22.sp else 18.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(
+                        r.channelName,
+                        r.startedAt.takeIf { it > 0 }?.let { "since " + time.format(Date(it)) },
+                        if (!r.replay) "until " + time.format(Date(r.stop)) else null,
+                        OfflineCenter.sizeLabel(r.size) + " so far",
+                    ).joinToString(" · "),
+                    fontFamily = Sans,
+                    fontSize = 13.sp,
+                    color = Muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (tv) {
+                    Spacer(Modifier.height(12.dp))
+                    buttons()
+                }
+            }
+        }
+        if (!tv) {
+            Spacer(Modifier.height(12.dp))
+            buttons()
         }
     }
 }

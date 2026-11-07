@@ -221,8 +221,10 @@ fun SideRail(
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
             val slots = sections.size + (if (hasGuide) 1 else 0) + (if (onRecordings != null) 1 else 0) + 2
             val fixed = (if (tv) 20 + 32 + 14 + 16 else 14 + 28 + 10 + 10) + 9
-            val fit = (maxHeight - fixed.dp - 6.dp * (slots + 1)) / slots
-            val box = fit.coerceIn(32.dp, if (tv) 46.dp else 44.dp)
+            // A phone on its side: closer together and a little smaller, so all of them fit.
+            val gap = if (maxHeight < 480.dp) 4.dp else 6.dp
+            val fit = (maxHeight - fixed.dp - gap * (slots + 1)) / slots
+            val box = fit.coerceIn(if (tv) 32.dp else 28.dp, if (tv) 46.dp else 44.dp)
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
                 BrandMark(if (tv) 32.dp else 28.dp)
@@ -230,7 +232,7 @@ fun SideRail(
                 Column(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
+                    verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically),
                 ) {
                     sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box) { onSelect(s) } }
                     if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, onClick = onGuide)
@@ -240,7 +242,7 @@ fun SideRail(
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(gap),
                 ) {
                     // A short rule sets the playlist and Settings apart from the sections.
                     Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
@@ -451,7 +453,7 @@ fun SidebarTopBar(
         }
         Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))
-            if (hasGuide && onMenu != null) {
+            if (hasGuide) {
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
             profileButton?.invoke()
