@@ -190,6 +190,12 @@ class PlayerActivity : ComponentActivity() {
     private var exo: ExoPlayer? = null
     private var vlc: VlcPlayer? = null
 
+    /**
+     * Lets the rest of the phone or TV control the player: earbud and headset buttons, Bluetooth in
+     * the car, Assistant, and the play/pause and next/previous buttons of the picture-in-picture window.
+     */
+    private var session: androidx.media3.session.MediaSession? = null
+
     /** Auto frame rate: TVs only (Settings → Picture & playback → Match frame rate). */
     private val frameMatch by lazy { FrameRateMatch(this) }
     private val isTvDevice by lazy { detectTv(this) }
@@ -1059,6 +1065,7 @@ class PlayerActivity : ComponentActivity() {
         p.playWhenReady = true
         playerView.videoSurfaceView?.visibility = View.VISIBLE
         playerView.player = ZapPlayer(p)
+        startSession()
         streamCuesShowing = false
         applySubtitleStyle()
         exo = p
@@ -1092,6 +1099,7 @@ class PlayerActivity : ComponentActivity() {
             if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
         }
         playerView.player = ZapPlayer(v)
+        startSession()
         vlcLayout = layout
         vlc = v
         applyVideoArea()
@@ -1104,6 +1112,7 @@ class PlayerActivity : ComponentActivity() {
         stopAutoCaptions()
         exoCaptions = false
         exoSynced = false
+        releaseSession()
         playerView.player = null
         exo?.let {
             it.removeListener(listener)
@@ -1128,6 +1137,21 @@ class PlayerActivity : ComponentActivity() {
         val ch = queue.getOrNull(index)
         resumePositionMs = if (ch != null && ch.kind != Kind.LIVE) p.currentPosition else C.TIME_UNSET
         releaseEngine()
+    }
+
+    /** The media session for the engine now playing (Listen mode has its own, "listen"). */
+    private fun startSession() {
+        releaseSession()
+        val zp = playerView.player ?: return
+        session = runCatching {
+            androidx.media3.session.MediaSession.Builder(this, zp).setId("player").build()
+        }.getOrNull()
+        updatePipParams()
+    }
+
+    private fun releaseSession() {
+        session?.let { runCatching { it.release() } }
+        session = null
     }
 
     /** Switch player for this session, keeping the position of films and episodes. */
@@ -1474,6 +1498,7 @@ class PlayerActivity : ComponentActivity() {
             ) {
                 updateTimeViews()
             }
+            if (events.contains(Player.EVENT_IS_PLAYING_CHANGED)) updatePipParams()
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -2004,6 +2029,23 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Android 12+: the small window opens as the Home gesture starts (smooth), when it would open
+     * anyway: something playing, one screen, and Listen mode not taking over the sound. Otherwise
+     * onUserLeaveHint decides, as before.
+     */
+    private fun pipAuto(): Boolean {
+        val p = player ?: return false
+        if (!p.isPlaying || dual != null || listening || handingOff || isFinishing) return false
+        val listenWanted = repo.state.value.settings.listenMode && !isTvDevice && !repo.kidsActive
+        return !listenWanted
+    }
+
+    private fun updatePipParams() {
+        if (Build.VERSION.SDK_INT < 31 || !packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     private fun pipParams(): PictureInPictureParams {
         val vs = player?.videoSize
@@ -2015,6 +2057,7 @@ class PlayerActivity : ComponentActivity() {
         ratio = ratio.coerceIn(0.42f, 2.38f)
         return PictureInPictureParams.Builder()
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+            .apply { if (Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(pipAuto()) }
             .build()
     }
 
@@ -2377,6 +2420,8 @@ class PlayerActivity : ComponentActivity() {
             .putExtra("title", ch.name)
         try {
             handingOff = true
+            // No small window on the way to the other player.
+            updatePipParams()
             startActivity(Intent.createChooser(intent, "Open with"))
         } catch (e: Exception) {
             handingOff = false
@@ -3694,6 +3739,7 @@ class PlayerActivity : ComponentActivity() {
         d.release()
         root.removeView(d.container)
         dual = null
+        updatePipParams()
         dualSecond = false
         handler.removeCallbacks(hideDualHint)
         for (v in listOf(dualFrame, dualLabelA, dualLabelB, dualHint, touchLayer, dualBar)) v.visibility = View.GONE
@@ -3725,6 +3771,7 @@ class PlayerActivity : ComponentActivity() {
         applyDualVolume()
         applyVideoArea()
         updateDualLabels()
+        updatePipParams()
     }
 
     /** Only the picture being heard makes a sound. */
