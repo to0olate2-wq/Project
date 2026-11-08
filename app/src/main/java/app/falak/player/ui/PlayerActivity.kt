@@ -377,11 +377,20 @@ class PlayerActivity : ComponentActivity() {
         // A sleep timer that ran out while nothing was playing is over.
         if (SleepTimer.due(android.os.SystemClock.elapsedRealtime())) SleepTimer.cancel()
         queue = repo.playQueue
+        // Android closed the app while the player was in the background: back to what was playing.
+        val restored = if (queue.isEmpty()) PlayerRestore.read(savedInstanceState) else null
+        if (restored != null) {
+            queue = restored.queue
+            repo.playQueue = restored.queue
+            repo.currentPlaylist = restored.playlistId?.let { id -> repo.state.value.playlists.firstOrNull { it.id == id } }
+            repo.currentSeries = restored.series
+            if (restored.positionMs > 0) resumePositionMs = restored.positionMs
+        }
         if (queue.isEmpty()) {
             finish()
             return
         }
-        index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
+        index = restored?.index ?: intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, queue.lastIndex)
         // Kids screen time used up, or bedtime: nothing plays (the main screen says why).
         if (repo.kidsActive) {
             app.falak.player.data.KidsClock.state(this, repo.state.value.settings).block?.let {
@@ -864,6 +873,18 @@ class PlayerActivity : ComponentActivity() {
         alertJob = lifecycleScope.launch {
             ProgramAlerts.current.collect { a -> if (a != null && a.channelId == currentChannelId) ProgramAlerts.dismiss() }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // (After onStop the player is let go: a film's place is in resumePositionMs then.)
+        val ch = queue.getOrNull(index)
+        val position = when {
+            ch == null || ch.kind == Kind.LIVE -> -1L
+            player != null -> player?.currentPosition ?: -1L
+            else -> resumePositionMs
+        }
+        runCatching { PlayerRestore.save(outState, queue, index, repo.currentPlaylist?.id, repo.currentSeries, position) }
     }
 
     override fun onPause() {
