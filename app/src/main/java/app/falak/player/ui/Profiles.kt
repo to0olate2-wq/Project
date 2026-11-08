@@ -215,7 +215,7 @@ fun ProfileButton(state: AppState, kids: Boolean, onClick: () -> Unit) {
             fontFamily = Sans,
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp,
-            color = Color.White,
+            color = OnSignal,
             modifier = Modifier
                 .padding(horizontal = 8.dp)
                 .focusRing(shape)
