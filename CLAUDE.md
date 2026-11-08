@@ -59,9 +59,10 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   top bar + page now (no drawer). `LocalShell` tells pages which; Back from those pages is `vm.closePage()` (player
   detour → player, opened from More → More, else the lists). TV Settings: list of pages left, page right
   (`twoPane`; focus moves on OK, the page follows the remote after 160 ms). Classic look: unchanged, full pages.
-- **TV player row (8.8):** Live, Channels, Record, Audio, Subtitles, Speed, More; More (`showMoreMenu`) holds
-  Two screens, Favorites, Sleep, Picture size, Player, Menu (those buttons exist but aren't in the TV row). Phones
-  keep every button. `LiveTimeline` (live from the buffer) sits where the seek bar is.
+- **Player row (TV 8.8, phones 8.9):** Live, Channels, Record, Audio, Subtitles, Speed, More; More (`showMoreMenu`)
+  holds Two screens, Favorites, Sleep, Picture size, Rotation (phones, not on Android 16+ big screens: `rotationApplies`),
+  Player, Menu (those buttons exist but aren't in the row). Phone buttons are 48 dp. `LiveTimeline` (live from the
+  buffer) sits where the seek bar is.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on

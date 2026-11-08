@@ -194,19 +194,29 @@ class RecordingService : Service() {
     }
 }
 
-/** The alarm for the next recording, and the device starting (alarms are cleared then). */
+/**
+ * The alarm for the next recording. Not open to other apps (the device-start receiver below has to
+ * be), so nothing else can set the recorder going or put up "Open The Player to record".
+ */
+class RecordAlarmReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != RecordCenter.ALARM_ACTION) return
+        val app = context.applicationContext
+        RecordCenter.init(app)
+        try {
+            ContextCompat.startForegroundService(app, Intent(app, RecordingService::class.java))
+        } catch (e: Exception) {
+            RecordingService.tellToOpen(app)
+        }
+    }
+}
+
+/** The device starting (alarms are cleared then), and the app updated. */
 class RecordReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         RecordCenter.init(app)
         when (intent.action) {
-            RecordCenter.ALARM_ACTION -> {
-                try {
-                    ContextCompat.startForegroundService(app, Intent(app, RecordingService::class.java))
-                } catch (e: Exception) {
-                    RecordingService.tellToOpen(app)
-                }
-            }
             Intent.ACTION_BOOT_COMPLETED, "android.intent.action.QUICKBOOT_POWERON" -> {
                 // Android 15 won't start this kind of background work straight from start-up: an alarm in a moment does.
                 RecordCenter.planAlarm(soon = RecordCenter.book.value.recordings.any { it.state == RecState.RECORDING })

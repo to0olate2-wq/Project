@@ -8,6 +8,8 @@ import app.falak.player.data.AppState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -293,6 +295,8 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, d
                 .onFocusChanged { focused = it.isFocused }
                 .clip(shape)
                 .background(bg)
+                // TalkBack says which page is open.
+                .semantics { this.selected = selected }
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {

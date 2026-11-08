@@ -92,6 +92,13 @@ val Faint: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.fa
 val Signal: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.signal
 val Amber: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.amber
 
+/**
+ * Text on the accent colour (badges such as REC): dark on the dark look's bright orange (6.1:1),
+ * white on the light look's deeper red (4.5:1). White on the bright orange was only 3.1:1.
+ */
+val OnSignal: Color @Composable @ReadOnlyComposable get() =
+    LocalPalette.current.let { if (it.dark) it.ink else Color.White }
+
 val Serif = FontFamily(
     Font(R.font.lora_semibold, FontWeight.SemiBold),
     Font(R.font.lora_bold, FontWeight.Bold),

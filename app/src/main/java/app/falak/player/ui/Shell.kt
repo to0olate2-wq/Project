@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -205,6 +207,8 @@ private fun BarTab(
             .fillMaxHeight()
             .focusRing(RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
+            // TalkBack says which tab is open.
+            .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClickLabel = label, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -337,7 +341,7 @@ private fun MoreRow(
                 fontFamily = Sans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
-                color = Color.White,
+                color = OnSignal,
                 modifier = Modifier.clip(RoundedCornerShape(50)).background(Signal).padding(horizontal = 8.dp, vertical = 2.dp),
             )
             Spacer(Modifier.width(8.dp))
