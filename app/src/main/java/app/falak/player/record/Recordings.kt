@@ -70,20 +70,12 @@ data class RecordBook(
 internal object RecordBookStore {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
-    fun read(file: File): RecordBook = try {
-        if (file.exists()) json.decodeFromString(RecordBook.serializer(), file.readText()) else RecordBook()
-    } catch (e: Exception) {
-        RecordBook()
-    }
+    fun read(file: File): RecordBook =
+        app.falak.player.data.SafeFile.read(file) { json.decodeFromString(RecordBook.serializer(), it) } ?: RecordBook()
 
-    fun write(file: File, book: RecordBook) {
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(json.encodeToString(RecordBook.serializer(), book))
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            tmp.renameTo(file)
-        }
-    }
+    /** (Saved from the main thread too: no waiting for the disk, the `.bak` copy is the safety net.) */
+    fun write(file: File, book: RecordBook) =
+        app.falak.player.data.SafeFile.write(file, json.encodeToString(RecordBook.serializer(), book), sync = false)
 }
 
 /** Series rules: which programmes in the guide they mean. */

@@ -70,20 +70,11 @@ object OfflineStore {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
     private val serializer = ListSerializer(OfflineItem.serializer())
 
-    fun read(file: File): List<OfflineItem> = try {
-        if (file.exists()) json.decodeFromString(serializer, file.readText()) else emptyList()
-    } catch (e: Exception) {
-        emptyList()
-    }
+    fun read(file: File): List<OfflineItem> =
+        SafeFile.read(file) { json.decodeFromString(serializer, it) } ?: emptyList()
 
-    fun write(file: File, items: List<OfflineItem>) {
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(json.encodeToString(serializer, items))
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            tmp.renameTo(file)
-        }
-    }
+    /** (Saved from the main thread too: no waiting for the disk, the `.bak` copy is the safety net.) */
+    fun write(file: File, items: List<OfflineItem>) = SafeFile.write(file, json.encodeToString(serializer, items), sync = false)
 
     /** The finished file's extension: from the address, else the type the server gave, else mp4. */
     fun extensionFor(url: String, contentType: String): String {

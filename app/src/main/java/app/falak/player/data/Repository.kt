@@ -127,11 +127,9 @@ class Repository(private val context: Context) {
 
     // ---- saved state (playlists, favorites, recents) ----
 
-    private fun readState(): AppState = try {
-        if (stateFile.exists()) json.decodeFromString(AppState.serializer(), stateFile.readText()) else AppState()
-    } catch (e: Exception) {
-        AppState()
-    }
+    /** A damaged file never empties the app: the last good copy is used (see [SafeFile]). */
+    private fun readState(): AppState =
+        SafeFile.read(stateFile) { json.decodeFromString(AppState.serializer(), it) } ?: AppState()
 
     /**
      * Changes apply instantly in memory; the file is written shortly after on a background thread.
@@ -241,12 +239,7 @@ class Repository(private val context: Context) {
             }
             writePending.set(false)
             try {
-                val tmp = File(stateFile.path + ".tmp")
-                tmp.writeText(json.encodeToString(AppState.serializer(), _state.value))
-                if (!tmp.renameTo(stateFile)) {
-                    stateFile.delete()
-                    tmp.renameTo(stateFile)
-                }
+                SafeFile.write(stateFile, json.encodeToString(AppState.serializer(), _state.value))
             } catch (e: Throwable) {
                 // a full disk must never crash the app; the next change tries again
             }
