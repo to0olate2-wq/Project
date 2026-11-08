@@ -424,9 +424,19 @@ object RecordCenter {
     // ---- waking up for the next one ----
 
     private fun alarmIntent(): PendingIntent = PendingIntent.getBroadcast(
-        app, 4471, Intent(app, RecordReceiver::class.java).setAction(ALARM_ACTION),
+        app, 4471, Intent(app, RecordAlarmReceiver::class.java).setAction(ALARM_ACTION),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+
+    /** Before 8.9 the alarm went to [RecordReceiver]: one still set from then is cancelled (the new one replaces it). */
+    private fun cancelOldAlarm(am: AlarmManager) {
+        val old = PendingIntent.getBroadcast(
+            app, 4471, Intent(app, RecordReceiver::class.java).setAction(ALARM_ACTION),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        ) ?: return
+        runCatching { am.cancel(old) }
+        old.cancel()
+    }
 
     /** Recordings start on time with the app closed only with exact alarms (Android 12+ asks for them). */
     fun canWakeOnTime(): Boolean {
@@ -438,6 +448,7 @@ object RecordCenter {
     fun planAlarm(soon: Boolean = false) {
         if (!ready) return
         val am = app.getSystemService(AlarmManager::class.java) ?: return
+        cancelOldAlarm(am)
         val pi = alarmIntent()
         val now = System.currentTimeMillis()
         val next = if (soon) now + 3_000L else _book.value.recordings.filter { it.state == RecState.SCHEDULED }.minOfOrNull { it.start }

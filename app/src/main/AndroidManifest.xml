@@ -98,7 +98,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- The next recording's alarm, and the device starting (alarms are cleared then). -->
+        <!-- The next recording's alarm (only this app's own alarm reaches it). -->
+        <receiver
+            android:name=".record.RecordAlarmReceiver"
+            android:exported="false" />
+
+        <!-- The device starting (alarms are cleared then), and the app updated. -->
         <receiver
             android:name=".record.RecordReceiver"
             android:exported="true">
