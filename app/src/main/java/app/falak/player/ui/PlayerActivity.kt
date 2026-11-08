@@ -515,21 +515,18 @@ class PlayerActivity : ComponentActivity() {
         audioButton = pill("Audio", R.drawable.ic_pl_audio) { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
         ccButton = pill("Subtitles", R.drawable.ic_pl_subtitles) { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
         aspectButton = pill(aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
+        // (Phones: under More, see showMoreMenu.)
         rotateButton = pill(rotationLabel(), R.drawable.ic_pl_rotate) { cycleRotation() }
-            .apply { visibility = if (tvLayout) View.GONE else View.VISIBLE }
+            .apply { visibility = if (rotationApplies()) View.VISIBLE else View.GONE }
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
         // Films and episodes only (live TV always plays at normal speed).
         speedButton = pill(speedLabel(speed), R.drawable.ic_pl_speed) { showSpeedDialog() }.apply { visibility = View.GONE }
         // Stop after a while, or at the end of what's on (the sound fades out over the last minute).
         sleepButton = pill(SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime()), R.drawable.ic_pl_sleep) { showSleepDialog() }
         moreButton = pill("More", R.drawable.ic_pl_more) { showMoreMenu() }
-        // TV: the buttons used most in the row, the rest under More (one row that always fits).
-        // Phones keep every button in the row (it scrolls sideways when it doesn't fit).
-        val row = if (tvLayout) {
-            listOf(liveButton, browseButton, recordButton, audioButton, ccButton, speedButton, moreButton)
-        } else {
-            listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, sleepButton, aspectButton, rotateButton, engineButton)
-        }
+        // TV and phones: the buttons used most in the row, the rest under More. (Phones used to have
+        // all 13 in a row that scrolled sideways with no sign of it: half were off the screen.)
+        val row = listOf(liveButton, browseButton, recordButton, audioButton, ccButton, speedButton, moreButton)
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -540,7 +537,8 @@ class PlayerActivity : ComponentActivity() {
             for (b in row) {
                 addView(
                     b,
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
+                    // Phones: 48 dp, the size a finger needs.
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 48))
                         .apply { setMargins(dp(6), 0, dp(6), 0) },
                 )
             }
@@ -2165,6 +2163,13 @@ class PlayerActivity : ComponentActivity() {
         else -> "Auto-rotate"
     }
 
+    /**
+     * Phones only. Android 16+ ignores an app's rotation choice on big screens (tablets, unfolded
+     * phones: 600 dp and wider), so the choice isn't offered there.
+     */
+    private fun rotationApplies(): Boolean =
+        !tvLayout && !(Build.VERSION.SDK_INT >= 36 && resources.configuration.smallestScreenWidthDp >= 600)
+
     /** Auto follows the phone as you turn it (even with rotation locked in the system). */
     private fun applyRotation() {
         if (tvLayout) return
@@ -2705,19 +2710,21 @@ class PlayerActivity : ComponentActivity() {
         if (avail <= 0) return
         var need = dp(32)
         // (Sleep too: it used to keep its name when the others showed icons only.)
-        for (b in pills() + sleepButton) {
-            if (b.visibility != View.VISIBLE) continue
+        for (b in pills() + sleepButton + moreButton) {
+            // (Buttons under More aren't in the row.)
+            if (b.visibility != View.VISIBLE || b.parent == null) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
         }
         val compact = need > avail
         if (compact == compactPills) return
         compactPills = compact
-        for (b in pills() + sleepButton) {
+        for (b in pills() + sleepButton + moreButton) {
             val label = b.tag as? String ?: ""
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
-            if (compact) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(14), 0, dp(16), 0)
+            // Icon only: 48 dp across, as tall as it is wide.
+            if (compact) b.setPadding(dp(15), 0, dp(15), 0) else b.setPadding(dp(14), 0, dp(16), 0)
         }
     }
 
@@ -3305,8 +3312,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * TV: the buttons that don't fit in the row, as a list (each with what's set now). Picking one
-     * does what its button would.
+     * TV and phones: the buttons that aren't in the row, as a list (each with what's set now).
+     * Picking one does what its button would.
      */
     private fun showMoreMenu() {
         if (inPip) return
@@ -3323,6 +3330,7 @@ class PlayerActivity : ComponentActivity() {
         val sleep = (sleepButton.tag as? String).orEmpty().removePrefix("Sleep").trim().removePrefix("·").trim()
         add("Sleep timer  ·  " + sleep.ifEmpty { "Off" }) { showSleepDialog() }
         add("Picture size  ·  " + aspectNames[aspect]) { cycleAspect() }
+        if (rotationApplies()) add("Rotation  ·  " + rotationLabel()) { cycleRotation() }
         add("Player  ·  " + engine.short) { showEngineDialog() }
         add("Menu  ·  Home, Films, Series, Settings…") { showAppMenu() }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
