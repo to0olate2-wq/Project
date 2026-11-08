@@ -31,7 +31,9 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-    <!-- enableOnBackInvokedCallback=false: on Android 16 the remote's Back key keeps reaching the
+    <!-- allowBackup=false: no copy in Google's cloud backup (playlist passwords, the sync key). Moving to a
+         new device is Wi-Fi linking only.
+         enableOnBackInvokedCallback=false: on Android 16 the remote's Back key keeps reaching the
          player (closing the channel list, hiding the controls) instead of leaving the screen. -->
     <application
         android:name=".FalakApp"
@@ -41,6 +43,7 @@
         android:banner="@drawable/tv_banner"
         android:theme="@style/Theme.Falak"
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="false"
         android:largeHeap="true"
         android:supportsRtl="true">
