@@ -139,19 +139,21 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var messageView: TextView
     private lateinit var seekView: TextView
     private lateinit var aspectButton: TextView
-    private lateinit var audioButton: TextView
-    private lateinit var ccButton: TextView
+
+    /** Audio and subtitles in one button (one panel with both lists). */
+    private lateinit var tracksButton: TextView
     private lateinit var toolbar: FrameLayout
-    private lateinit var rotateButton: TextView
     private lateinit var browseButton: TextView
     private lateinit var engineButton: TextView
     private lateinit var speedButton: TextView
     private lateinit var sleepButton: TextView
-    private lateinit var favButton: TextView
-    private lateinit var menuButton: TextView
 
-    /** TV: "More" holds the buttons used less often (two screens, favorites, sleep, picture, player, Menu). */
-    private lateinit var moreButton: TextView
+    /** The star before the name at the top of the controls: Favorites. */
+    private lateinit var favButton: TextView
+
+    /** The top of the controls: ☆, what's playing (and what's on now); phones also the setting icons. */
+    private lateinit var topBar: LinearLayout
+    private lateinit var titleView: TextView
     private lateinit var browserView: ComposeView
     private lateinit var root: FrameLayout
 
@@ -505,10 +507,11 @@ class PlayerActivity : ComponentActivity() {
                 .apply { setMargins(dp(24), dp(24), dp(24), dp(24)) },
         )
 
-        // Channels / Audio / Subtitles / Picture size / Player: one tidy row on the bottom line of the
-        // screen, under the seek bar, shown and hidden together with the player controls.
-        // Leave the player for another part of the app (Films, Series, Settings…).
-        menuButton = pill("Menu", R.drawable.ic_pl_menu) { showAppMenu() }
+        // The buttons used while watching, with their names: one tidy row on the bottom line of the
+        // screen, under the seek bar, shown and hidden together with the player controls. The ones
+        // set once (Picture size, Sleep, Player) are icons: phones at the top right, TV at the end of
+        // the row (the one the remote is on shows its name). Every button is on screen, none under
+        // a More. (8.10: Menu went, Back does the same; Rotation went, the phone's own setting does it.)
         browseButton = pill("Channels", R.drawable.ic_pl_channels) { openBrowser() }
         // Live TV: a second channel beside this one.
         twoButton = pill("Two screens", R.drawable.ic_pl_two) { startPickingSecond() }.apply { visibility = View.GONE }
@@ -518,24 +521,17 @@ class PlayerActivity : ComponentActivity() {
             if (liveBeforeStartOver != null) backToLive() else shiftToLive()
         }.apply { visibility = View.GONE }
         recordButton = pill("Record", R.drawable.ic_pl_record) { showRecordDialog() }.apply { visibility = View.GONE }
-        // Add what's playing to Favorites without leaving the player.
-        favButton = pill("Favorite", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
+        // Add what's playing to Favorites without leaving the player: the star before its name.
+        favButton = pill("", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
-        audioButton = pill("Audio", R.drawable.ic_pl_audio) { showTrackDialog(C.TRACK_TYPE_AUDIO) }.apply { visibility = View.GONE }
-        ccButton = pill("Subtitles", R.drawable.ic_pl_subtitles) { showTrackDialog(C.TRACK_TYPE_TEXT) }.apply { visibility = View.GONE }
-        aspectButton = pill(aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
-        // (Phones: under More, see showMoreMenu.)
-        rotateButton = pill(rotationLabel(), R.drawable.ic_pl_rotate) { cycleRotation() }
-            .apply { visibility = if (rotationApplies()) View.VISIBLE else View.GONE }
+        tracksButton = pill("Audio and subtitles", R.drawable.ic_pl_subtitles) { showTracksPanel() }.apply { visibility = View.GONE }
+        aspectButton = pill("Picture size  ·  " + aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
         // Films and episodes only (live TV always plays at normal speed).
         speedButton = pill(speedLabel(speed), R.drawable.ic_pl_speed) { showSpeedDialog() }.apply { visibility = View.GONE }
         // Stop after a while, or at the end of what's on (the sound fades out over the last minute).
         sleepButton = pill(SleepTimer.buttonLabel(android.os.SystemClock.elapsedRealtime()), R.drawable.ic_pl_sleep) { showSleepDialog() }
-        moreButton = pill("More", R.drawable.ic_pl_more) { showMoreMenu() }
-        // TV and phones: the buttons used most in the row, the rest under More. (Phones used to have
-        // all 13 in a row that scrolled sideways with no sign of it: half were off the screen.)
-        val row = listOf(liveButton, browseButton, recordButton, audioButton, ccButton, speedButton, moreButton)
+        applyIconLabels()
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -543,13 +539,14 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(16), 0, dp(16), 0)
             clipToPadding = false
             clipChildren = false
-            for (b in row) {
+            for (b in pills()) addView(b, pillParams())
+            if (tvLayout) {
+                // A thin line, then the setting icons.
                 addView(
-                    b,
-                    // Phones: 48 dp, the size a finger needs.
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 48))
-                        .apply { setMargins(dp(6), 0, dp(6), 0) },
+                    View(this@PlayerActivity).apply { setBackgroundColor(0x40FFFFFF) },
+                    LinearLayout.LayoutParams(dp(1), dp(24)).apply { setMargins(dp(8), 0, dp(8), 0) },
                 )
+                for (b in settingIcons()) addView(b, pillParams())
             }
         }
         // A button shown or hidden (subtitles found, a film's speed): do the labels still fit?
@@ -567,6 +564,7 @@ class PlayerActivity : ComponentActivity() {
             // Turned or resized: labels back if they fit now.
             addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) post { fitPills() } }
         }
+        topBar = buildTopBar()
         playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)?.let { styleControls(it) }
         attachToolbar()
         applyRotation()
@@ -963,7 +961,7 @@ class PlayerActivity : ComponentActivity() {
         releaseEngine()
         engine = e
         if (e == Engine.VLC) createVlc() else createExo(software = e == Engine.EXO_SOFT, captions = captions)
-        setPillLabel(engineButton, e.short)
+        setPillLabel(engineButton, "Player  ·  " + e.short)
         applyDualVolume()
     }
 
@@ -2178,38 +2176,14 @@ class PlayerActivity : ComponentActivity() {
 
     private var tvLayout = false
 
-    private fun rotationLabel(): String = when (repo.state.value.settings.playerRotation) {
-        "landscape" -> "Landscape"
-        "portrait" -> "Portrait"
-        else -> "Auto-rotate"
-    }
-
     /**
-     * Phones only. Android 16+ ignores an app's rotation choice on big screens (tablets, unfolded
-     * phones: 600 dp and wider), so the choice isn't offered there.
+     * The player turns with the phone the way the phone's own rotate setting says (Auto-rotate in
+     * quick settings; with it off, Android offers a small rotate button when the phone is turned).
+     * 8.10: the player's own Rotation button went (an old choice of it is no longer used).
      */
-    private fun rotationApplies(): Boolean =
-        !tvLayout && !(Build.VERSION.SDK_INT >= 36 && resources.configuration.smallestScreenWidthDp >= 600)
-
-    /** Auto follows the phone as you turn it (even with rotation locked in the system). */
     private fun applyRotation() {
         if (tvLayout) return
-        requestedOrientation = when (repo.state.value.settings.playerRotation) {
-            "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            "portrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-        }
-    }
-
-    private fun cycleRotation() {
-        val next = when (repo.state.value.settings.playerRotation) {
-            "auto" -> "landscape"
-            "landscape" -> "portrait"
-            else -> "auto"
-        }
-        repo.updateSettings { it.copy(playerRotation = next) }
-        setPillLabel(rotateButton, rotationLabel())
-        applyRotation()
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER
     }
 
     private fun cycleAspect() = setAspect((aspect + 1) % resizeModes.size, byPinch = false)
@@ -2220,7 +2194,7 @@ class PlayerActivity : ComponentActivity() {
         aspect = to
         playerView.resizeMode = resizeModes[aspect]
         vlc?.setScale(aspect)
-        setPillLabel(aspectButton, aspectNames[aspect])
+        setPillLabel(aspectButton, "Picture size  ·  " + aspectNames[aspect])
         if (byPinch) {
             showLevel(if (aspect == ASPECT_ZOOM) "Zoom · fills the screen" else "Fit · the whole picture", null)
         } else {
@@ -2477,7 +2451,98 @@ class PlayerActivity : ComponentActivity() {
         if (bannerView.visibility == View.VISIBLE) bannerFor?.let { renderBanner(it) }
     }
 
+    /** The remote's Audio or Subtitles key (and the button when only one of them has a choice). */
     private fun showTrackDialog(type: Int) {
+        val options = trackChoices(type)
+        if (options == null) {
+            val what = if (type == C.TRACK_TYPE_AUDIO) "Only one audio track" else "No subtitles"
+            Toast.makeText(this, "$what in this stream", Toast.LENGTH_SHORT).show()
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitles")
+            .setSingleChoiceItems(options.map { it.label }.toTypedArray(), options.indexOfFirst { it.selected }) { d, which ->
+                d.dismiss()
+                options[which].select()
+                // Picked by hand: this channel, film or series gets it again next time.
+                options[which].memo?.let { rememberTrack(type, it) }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /**
+     * The Audio and subtitles button: both lists in one panel, the ones in use ticked. When only
+     * one of them has anything to choose, just that list.
+     */
+    private fun showTracksPanel() {
+        if (inPip) return
+        val audio = trackChoices(C.TRACK_TYPE_AUDIO)
+        val text = trackChoices(C.TRACK_TYPE_TEXT)
+        if (audio == null || text == null) {
+            if (audio == null && text == null) {
+                Toast.makeText(this, "No other audio or subtitles in this stream", Toast.LENGTH_SHORT).show()
+            } else {
+                showTrackDialog(if (audio != null) C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT)
+            }
+            return
+        }
+        // A heading (option null) or a choice.
+        class Row(val label: String, val type: Int, val option: TrackOption?)
+        val rows = ArrayList<Row>()
+        rows += Row("Audio", C.TRACK_TYPE_AUDIO, null)
+        audio.forEach { rows += Row(it.label, C.TRACK_TYPE_AUDIO, it) }
+        rows += Row("Subtitles", C.TRACK_TYPE_TEXT, null)
+        text.forEach { rows += Row(it.label, C.TRACK_TYPE_TEXT, it) }
+        val builder = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val themed = builder.context
+        val adapter = object : android.widget.BaseAdapter() {
+            override fun getCount() = rows.size
+            override fun getItem(position: Int): Any = rows[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun areAllItemsEnabled() = false
+            override fun isEnabled(position: Int) = rows[position].option != null
+            override fun getViewTypeCount() = 2
+            override fun getItemViewType(position: Int) = if (rows[position].option == null) 0 else 1
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val row = rows[position]
+                val tv = convertView as? TextView
+                    ?: (android.view.LayoutInflater.from(themed).inflate(android.R.layout.simple_list_item_1, parent, false) as TextView)
+                val o = row.option
+                if (o == null) {
+                    tv.text = row.label
+                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    tv.setTypeface(null, Typeface.BOLD)
+                    tv.alpha = 0.7f
+                    tv.minHeight = dp(36)
+                    tv.setPadding(dp(24), dp(if (position == 0) 4 else 16), dp(24), dp(4))
+                } else {
+                    // The one in use: ticked and bold.
+                    tv.text = if (o.selected) "✓  " + o.label else o.label
+                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    tv.setTypeface(null, if (o.selected) Typeface.BOLD else Typeface.NORMAL)
+                    tv.alpha = 1f
+                    tv.minHeight = dp(48)
+                    tv.setPadding(dp(if (o.selected) 24 else 46), 0, dp(24), 0)
+                }
+                return tv
+            }
+        }
+        builder.setTitle("Audio and subtitles")
+            .setAdapter(adapter) { d, which ->
+                val row = rows.getOrNull(which) ?: return@setAdapter
+                val o = row.option ?: return@setAdapter
+                d.dismiss()
+                o.select()
+                // Picked by hand: this channel, film or series gets it again next time.
+                o.memo?.let { rememberTrack(row.type, it) }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** What the Audio or Subtitles list offers, or null when there's nothing to choose. */
+    private fun trackChoices(type: Int): List<TrackOption>? {
         val options = ArrayList(trackOptions(type))
         val real = if (type == C.TRACK_TYPE_TEXT) options.size - 1 else options.size
         // Movies and episodes can also fetch subtitles online.
@@ -2496,30 +2561,27 @@ class PlayerActivity : ComponentActivity() {
         if (type == C.TRACK_TYPE_TEXT) {
             options += TrackOption("Aa  Caption style…", false) { showCaptionStyle() }
         }
-        if ((real <= 0 && !(type == C.TRACK_TYPE_TEXT && vod)) || (type == C.TRACK_TYPE_AUDIO && real == 1)) {
-            val what = if (type == C.TRACK_TYPE_AUDIO) "Only one audio track" else "No subtitles"
-            Toast.makeText(this, "$what in this stream", Toast.LENGTH_SHORT).show()
-            return
-        }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitles")
-            .setSingleChoiceItems(options.map { it.label }.toTypedArray(), options.indexOfFirst { it.selected }) { d, which ->
-                d.dismiss()
-                options[which].select()
-                // Picked by hand: this channel, film or series gets it again next time.
-                options[which].memo?.let { rememberTrack(type, it) }
-            }
-            .setNegativeButton("Close", null)
-            .show()
+        if ((real <= 0 && !(type == C.TRACK_TYPE_TEXT && vod)) || (type == C.TRACK_TYPE_AUDIO && real == 1)) return null
+        return options
     }
 
     private fun updateTrackButtons() {
         val audio = countTracks(C.TRACK_TYPE_AUDIO)
         val text = countTracks(C.TRACK_TYPE_TEXT)
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
-        audioButton.visibility = if (audio > 1) View.VISIBLE else View.GONE
-        setPillLabel(audioButton, "Audio ($audio)")
-        ccButton.visibility = if (text > 0 || vod || autoCaptionsOffered()) View.VISIBLE else View.GONE
+        val audioChoice = audio > 1
+        val textChoice = text > 0 || vod || autoCaptionsOffered()
+        tracksButton.visibility = if (audioChoice || textChoice) View.VISIBLE else View.GONE
+        // Named for what it holds.
+        setPillLabel(
+            tracksButton,
+            when {
+                audioChoice && textChoice -> "Audio and subtitles"
+                audioChoice -> "Audio ($audio)"
+                else -> "Subtitles"
+            },
+        )
+        setPillIcon(tracksButton, if (audioChoice && !textChoice) R.drawable.ic_pl_audio else R.drawable.ic_pl_subtitles)
         // The channel turned out to have captions of its own: never auto captions on top of them.
         if (autoCapsOn && text > 0) providerCaptionsTakeOver()
     }
@@ -2689,7 +2751,8 @@ class PlayerActivity : ComponentActivity() {
         compoundDrawableTintList = contentColors()
         background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
         if (label.isEmpty()) {
-            val side = dp(if (tvLayout) 13 else 11)
+            // As wide as it is tall (48 dp on phones, 44 on TV).
+            val side = dp(if (tvLayout) 12 else 15)
             setPadding(side, 0, side, 0)
         } else {
             setPadding(dp(if (tvLayout) 18 else 14), 0, dp(if (tvLayout) 20 else 16), 0)
@@ -2700,24 +2763,65 @@ class PlayerActivity : ComponentActivity() {
         setOnFocusChangeListener { v, focused ->
             val s = if (focused) 1.08f else 1f
             v.animate().scaleX(s).scaleY(s).setDuration(120).start()
-            // TV, a row too long for the screen: the button the remote is on shows its name.
-            if (tvLayout && tvCompact) applyTvLabels()
+            // TV: the setting icon the remote is on shows its name (and, a row too long for the
+            // screen, so does a short button).
+            if (tvLayout) {
+                applyIconLabels()
+                if (tvCompact) applyTvLabels()
+            }
         }
     }
 
     // Phones: when the buttons don't all fit across, they show their icons only (names are read out).
     private var compactPills = false
 
+    /** The buttons used while watching, with their names (each shows only when it applies). */
     private fun pills(): List<TextView> =
-        listOf(menuButton, liveButton, browseButton, recordButton, twoButton, favButton, audioButton, ccButton, speedButton, aspectButton, rotateButton, engineButton)
+        listOf(liveButton, browseButton, recordButton, twoButton, tracksButton, speedButton)
+
+    /** The ones set once: icons (phones at the top right, TV at the end of the row). */
+    private fun settingIcons(): List<TextView> = listOf(aspectButton, sleepButton, engineButton)
+
+    private fun pillParams() =
+        // Phones: 48 dp, the size a finger needs.
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 48))
+            .apply { setMargins(dp(6), 0, dp(6), 0) }
 
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
         b.contentDescription = label
+        if (::sleepButton.isInitialized && b in settingIcons()) {
+            applyIconLabels()
+            return
+        }
         // (TV, a row too long for the screen: a short button keeps showing its icon only.)
         val iconOnly = tvLayout && tvCompact && ::sleepButton.isInitialized && b in tvShortPills() && !b.isFocused
         b.text = if (compactPills || iconOnly) "" else label
         b.post { fitPills() }
+    }
+
+    /**
+     * The setting icons show no name, except: on TV the one the remote is on, and Sleep with a timer
+     * running ("20 min"). Their full name is read out ("Picture size · Fit").
+     */
+    private fun applyIconLabels() {
+        if (!::sleepButton.isInitialized || !::engineButton.isInitialized) return
+        for (b in settingIcons()) {
+            val full = b.tag as? String ?: ""
+            val text = when {
+                tvLayout && b.isFocused -> full
+                // "Sleep 20 min" → "20 min", "Sleep · end" → "end", "Sleep" → "".
+                b === sleepButton -> full.removePrefix("Sleep").trim().removePrefix("·").trim()
+                else -> ""
+            }
+            if (b.text?.toString() == text) continue
+            b.text = text
+            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
+            // Icon only: 48 dp across on phones (44 on TV), as wide as it is tall.
+            val side = if (text.isEmpty()) dp(if (tvLayout) 12 else 15) else dp(if (tvLayout) 18 else 14)
+            b.setPadding(side, 0, if (text.isEmpty()) side else dp(if (tvLayout) 20 else 16), 0)
+        }
+        if (tvLayout) fitTvPills()
     }
 
     /** Labels when the row fits the screen's width, icons only when it doesn't (never on TV). */
@@ -2730,17 +2834,15 @@ class PlayerActivity : ComponentActivity() {
         val avail = toolbar.width
         if (avail <= 0) return
         var need = dp(32)
-        // (Sleep too: it used to keep its name when the others showed icons only.)
-        for (b in pills() + sleepButton + moreButton) {
-            // (Buttons under More aren't in the row.)
-            if (b.visibility != View.VISIBLE || b.parent == null) continue
+        for (b in pills()) {
+            if (b.visibility != View.VISIBLE) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
         }
         val compact = need > avail
         if (compact == compactPills) return
         compactPills = compact
-        for (b in pills() + sleepButton + moreButton) {
+        for (b in pills()) {
             val label = b.tag as? String ?: ""
             b.text = if (compact) "" else label
             b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
@@ -2752,20 +2854,22 @@ class PlayerActivity : ComponentActivity() {
     /** TV: the row doesn't fit across (live TV has the most buttons): these show their icon only, until the remote is on them. */
     private var tvCompact = false
 
-    private fun tvShortPills(): List<TextView> = listOf(twoButton, favButton, sleepButton, aspectButton, rotateButton, engineButton)
+    private fun tvShortPills(): List<TextView> = listOf(twoButton)
 
     private fun fitTvPills() {
         if (!::toolbar.isInitialized || !::sleepButton.isInitialized) return
         val avail = toolbar.width
         if (avail <= 0) return
-        var need = dp(32)
-        for (b in pills() + sleepButton + moreButton) {
-            // (Buttons under More aren't in the row.)
-            if (b.visibility != View.VISIBLE || b.parent == null) continue
+        // The setting icons and the line before them, with room for one of them showing its name.
+        var need = dp(32) + dp(17) + settingIcons().size * dp(12 + 44) + dp(140)
+        for (b in pills()) {
+            if (b.visibility != View.VISIBLE) continue
             val label = b.tag as? String ?: ""
             need += dp(12) + dp(20) + dp(18) + dp(20) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
         }
-        tvCompact = need > avail
+        val compact = need > avail
+        if (compact == tvCompact) return
+        tvCompact = compact
         applyTvLabels()
     }
 
@@ -2780,6 +2884,56 @@ class PlayerActivity : ComponentActivity() {
             b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
             if (text.isEmpty()) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(18), 0, dp(20), 0)
         }
+    }
+
+    /**
+     * The top of the controls: the star (Favorites), then what's playing and, on a live channel,
+     * what's on now. Phones also have the setting icons on the right (TV has them in the row).
+     */
+    private fun buildTopBar(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        clipToPadding = false
+        clipChildren = false
+        addView(favButton, pillParams())
+        titleView = TextView(this@PlayerActivity).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 18f else 16f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
+            setSingleLine()
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setShadowLayer(dp(4).toFloat(), 0f, 0f, 0x99000000.toInt())
+            setPadding(dp(6), 0, dp(6), 0)
+        }
+        addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (!tvLayout) for (b in settingIcons()) addView(b, pillParams())
+    }
+
+    private fun updateTopBar() {
+        if (!::titleView.isInitialized) return
+        val ch = queue.getOrNull(index) ?: return
+        val text = SpannableStringBuilder()
+        text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (ch.kind == Kind.LIVE) {
+            Epg.current(repo.epg.value[ch.epgKey], System.currentTimeMillis())?.let { now ->
+                text.append("   ")
+                val start = text.length
+                text.append(now.title)
+                text.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        titleView.text = text
+    }
+
+    /** Controls shown: the top says what's playing, so the zap banner (same place) goes. */
+    private fun onControlsShown() {
+        bannerView.visibility = View.GONE
+        updateTopBar()
+        // Clear of a phone's camera cut-out (the picture goes under it).
+        val cut = androidx.core.view.ViewCompat.getRootWindowInsets(root)
+            ?.getInsets(WindowInsetsCompat.Type.displayCutout())
+        val side = dp(if (tvLayout) 48 else 12)
+        topBar.setPadding(side + (cut?.left ?: 0), dp(if (tvLayout) 28 else 10) + (cut?.top ?: 0), side + (cut?.right ?: 0), 0)
     }
 
     /**
@@ -2804,13 +2958,21 @@ class PlayerActivity : ComponentActivity() {
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight, Gravity.BOTTOM)
                     .apply { bottomMargin = -pad },
             )
+            controls.addView(topBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+            playerView.setControllerVisibilityListener(
+                PlayerView.ControllerVisibilityListener { visibility -> if (visibility == View.VISIBLE) onControlsShown() },
+            )
         } else {
-            // Fallback: a separate row at the bottom of the screen that follows the controls.
+            // Fallback: a separate row at the bottom of the screen (and the top bar) that follow the controls.
             toolbar.visibility = View.GONE
+            topBar.visibility = View.GONE
             root.addView(toolbar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight, Gravity.BOTTOM))
+            root.addView(topBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
             playerView.setControllerVisibilityListener(
                 PlayerView.ControllerVisibilityListener { visibility ->
                     toolbar.visibility = if (inPip) View.GONE else visibility
+                    topBar.visibility = if (inPip) View.GONE else visibility
+                    if (visibility == View.VISIBLE) onControlsShown()
                 },
             )
         }
@@ -3332,38 +3494,6 @@ class PlayerActivity : ComponentActivity() {
         browserView.requestFocus()
     }
 
-    /**
-     * TV and phones: the buttons that aren't in the row, as a list (each with what's set now).
-     * Picking one does what its button would.
-     */
-    private fun showMoreMenu() {
-        if (inPip) return
-        val items = ArrayList<Pair<String, () -> Unit>>()
-        fun add(label: String, action: () -> Unit) {
-            items += label to action
-        }
-        if (twoButton.visibility == View.VISIBLE) add("Two screens  ·  a second channel beside this one") { startPickingSecond() }
-        if (favButton.visibility == View.VISIBLE) {
-            val fav = (favButton.tag as? String) == "Favorited"
-            add(if (fav) "Remove from Favorites" else "Add to Favorites") { queue.getOrNull(index)?.let { toggleFavorite(it) } }
-        }
-        // "Sleep 20 min" → "20 min"; "Sleep" → "Off".
-        val sleep = (sleepButton.tag as? String).orEmpty().removePrefix("Sleep").trim().removePrefix("·").trim()
-        add("Sleep timer  ·  " + sleep.ifEmpty { "Off" }) { showSleepDialog() }
-        add("Picture size  ·  " + aspectNames[aspect]) { cycleAspect() }
-        if (rotationApplies()) add("Rotation  ·  " + rotationLabel()) { cycleRotation() }
-        add("Player  ·  " + engine.short) { showEngineDialog() }
-        add("Menu  ·  Home, Films, Series, Settings…") { showAppMenu() }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("More")
-            .setItems(items.map { it.first }.toTypedArray()) { d, which ->
-                d.dismiss()
-                items.getOrNull(which)?.second?.invoke()
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
     private fun closeMenu() {
         if (!menuOpen) return
         menuOpen = false
@@ -3407,6 +3537,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun updateFavButton() {
         if (!::favButton.isInitialized) return
+        updateTopBar()
         val ch = queue.getOrNull(index)
         if (ch == null || !canFavorite(ch)) {
             favButton.visibility = View.GONE
@@ -3414,11 +3545,16 @@ class PlayerActivity : ComponentActivity() {
         }
         val fav = isFavorite(ch)
         favButton.visibility = View.VISIBLE
-        setPillLabel(favButton, if (fav) "Favorited" else "Favorite")
+        // Just the star (filled when it's a favorite); read out as what it does.
+        favButton.contentDescription = if (fav) "Remove from Favorites" else "Add to Favorites"
+        setPillIcon(favButton, if (fav) R.drawable.ic_pl_star else R.drawable.ic_pl_star_outline)
+    }
+
+    private fun setPillIcon(b: TextView, icon: Int) {
         val size = dp(if (tvLayout) 20 else 18)
-        ResourcesCompat.getDrawable(resources, if (fav) R.drawable.ic_pl_star else R.drawable.ic_pl_star_outline, theme)?.mutate()?.let {
+        ResourcesCompat.getDrawable(resources, icon, theme)?.mutate()?.let {
             it.setBounds(0, 0, size, size)
-            favButton.setCompoundDrawablesRelative(it, null, null, null)
+            b.setCompoundDrawablesRelative(it, null, null, null)
         }
     }
 
@@ -3509,6 +3645,11 @@ class PlayerActivity : ComponentActivity() {
 
     private fun showBanner(ch: Channel) {
         if (inPip || browserOpen) return
+        // The controls are up: their top already says what's playing.
+        if (playerView.isControllerFullyVisible && ::topBar.isInitialized) {
+            updateTopBar()
+            return
+        }
         renderBanner(ch)
         bannerView.visibility = View.VISIBLE
         handler.removeCallbacks(hideBanner)

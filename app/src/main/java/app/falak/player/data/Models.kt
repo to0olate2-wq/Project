@@ -390,6 +390,7 @@ data class Settings(
     /** Asr: "std", "hanafi", or "" for the local custom. */
     val prayerAsr: String = "",
     /** Phone player rotation: "auto" (follows the phone), "landscape" or "portrait". */
+    /** No longer used (8.10): the player follows the phone's own rotate setting. */
     val playerRotation: String = "auto",
     /** Phones: every page turns with the phone, even with rotation locked in the phone's settings. */
     val turnWithPhone: Boolean = true,
