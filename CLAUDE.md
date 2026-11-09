@@ -59,10 +59,14 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   top bar + page now (no drawer). `LocalShell` tells pages which; Back from those pages is `vm.closePage()` (player
   detour → player, opened from More → More, else the lists). TV Settings: list of pages left, page right
   (`twoPane`; focus moves on OK, the page follows the remote after 160 ms). Classic look: unchanged, full pages.
-- **Player row (TV 8.8, phones 8.9):** Live, Channels, Record, Audio, Subtitles, Speed, More; More (`showMoreMenu`)
-  holds Two screens, Favorites, Sleep, Picture size, Rotation (phones, not on Android 16+ big screens: `rotationApplies`),
-  Player, Menu (those buttons exist but aren't in the row). Phone buttons are 48 dp. `LiveTimeline` (live from the
-  buffer) sits where the seek bar is.
+- **Player controls (8.10; the owner didn't like 8.8/8.9's More, don't bring it back):** every button on screen.
+  Bottom row with names (`pills()`): Back to live, Channels, Record, Two screens, Audio and subtitles (one button,
+  `showTracksPanel`: both lists in one panel; the remote's Audio/Subtitles keys still open one list), Speed — each
+  only when it applies. Setting icons (`settingIcons()`: Picture size, Sleep, Player): phones top right, TV at the end
+  of the row after a thin line; no names except TV focus and Sleep's time left (`applyIconLabels`). Top bar
+  (`buildTopBar`): ☆ Favorites, then the name and what's on now; the zap banner hides while the controls are up.
+  Removed: Menu (Back does it; `showAppMenu` stays for the remote's Menu job), Rotation (player uses FULL_USER,
+  `playerRotation` setting unused). Phone buttons are 48 dp. `LiveTimeline` sits where the seek bar is.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on
