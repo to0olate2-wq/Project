@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.layout
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -408,12 +409,14 @@ private fun GuideRow(
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = ch.logo.ifBlank { null },
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(36.dp, 28.dp),
-            )
+            Box(Modifier.size(36.dp, 28.dp), contentAlignment = Alignment.Center) {
+                LogoOr(
+                    url = ch.logo,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                ) { Initials(ch.name, 11.sp) }
+            }
             Spacer(Modifier.width(6.dp))
             Column {
                 Text(ch.name, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -8,6 +8,9 @@
         <item name="android:windowSplashScreenIconBackgroundColor">@color/launcher_bg</item>
     </style>
 
+    <style name="Theme.Falak.Launch">
+        <item name="android:windowBackground">@color/bg</item>
+    </style>
     <style name="Theme.Falak.Player">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowFullscreen">true</item>

@@ -1888,7 +1888,7 @@ private fun PlayerChoice(vm: LibraryViewModel, current: String, firstChip: Modif
 }
 
 /** "3 h ago", "2 days ago". */
-private fun ageText(at: Long): String {
+internal fun ageText(at: Long): String {
     val mins = (System.currentTimeMillis() - at) / 60_000
     return when {
         mins < 2 -> "just now"

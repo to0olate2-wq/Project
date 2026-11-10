@@ -135,7 +135,8 @@ fun PosterCard(
                 .background(Ink3)
                 .combinedClickable(onClick = { tap?.invoke(row, ch.id); onClick() }, onLongClick = onLongClick),
         ) {
-            if (ch.logo.isBlank()) {
+            // No picture, or its link doesn't load: the name.
+            LogoOr(ch.logo, ch.name, ContentScale.Crop, Modifier.fillMaxSize()) {
                 Text(
                     ch.name,
                     fontFamily = Serif,
@@ -146,13 +147,6 @@ fun PosterCard(
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.align(Alignment.Center).padding(10.dp),
-                )
-            } else {
-                AsyncImage(
-                    model = ch.logo,
-                    contentDescription = ch.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
                 )
             }
             val details = LocalCardDetails.current
@@ -222,7 +216,8 @@ fun ChannelCard(
                 .background(Brush.verticalGradient(listOf(Ink3, Ink2)))
                 .combinedClickable(onClick = { tap?.invoke(row, ch.id); onClick() }, onLongClick = onLongClick),
         ) {
-            if (ch.logo.isBlank()) {
+            // No logo, or its link doesn't load: the name.
+            LogoOr(ch.logo, ch.name, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.58f)) {
                 Text(
                     ch.name,
                     fontFamily = Serif,
@@ -232,13 +227,6 @@ fun ChannelCard(
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     modifier = Modifier.align(Alignment.Center).padding(12.dp),
-                )
-            } else {
-                AsyncImage(
-                    model = ch.logo,
-                    contentDescription = ch.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.align(Alignment.Center).fillMaxSize(0.58f),
                 )
             }
             Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {

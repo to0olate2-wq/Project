@@ -67,6 +67,14 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (`buildTopBar`): ☆ Favorites, then the name and what's on now; the zap banner hides while the controls are up.
   Removed: Menu (Back does it; `showAppMenu` stays for the remote's Menu job), Rotation (player uses FULL_USER,
   `playerRotation` setting unused). Phone buttons are 48 dp. `LiveTimeline` sits where the seek bar is.
+- **Start and updates (8.11):** `Theme.Falak.Launch` (MainActivity's manifest theme; `setTheme(Theme_Falak)` in
+  onCreate) puts the logo on Android 7–11's launch screen (`launch_screen.xml`; 12+ uses its splash attributes). Then
+  `StartScreen` (Brand.kt, logo + name) while `vm.startingUp` (app start with a saved copy, `repo.hasSavedCopy`); a
+  download shows its in-page progress ("Downloading" vs `fromSaved` "Opening"). Above the lists (`UpdateLine` in
+  LibraryScreen): "Updating playlist…" for asked-for and automatic updates (`refreshing`), then `vm.updateNote`
+  ("Playlist updated · N new" 5 s, or a failed automatic update with the copy's age until the next one works).
+  Logos: `LogoOr` (ChannelLogo.kt) shows `Initials` (Initials.kt, `initialsOf`) or the name when a logo is
+  missing or its link fails.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on
@@ -87,6 +95,11 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - Robolectric tests that don't need the app: `@Config(application = android.app.Application::class)`.
 - `animateItem()` fades leave screenshots blank: `animateItem(fadeInSpec = null, fadeOutSpec = null)`.
 - In touch mode rows can't take focus: focus tests need keyboard input mode.
+- An endless animation on screen (an indeterminate progress indicator) hangs a screen test: use `BusyLine` /
+  `stillForTest` (Brand.kt). The `screens` job is continue-on-error: green doesn't mean every test ran (even a
+  test compile error shows green). Check `log.txt` (compile errors on top, last lines), `hang-*.txt` and that
+  `TEST-*.xml` files are there.
+- In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens
 Read big files by section (Grep, then Read with offset/limit), not whole. Keep CI output short (tail, grep).

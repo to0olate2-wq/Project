@@ -68,6 +68,7 @@ import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
 import app.falak.player.ui.Section
+import app.falak.player.ui.stillForTest
 import app.falak.player.ui.SettingsPage
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -716,6 +717,33 @@ class PhoneSidebarScreens : ScreenshotBase() {
         shoot("phone-14-sidebar-films")
         vm.screen = Screen.NOTICES
         shoot("phone-16-whats-new")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class StartAndUpdateScreens : ScreenshotBase() {
+    // The logo while the saved playlist opens, then the line above the lists as the playlist updates.
+    @Test @Config(qualifiers = PHONE)
+    fun phoneStartAndUpdate() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+        stillForTest = true
+        vm.showStartForTest(true)
+        shoot("phone-00-start")
+        vm.showStartForTest(false)
+        vm.section = Section.LIVE
+        vm.showUpdateForTest(true, null)
+        shoot("phone-00b-updating")
+        vm.showUpdateForTest(false, LibraryViewModel.UpdateNote(ok = true, added = 12, auto = true))
+        shoot("phone-00c-updated")
+        vm.showUpdateForTest(false, LibraryViewModel.UpdateNote(ok = false, added = 0, auto = true))
+        shoot("phone-00d-update-failed")
+    }
+
+    @Test @Config(qualifiers = TV)
+    fun tvStart() = mainScreens("tv", look = "sidebar") { vm, shoot ->
+        stillForTest = true
+        vm.showStartForTest(true)
+        shoot("tv-00-start")
     }
 }
 

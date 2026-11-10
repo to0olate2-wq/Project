@@ -112,12 +112,12 @@ fun LivePreviewPane(
                 )
             } else {
                 Box(Modifier.fillMaxSize().background(Ink3), contentAlignment = Alignment.Center) {
-                    AsyncImage(
-                        model = ch.logo.ifBlank { null },
+                    LogoOr(
+                        url = ch.logo,
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth(0.42f).fillMaxHeight(0.5f),
-                    )
+                    ) { Initials(ch.name, 34.sp) }
                 }
             }
             // How far into the programme on now, along the picture's bottom edge.
