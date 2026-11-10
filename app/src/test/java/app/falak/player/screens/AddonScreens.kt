@@ -96,10 +96,21 @@ class AddonScreens : ScreenshotBase() {
     @Test @Config(qualifiers = ScreenshotBase.PHONE_LAND)
     fun phoneLandAddons() = mainScreens("phone", look = "sidebar") { vm, shoot ->
         Addons.enabledForTest = true
+        // Anything that goes wrong while drawing is written down (it can stop the screen silently).
+        val dir = java.io.File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
+        val log = java.io.File(dir, "hang-AddonScreens-errors.txt")
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e -> log.appendText("${t.name}: ${e.stackTraceToString()}\n\n") }
         try {
+            vm.screen = Screen.ADDONS
+            shoot("phone-94a-addons-landscape-empty")
             vm.showAddons()
-            shoot("phone-94-addons-landscape")
+            shoot("phone-94b-addons-landscape")
+        } catch (e: Throwable) {
+            log.appendText("test: ${e.stackTraceToString()}\n\n")
+            throw e
         } finally {
+            Thread.setDefaultUncaughtExceptionHandler(before)
             Addons.enabledForTest = false
         }
     }
