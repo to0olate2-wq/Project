@@ -601,6 +601,14 @@ class Repository(private val context: Context) {
         }
 
     /** The saved copy of a playlist, or null if there is none (or it can't be read). Fast. */
+    /** A saved copy of [p]'s channels is on the device (opening it is quick; no download). */
+    fun hasSavedCopy(p: Playlist): Boolean =
+        if (p.isCombined) {
+            Combined.sourcesOf(p, _state.value.playlists).any { (src, _) -> hasSavedCopy(src) }
+        } else {
+            File(cacheDir, "${p.id}.bin").exists() || File(cacheDir, "${p.id}.json").exists()
+        }
+
     suspend fun cachedChannels(p: Playlist): PlaylistCache? = withContext(Dispatchers.IO) {
         if (p.isCombined) {
             // Put together from the saved copies of the playlists it combines (none: load them).

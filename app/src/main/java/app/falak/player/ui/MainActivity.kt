@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity() {
     private val vm: LibraryViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The launch theme only showed the logo while the app started (Android 7–11).
+        setTheme(app.falak.player.R.style.Theme_Falak)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Back on the first page leaves the app but keeps it as it is (Android 12+ does this for
@@ -169,6 +171,10 @@ class MainActivity : ComponentActivity() {
                         // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
                         if (picking) {
                             ProfilePicker(vm, state, onBack = { vm.confirmExit = true })
+                        } else if (vm.startingUp) {
+                            // The app opening with a saved playlist: the logo (where Android's launch
+                            // screen had it) until the lists are ready.
+                            StartScreen("Opening ${vm.playlist?.name.orEmpty()}…")
                         } else AppShell(vm, state, shell) { AnimatedContent(
                             targetState = vm.screen,
                             transitionSpec = {

@@ -112,6 +112,37 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The app opening: the logo in the middle (where Android's own launch screen had it), the name,
+ * and what's happening, until the lists are ready.
+ */
+@Composable
+fun StartScreen(status: String) {
+    val tv = isTv()
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            BrandMark(if (tv) 104.dp else 88.dp)
+            Spacer(Modifier.height(20.dp))
+            Wordmark(if (tv) 28 else 24)
+            Spacer(Modifier.height(22.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                Modifier.width(120.dp).height(2.dp),
+                color = Signal,
+                trackColor = Hairline,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                status,
+                fontSize = if (tv) 15.sp else 13.sp,
+                color = Muted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            )
+        }
+    }
+}
+
 /** "The Player•" — italic article, upright name, a signal-red full stop. */
 @Composable
 fun Wordmark(size: Int = 22) {

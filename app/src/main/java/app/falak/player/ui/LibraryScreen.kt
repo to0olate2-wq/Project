@@ -291,12 +291,20 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     @Composable
     fun Body(modifier: Modifier) {
         Column(modifier) {
-            // Only a reload you asked for shows progress; the automatic one stays out of sight.
-            if (vm.loading && index.all.isNotEmpty()) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp), color = Signal, trackColor = Hairline)
-            }
-            vm.error?.takeIf { index.all.isNotEmpty() }?.let {
-                Text("Couldn't refresh: $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 4.dp))
+            // A playlist update (asked for or automatic) says so above the lists, which stay usable;
+            // then "Playlist updated" for a few seconds, or why it didn't work.
+            val err = vm.error?.takeIf { index.all.isNotEmpty() }
+            val note = vm.updateNote
+            when {
+                (vm.loading || vm.refreshing) && index.all.isNotEmpty() -> {
+                    UpdateLine("Updating playlist…", Muted)
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp).height(2.dp), color = Signal, trackColor = Hairline)
+                }
+                err != null -> UpdateLine("Couldn't update the playlist: $err", MaterialTheme.colorScheme.error)
+                note != null && note.ok ->
+                    UpdateLine(if (note.added > 0) "Playlist updated · ${note.added} new" else "Playlist updated", Muted)
+                note != null && vm.loadedAt > 0 ->
+                    UpdateLine("Couldn't update the playlist · this copy is from ${ageText(vm.loadedAt)}", MaterialTheme.colorScheme.error)
             }
             if (index.all.isNotEmpty()) {
                 SearchAssist(
@@ -316,12 +324,16 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     val step by vm.loadProgress.collectAsStateWithLifecycle()
                     CircularProgressIndicator(color = Signal, strokeWidth = 2.dp)
                     Spacer(Modifier.height(14.dp))
-                    Text("Loading your playlist", fontFamily = Serif, fontSize = 18.sp, color = Paper)
+                    Text(
+                        if (vm.fromSaved) "Opening your playlist" else "Downloading your playlist",
+                        fontFamily = Serif, fontSize = 18.sp, color = Paper,
+                    )
                     Text(
                         when {
                             // The provider's server failed part-way: say so, rather than seem stuck.
                             step.retry > 0 -> "Your provider's server is slow to answer. Trying again (${step.retry} of ${Downloads.TRIES})…"
                             step.count > 0 -> "${countLabel(step.count)} so far"
+                            vm.fromSaved -> "From the copy saved on this device."
                             else -> "Big playlists take a moment the first time."
                         },
                         fontSize = 13.sp, lineHeight = 19.sp, color = Muted, textAlign = TextAlign.Center,
@@ -879,12 +891,12 @@ private fun ChannelRow(
                 .background(Ink3),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = ch.logo.ifBlank { null },
+            LogoOr(
+                url = ch.logo,
                 contentDescription = null,
                 contentScale = if (isLive) ContentScale.Fit else ContentScale.Crop,
                 modifier = if (isLive) Modifier.fillMaxSize().padding(5.dp) else Modifier.fillMaxSize(),
-            )
+            ) { Initials(ch.name, if (isLive) 14.sp else 13.sp) }
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -949,4 +961,18 @@ private fun ChannelRow(
             )
         }
     }
+}
+
+/** One quiet line above the lists about the playlist's update. */
+@Composable
+private fun UpdateLine(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(
+        text,
+        color = color,
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 6.dp),
+    )
 }

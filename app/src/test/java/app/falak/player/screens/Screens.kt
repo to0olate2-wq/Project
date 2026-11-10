@@ -721,6 +721,31 @@ class PhoneSidebarScreens : ScreenshotBase() {
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+class StartAndUpdateScreens : ScreenshotBase() {
+    // The logo while the saved playlist opens, then the line above the lists as the playlist updates.
+    @Test @Config(qualifiers = PHONE)
+    fun phoneStartAndUpdate() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+        vm.showStartForTest(true)
+        shoot("phone-00-start")
+        vm.showStartForTest(false)
+        vm.section = Section.LIVE
+        vm.showUpdateForTest(true, null)
+        shoot("phone-00b-updating")
+        vm.showUpdateForTest(false, LibraryViewModel.UpdateNote(ok = true, added = 12, auto = true))
+        shoot("phone-00c-updated")
+        vm.showUpdateForTest(false, LibraryViewModel.UpdateNote(ok = false, added = 0, auto = true))
+        shoot("phone-00d-update-failed")
+    }
+
+    @Test @Config(qualifiers = TV)
+    fun tvStart() = mainScreens("tv", look = "sidebar") { vm, shoot ->
+        vm.showStartForTest(true)
+        shoot("tv-00-start")
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhoneSidebarLightScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE_LAND)
     fun phoneSidebarLand() = mainScreens("phone", theme = "light", look = "sidebar", watching = true) { vm, shoot ->

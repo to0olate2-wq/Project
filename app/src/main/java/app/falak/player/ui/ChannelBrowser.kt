@@ -310,12 +310,12 @@ fun ChannelBrowser(
                                     Modifier.size(52.dp, 32.dp).clip(RoundedCornerShape(5.dp)).background(Ink3),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    AsyncImage(
-                                        model = ch.logo.ifBlank { null },
+                                    LogoOr(
+                                        url = ch.logo,
                                         contentDescription = null,
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize().padding(4.dp),
-                                    )
+                                    ) { Initials(ch.name, 12.sp) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {

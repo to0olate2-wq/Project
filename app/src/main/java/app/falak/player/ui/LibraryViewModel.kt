@@ -389,6 +389,20 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun today(): String = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
 
+    /** Screenshot tests: the start screen (logo) as the app opens. */
+    @androidx.annotation.VisibleForTesting
+    internal fun showStartForTest(on: Boolean) {
+        startingUp = on
+    }
+
+    /** Screenshot tests: the line about the playlist's update. */
+    @androidx.annotation.VisibleForTesting
+    internal fun showUpdateForTest(updating: Boolean, note: UpdateNote?) {
+        refreshing = updating
+        noteJob?.cancel()
+        updateNote = note
+    }
+
     /** Screenshot tests: a made-up account, and nothing read. */
     @androidx.annotation.VisibleForTesting
     internal fun showAccountForTest(a: Account) {
@@ -612,11 +626,45 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private var loadToken = Any()
 
 
-    fun open(p: Playlist, refresh: Boolean = false) {
+    /**
+     * The app is opening its saved playlist: the start screen (logo) shows until the lists are
+     * ready. Only at start and only with a saved copy (a first download shows its progress instead).
+     */
+    var startingUp by mutableStateOf(false)
+        private set
+
+    /** This load reads the copy saved on the device (quick), not a download from the provider. */
+    var fromSaved by mutableStateOf(false)
+        private set
+
+    /** What the last update of the open playlist did, for the line above the lists. */
+    class UpdateNote(val ok: Boolean, val added: Int, val auto: Boolean)
+
+    /** Shown above the lists: "Playlist updated" for a few seconds, or a failed automatic update until the next one works. */
+    var updateNote by mutableStateOf<UpdateNote?>(null)
+        private set
+    private var noteJob: Job? = null
+
+    private fun noteUpdate(n: UpdateNote) {
+        noteJob?.cancel()
+        updateNote = n
+        if (n.ok) {
+            noteJob = viewModelScope.launch {
+                delay(5_000)
+                if (updateNote === n) updateNote = null
+            }
+        }
+    }
+
+    fun open(p: Playlist, refresh: Boolean = false, atStart: Boolean = false) {
         screen = Screen.LIBRARY
         if (!refresh && playlist?.id == p.id && channels.isNotEmpty()) return
         loadJob?.cancel()
         refreshJob?.cancel()
+        // Refresh with the lists on screen: they stay, with "Updating playlist…" above them.
+        val updating = refresh && playlist?.id == p.id && index.all.isNotEmpty()
+        noteJob?.cancel()
+        updateNote = null
         if (playlist?.id != p.id) {
             channels = emptyList()
             index = LibraryIndex.EMPTY
@@ -651,6 +699,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         repo.setLast(p.id)
         val token = Any()
         loadToken = token
+        fromSaved = !refresh && repo.hasSavedCopy(p)
+        startingUp = atStart && fromSaved && repo.openLibrary?.playlistId != p.id
         loadJob = viewModelScope.launch {
             try {
                 // Still in memory from before (the app only went to the background, or its screen
@@ -679,8 +729,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId) { step ->
                     if (loadToken === token) loadProgress.value = step
                 }
-                show(data, announce = refresh)
+                val added = show(data, announce = refresh)
                 if (loadToken === token) loading = false
+                if (updating) noteUpdate(UpdateNote(ok = true, added = added, auto = false))
                 maybeStartLastChannel(p)
                 checkAccount()
                 scheduleFollowCheck(p, token)
@@ -697,13 +748,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 channels = emptyList()
                 error = "This playlist is too large for this device's memory."
             } finally {
-                if (loadToken === token) loading = false
+                if (loadToken === token) {
+                    loading = false
+                    startingUp = false
+                }
             }
         }
     }
 
     /** Shows a loaded playlist. With [announce], what's new since the list on screen goes to What's new. */
-    private suspend fun show(data: app.falak.player.data.PlaylistCache, announce: Boolean = false) {
+    /** Returns how many items are new since the list on screen (with [announce]). */
+    private suspend fun show(data: app.falak.player.data.PlaylistCache, announce: Boolean = false): Int {
         val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
         val old = index
         val added = if (announce && old.all.isNotEmpty()) {
@@ -726,6 +781,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadedAt = data.savedAt
         playlist?.let { pl -> repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(pl.id, index, data.epgUrl, data.serverTz, data.savedAt) }
         if (added.isNotEmpty()) playlist?.let { pl -> announceNew(pl, added, list.size) }
+        return added.size
     }
 
     /** New channels, films and series found by a refresh: a What's new entry and a notification. */
@@ -772,15 +828,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val fresh = repo.loadChannels(p, refresh = true, quietly = true, keep = index.byId)
             if (loadToken !== token || playlist?.id != p.id) return
-            show(fresh, announce = true)
+            val added = show(fresh, announce = true)
+            noteUpdate(UpdateNote(ok = true, added = added, auto = true))
             // New channels pick up the guide on its next load; don't restart one that's running.
             if (guideJob?.isActive != true) loadGuide(force = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Keep the saved copy; we'll try again next time.
+            // Keep the saved copy; we'll try again next time. Said above the lists (it used to be silent).
+            if (loadToken === token) noteUpdate(UpdateNote(ok = false, added = 0, auto = true))
         } catch (e: OutOfMemoryError) {
-            // same
+            if (loadToken === token) noteUpdate(UpdateNote(ok = false, added = 0, auto = true))
         } finally {
             refreshing = false
         }
@@ -1806,7 +1864,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (!choosingProfile) repo.setActiveProfile("")
         // After a crash, don't reopen the same playlist automatically (avoids a crash loop).
         if (!crashedLastTime && s.settings.openLast) {
-            s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it) }
+            s.playlists.firstOrNull { it.id == s.lastPlaylistId }?.let { open(it, atStart = true) }
         }
     }
 }
