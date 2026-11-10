@@ -219,6 +219,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.ARRANGE -> ArrangeScreen(vm, state)
                                 Screen.RECORDINGS -> RecordingsScreen(vm, state, onPlay = ::play)
                                 Screen.MORE -> MoreScreen(vm, state)
+                                Screen.ADDONS -> AddonsScreen(vm, state, onPlay = ::play)
                             }
                         } }
                         // Cards and the mini player stay above the bottom bar.
@@ -447,7 +448,7 @@ class MainActivity : ComponentActivity() {
     private fun depth(s: Screen): Int = when (s) {
         Screen.PLAYLISTS -> 0
         Screen.LIBRARY -> 1
-        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS, Screen.RECORDINGS, Screen.MORE -> 2
+        Screen.SERIES, Screen.DETAILS, Screen.GUIDE, Screen.NOTICES, Screen.DOWNLOADS, Screen.RECORDINGS, Screen.MORE, Screen.ADDONS -> 2
         Screen.SETTINGS -> 3
         Screen.GROUPS, Screen.SYNC, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER -> 4
         Screen.ARRANGE -> 5

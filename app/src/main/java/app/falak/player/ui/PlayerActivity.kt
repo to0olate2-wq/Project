@@ -1250,7 +1250,7 @@ class PlayerActivity : ComponentActivity() {
         FreezeWatch.note("play ${ch.kind.name.lowercase()} with ${wanted.name.lowercase()}")
         updateFavButton()
         // Remembered so the list can put the selection back on this item after the player closes.
-        if (!ch.id.startsWith("cu:")) repo.lastPlayedId = ch.id
+        if (!ch.id.startsWith("cu:") && !ch.id.startsWith("addon:")) repo.lastPlayedId = ch.id
         // And the live channel, to start with it when the app is opened fresh next time.
         if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) repo.currentPlaylist?.let { repo.setLastLive(it.id, ch.id) }
         setPillLabel(browseButton, when (ch.kind) {
@@ -1259,7 +1259,7 @@ class PlayerActivity : ComponentActivity() {
             Kind.SERIES -> "Episodes"
         })
         // A replay on its own (such as "From the start"): there's no list to browse.
-        browseButton.visibility = if (ch.id.startsWith("cu:") && queue.size <= 1) View.GONE else View.VISIBLE
+        browseButton.visibility = if ((ch.id.startsWith("cu:") || ch.id.startsWith("addon:")) && queue.size <= 1) View.GONE else View.VISIBLE
         val settings = repo.state.value.settings
         // A downloaded film or episode plays from its saved copy (no internet needed).
         val savedCopy = if (overrideUrl == null) app.falak.player.OfflineCenter.fileFor(ch.id) else null
@@ -2124,7 +2124,8 @@ class PlayerActivity : ComponentActivity() {
     private fun saveProgress() {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
-        if (ch.kind == Kind.LIVE || ch.id.startsWith("cu:")) return
+        // (Add-on links are one-offs: their links can change, nothing to come back to.)
+        if (ch.kind == Kind.LIVE || ch.id.startsWith("cu:") || ch.id.startsWith("addon:")) return
         val pl = repo.currentPlaylist ?: return
         val dur = p.duration
         if (dur <= 0) return

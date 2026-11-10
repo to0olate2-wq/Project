@@ -216,12 +216,15 @@ fun SideRail(
     recordingsOpen: Boolean = false,
     /** Something is being recorded: a red dot on Recordings. */
     recordingNow: Boolean = false,
+    /** The Add-ons page (null: no button: the Play version, or the Kids profile). */
+    onAddons: (() -> Unit)? = null,
+    addonsOpen: Boolean = false,
 ) {
     val tv = isTv()
     Row(modifier.width(railWidth()).background(Ink2)) {
         // Short screens (a phone on its side): the icons shrink so every one stays in view.
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-            val slots = sections.size + (if (hasGuide) 1 else 0) + (if (onRecordings != null) 1 else 0) + 2
+            val slots = sections.size + (if (hasGuide) 1 else 0) + (if (onRecordings != null) 1 else 0) + (if (onAddons != null) 1 else 0) + 2
             val fixed = (if (tv) 20 + 32 + 14 + 16 else 14 + 28 + 10 + 10) + 9
             // A phone on its side: closer together and a little smaller, so all of them fit.
             val gap = if (maxHeight < 480.dp) 4.dp else 6.dp
@@ -241,6 +244,7 @@ fun SideRail(
                     if (onRecordings != null) {
                         RailIcon(painterResource(R.drawable.ic_pl_record), "Recordings", recordingsOpen, box, dot = recordingNow, onClick = onRecordings)
                     }
+                    if (onAddons != null) RailIcon(painterResource(R.drawable.ic_nav_addons), "Add-ons", addonsOpen, box, onClick = onAddons)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,

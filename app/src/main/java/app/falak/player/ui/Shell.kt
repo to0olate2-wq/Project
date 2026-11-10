@@ -70,7 +70,7 @@ val LocalShell = staticCompositionLocalOf { ShellMode.NONE }
 val BAR_HEIGHT = 64.dp
 
 /** The pages drawn inside the menu: the lists, More, and the pages opened from them. */
-val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES) + SETTINGS_SCREENS
+val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES, Screen.ADDONS) + SETTINGS_SCREENS
 
 /** The menu for [screen]: none outside the Sidebar look, before a playlist is open, or on full-screen pages. */
 fun shellMode(look: String, hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp): ShellMode = when {
@@ -152,6 +152,12 @@ private fun ShellRail(vm: LibraryViewModel, state: AppState, modifier: Modifier)
         onRecordings = if (hasLive && !vm.kidsActive) ({ vm.screen = Screen.RECORDINGS }) else null,
         recordingsOpen = screen == Screen.RECORDINGS,
         recordingNow = recordingNow,
+        // Add-ons: GitHub version only, never in the Kids profile.
+        onAddons = if (app.falak.player.data.Addons.enabled && !vm.kidsActive) ({
+            vm.addons.fromSettings = false
+            vm.screen = Screen.ADDONS
+        }) else null,
+        addonsOpen = screen == Screen.ADDONS,
         modifier = modifier,
     )
 }
@@ -299,6 +305,15 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
             }
             item(key = "news") {
                 MoreRow(rememberVectorPainter(Icons.Outlined.Notifications), "What's new", badge = if (unread > 0) unread.toString() else null) { open(Screen.NOTICES) }
+            }
+            // Stremio-style add-ons: GitHub version only.
+            if (app.falak.player.data.Addons.enabled) {
+                item(key = "addons") {
+                    MoreRow(painterResource(R.drawable.ic_nav_addons), "Add-ons", count = state.settings.addons.size.takeIf { it > 0 }) {
+                        vm.addons.fromSettings = false
+                        open(Screen.ADDONS)
+                    }
+                }
             }
         }
         item(key = "gap") { Spacer(Modifier.height(14.dp)) }
