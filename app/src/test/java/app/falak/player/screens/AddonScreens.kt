@@ -92,40 +92,27 @@ class AddonScreens : ScreenshotBase() {
         }
     }
 
-    // A phone on its side: the rail, with Add-ons on it.
+    // A phone on its side: the rail, with Add-ons on it. (Like the other tests with the rail,
+    // "watching": the Home behind it settles; without it the screen wasn't redrawn in tests.)
     @Test @Config(qualifiers = ScreenshotBase.PHONE_LAND)
-    fun phoneLandAddons() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+    fun phoneLandAddons() = mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
         Addons.enabledForTest = true
-        // Anything that goes wrong while drawing is written down (it can stop the screen silently).
-        val dir = java.io.File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
-        val log = java.io.File(dir, "hang-AddonScreens-errors.txt")
-        val before = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e -> log.appendText("${t.name}: ${e.stackTraceToString()}\n\n") }
         try {
-            vm.screen = Screen.ADDONS
-            shoot("phone-94a-addons-landscape-empty")
             vm.showAddons()
-            shoot("phone-94b-addons-landscape")
-        } catch (e: Throwable) {
-            log.appendText("test: ${e.stackTraceToString()}\n\n")
-            throw e
+            shoot("phone-94-addons-landscape")
+            check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
         } finally {
-            Thread.setDefaultUncaughtExceptionHandler(before)
             Addons.enabledForTest = false
         }
     }
 
     @Test @Config(qualifiers = ScreenshotBase.TV)
-    fun tvAddons() = mainScreens("tv", look = "sidebar") { vm, shoot ->
+    fun tvAddons() = mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
         Addons.enabledForTest = true
         try {
-            // The TV opens on the last channel's page as it starts: let that finish first (it would
-            // take the page back to Home).
-            shoot("tv-90-home-first")
             vm.showAddons()
             shoot("tv-91-addons")
-            // (Tells apart a page that went back to Home from a screen that stopped being drawn.)
-            check(vm.screen == Screen.ADDONS) { "The TV went back to ${vm.screen}" }
+            check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("tv-92-addon-film")
         } finally {
