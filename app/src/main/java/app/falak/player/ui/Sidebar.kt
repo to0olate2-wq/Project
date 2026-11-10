@@ -229,7 +229,8 @@ fun SideRail(
             // A phone on its side: closer together and a little smaller, so all of them fit.
             val gap = if (maxHeight < 480.dp) 4.dp else 6.dp
             val fit = (maxHeight - fixed.dp - gap * (slots + 1)) / slots
-            val box = fit.coerceIn(if (tv) 32.dp else 28.dp, if (tv) 46.dp else 44.dp)
+            // (24 dp at the least on phones: with every section, Add-ons included, a phone on its side has 11.)
+            val box = fit.coerceIn(if (tv) 32.dp else 24.dp, if (tv) 46.dp else 44.dp)
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
                 BrandMark(if (tv) 32.dp else 28.dp)
