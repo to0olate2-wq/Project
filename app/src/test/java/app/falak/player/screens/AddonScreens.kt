@@ -92,6 +92,18 @@ class AddonScreens : ScreenshotBase() {
         }
     }
 
+    // A phone on its side: the rail, with Add-ons on it.
+    @Test @Config(qualifiers = ScreenshotBase.PHONE_LAND)
+    fun phoneLandAddons() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+        Addons.enabledForTest = true
+        try {
+            vm.showAddons()
+            shoot("phone-94-addons-landscape")
+        } finally {
+            Addons.enabledForTest = false
+        }
+    }
+
     @Test @Config(qualifiers = ScreenshotBase.TV)
     fun tvAddons() = mainScreens("tv", look = "sidebar") { vm, shoot ->
         Addons.enabledForTest = true
@@ -101,6 +113,8 @@ class AddonScreens : ScreenshotBase() {
             shoot("tv-90-home-first")
             vm.showAddons()
             shoot("tv-91-addons")
+            // (Tells apart a page that went back to Home from a screen that stopped being drawn.)
+            check(vm.screen == Screen.ADDONS) { "The TV went back to ${vm.screen}" }
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("tv-92-addon-film")
         } finally {
