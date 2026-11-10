@@ -456,6 +456,11 @@ data class Settings(
     val homeHidden: List<String> = emptyList(),
     /** Remote buttons given a job while watching: key code (as text) -> action (see KeyActions). */
     val keyActions: Map<String, String> = emptyMap(),
+    /**
+     * Add-ons' links (their base, see Addons.normalize), in the order added. GitHub version only;
+     * synced with Wi-Fi linking like other settings, so one added on the phone reaches the TV.
+     */
+    val addons: List<String> = emptyList(),
 )
 
 /** A channel renamed or given another logo by hand (long-press → Rename or change logo). */

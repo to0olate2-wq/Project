@@ -75,6 +75,13 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   ("Playlist updated · N new" 5 s, or a failed automatic update with the copy's age until the next one works).
   Logos: `LogoOr` (ChannelLogo.kt) shows `Initials` (Initials.kt, `initialsOf`) or the name when a logo is
   missing or its link fails.
+- **Add-ons (8.12), GitHub version only:** Stremio-style add-ons (open format: manifest, catalog, meta, stream).
+  `BuildConfig.ADDONS` (github true, play false; screen tests use `Addons.enabledForTest`). `data/Addons.kt`: link
+  normalising, lenient parsing, `AddonClient` (OkHttp). Only http(s) stream links play; torrents/magnets and other
+  links are counted, never played (owner: no torrent engine). No add-on ships with the app. Links in
+  `Settings.addons` (sync with Wi-Fi linking). `ui/AddonsModel.kt` (state, in `vm.addons`) + `ui/AddonsUi.kt`
+  (`Screen.ADDONS`: rows per catalog, search, details, a series' episode links in a dialog). Entries: More (phones),
+  rail (TV), Settings; hidden in Kids. Playing: `Channel` id `addon:…` = one-off (no Recent, no resume, no Watch Next).
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on
@@ -99,6 +106,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `stillForTest` (Brand.kt). The `screens` job is continue-on-error: green doesn't mean every test ran (even a
   test compile error shows green). Check `log.txt` (compile errors on top, last lines), `hang-*.txt` and that
   `TEST-*.xml` files are there.
+- Screen tests: one `mainScreens` test per class. A second test in the same class stops redrawing (every picture
+  is the first frame, no error, checks still pass).
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens

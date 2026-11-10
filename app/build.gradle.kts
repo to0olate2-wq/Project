@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.11"
+        versionName = "8.12"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -69,11 +69,14 @@ android {
         create("github") {
             dimension = "store"
             buildConfigField("boolean", "SELF_UPDATE", "true")
+            // Stremio-style add-ons (8.12): only in this version, never on Google Play.
+            buildConfigField("boolean", "ADDONS", "true")
             signingConfig = signingConfigs.getByName("debug")
         }
         create("play") {
             dimension = "store"
             buildConfigField("boolean", "SELF_UPDATE", "false")
+            buildConfigField("boolean", "ADDONS", "false")
             // Play rejects bundles signed with a debug key: use the upload key when CI has it.
             signingConfig = signingConfigs.findByName("upload")
         }

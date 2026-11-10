@@ -1,5 +1,6 @@
 package app.falak.player.ui
 
+import app.falak.player.data.AddonClient
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -51,13 +52,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE, ADDONS }
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
 
 /** Pages that need the PIN while kids mode is on. */
-val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS, Screen.ARRANGE, Screen.RECORDINGS)
+val KIDS_LOCKED = setOf(Screen.PLAYLISTS, Screen.SETTINGS, Screen.GROUPS, Screen.SYNC, Screen.NOTICES, Screen.KIDS, Screen.LOCKS, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.DOWNLOADS, Screen.ARRANGE, Screen.RECORDINGS, Screen.ADDONS)
 
 enum class Sort(val label: String) { DEFAULT("Default"), NEWEST("Newest"), AZ("A–Z"), RATING("Top rated") }
 
@@ -78,6 +79,9 @@ private const val FOLLOW_CHECK_MS = 6 * 3_600_000L
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = app.repo
     val state = repo.state
+
+    /** The Add-ons page (GitHub version only, see Addons.enabled). */
+    val addons: AddonsModel by lazy { AddonsModel(AddonClient(repo.http), viewModelScope) }
     val epg = repo.epg
     /** What each guide source covered and added on the last download. */
     val guideStats = repo.guideStats
@@ -1029,7 +1033,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         repo.currentSeries = if (screen == Screen.SERIES) series else null
         // For episodes, remember the series itself in "Recent".
         val recentId = if (screen == Screen.SERIES) series?.id ?: ch.id else ch.id
-        if (!recentId.startsWith("cu:")) playlist?.let { repo.addRecent(it.id, recentId) }
+        // (Catch-up and add-on links are one-offs: not in Recent.)
+        if (!recentId.startsWith("cu:") && !recentId.startsWith("addon:")) playlist?.let { repo.addRecent(it.id, recentId) }
     }
 
     fun openSeries(ch: Channel) {
