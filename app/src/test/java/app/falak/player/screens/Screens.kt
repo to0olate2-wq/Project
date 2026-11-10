@@ -68,6 +68,7 @@ import app.falak.player.ui.MainActivity
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
 import app.falak.player.ui.Section
+import app.falak.player.ui.stillForTest
 import app.falak.player.ui.SettingsPage
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -725,7 +726,7 @@ class StartAndUpdateScreens : ScreenshotBase() {
     // The logo while the saved playlist opens, then the line above the lists as the playlist updates.
     @Test @Config(qualifiers = PHONE)
     fun phoneStartAndUpdate() = mainScreens("phone", look = "sidebar") { vm, shoot ->
-        app.falak.player.ui.stillForTest = true
+        stillForTest = true
         vm.showStartForTest(true)
         shoot("phone-00-start")
         vm.showStartForTest(false)
@@ -740,7 +741,7 @@ class StartAndUpdateScreens : ScreenshotBase() {
 
     @Test @Config(qualifiers = TV)
     fun tvStart() = mainScreens("tv", look = "sidebar") { vm, shoot ->
-        app.falak.player.ui.stillForTest = true
+        stillForTest = true
         vm.showStartForTest(true)
         shoot("tv-00-start")
     }

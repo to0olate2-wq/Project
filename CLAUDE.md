@@ -96,8 +96,10 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - `animateItem()` fades leave screenshots blank: `animateItem(fadeInSpec = null, fadeOutSpec = null)`.
 - In touch mode rows can't take focus: focus tests need keyboard input mode.
 - An endless animation on screen (an indeterminate progress indicator) hangs a screen test: use `BusyLine` /
-  `stillForTest` (Brand.kt). The `screens` job is continue-on-error: green doesn't mean every test ran. Check
-  `log.txt`'s last lines, `hang-*.txt` and that `TEST-*.xml` files are there.
+  `stillForTest` (Brand.kt). The `screens` job is continue-on-error: green doesn't mean every test ran (even a
+  test compile error shows green). Check `log.txt` (compile errors on top, last lines), `hang-*.txt` and that
+  `TEST-*.xml` files are there.
+- In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens
 Read big files by section (Grep, then Read with offset/limit), not whole. Keep CI output short (tail, grep).
