@@ -1,5 +1,6 @@
 package app.falak.player.ui
 
+import app.falak.player.data.AddonClient
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -80,7 +81,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     val state = repo.state
 
     /** The Add-ons page (GitHub version only, see Addons.enabled). */
-    val addons: AddonsModel by lazy { AddonsModel(app.falak.player.data.AddonClient(repo.http), viewModelScope) }
+    val addons: AddonsModel by lazy { AddonsModel(AddonClient(repo.http), viewModelScope) }
     val epg = repo.epg
     /** What each guide source covered and added on the last download. */
     val guideStats = repo.guideStats

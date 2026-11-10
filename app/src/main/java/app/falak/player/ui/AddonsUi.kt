@@ -1,5 +1,6 @@
 package app.falak.player.ui
 
+import app.falak.player.data.Addons
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import app.falak.player.data.Addon
 import app.falak.player.data.AddonItem
 import app.falak.player.data.AddonStream
 import app.falak.player.data.AddonStreams
@@ -460,13 +462,13 @@ private fun AddonsManage(vm: LibraryViewModel, m: AddonsModel, links: List<Strin
 
 /** Pasting an add-on's link: it's checked before it's added. */
 @Composable
-private fun AddAddonDialog(m: AddonsModel, already: List<String>, onAdd: (app.falak.player.data.Addon) -> Unit, onDismiss: () -> Unit) {
+private fun AddAddonDialog(m: AddonsModel, already: List<String>, onAdd: (Addon) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val add: () -> Unit = {
-        val base = app.falak.player.data.Addons.normalize(text)
+        val base = Addons.normalize(text)
         when {
             base == null -> { error = "That isn't an add-on link." }
             base in already -> { error = "That add-on is already added." }

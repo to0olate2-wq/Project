@@ -2,6 +2,7 @@
 
 package app.falak.player.ui
 
+import app.falak.player.data.Addons
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -1188,7 +1189,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) { go("remote") { vm.screen = Screen.REMOTE } }
         }
         // Stremio-style add-ons: GitHub version only, not in the Kids profile.
-        if (app.falak.player.data.Addons.enabled && !vm.kidsActive) {
+        if (Addons.enabled && !vm.kidsActive) {
             item {
                 ClickRow(
                     "Add-ons",
