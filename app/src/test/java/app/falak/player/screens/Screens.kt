@@ -343,14 +343,6 @@ abstract class ScreenshotBase {
         root.draw(Canvas(bmp))
         val dir = File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        // What state the activity was in for each picture (a stale picture: was it stopped or gone?).
-        val life = (activity as? androidx.lifecycle.LifecycleOwner)?.lifecycle?.currentState
-        runCatching {
-            File(dir, "diag.txt").appendText(
-                "$name: $life destroyed=${activity.isDestroyed} finishing=${activity.isFinishing} " +
-                    "attached=${root.isAttachedToWindow} focus=${activity.hasWindowFocus()} ${root.width}x${root.height}\n",
-            )
-        }
     }
 
     private fun idle(ms: Long) {

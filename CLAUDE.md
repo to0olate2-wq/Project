@@ -106,6 +106,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `stillForTest` (Brand.kt). The `screens` job is continue-on-error: green doesn't mean every test ran (even a
   test compile error shows green). Check `log.txt` (compile errors on top, last lines), `hang-*.txt` and that
   `TEST-*.xml` files are there.
+- Screen tests: one `mainScreens` test per class. A second test in the same class stops redrawing (every picture
+  is the first frame, no error, checks still pass).
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens
