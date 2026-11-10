@@ -96,6 +96,9 @@ class AddonScreens : ScreenshotBase() {
     fun tvAddons() = mainScreens("tv", look = "sidebar") { vm, shoot ->
         Addons.enabledForTest = true
         try {
+            // The TV opens on the last channel's page as it starts: let that finish first (it would
+            // take the page back to Home).
+            shoot("tv-90-home-first")
             vm.showAddons()
             shoot("tv-91-addons")
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
