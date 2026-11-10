@@ -97,19 +97,30 @@ class AddonScreens : ScreenshotBase() {
     @Test @Config(qualifiers = ScreenshotBase.PHONE_LAND)
     fun phoneLandAddons() = mainScreens("phone", look = "sidebar", watching = true) { vm, shoot ->
         Addons.enabledForTest = true
+        org.robolectric.shadows.ShadowLog.stream = System.out
         try {
+            // (Checks: the page with no add-on, then with one.)
+            vm.screen = Screen.ADDONS
+            shoot("phone-94a-addons-landscape-none")
             vm.showAddons()
             shoot("phone-94-addons-landscape")
             check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
         } finally {
             Addons.enabledForTest = false
+            org.robolectric.shadows.ShadowLog.stream = null
         }
     }
 
     @Test @Config(qualifiers = ScreenshotBase.TV)
     fun tvAddons() = mainScreens("tv", look = "sidebar", watching = true) { vm, shoot ->
         Addons.enabledForTest = true
+        org.robolectric.shadows.ShadowLog.stream = System.out
         try {
+            // (Checks: another page first, then this page with no add-on, then with one.)
+            vm.screen = Screen.SETTINGS
+            shoot("tv-89-check-settings")
+            vm.screen = Screen.ADDONS
+            shoot("tv-90-addons-none")
             vm.showAddons()
             shoot("tv-91-addons")
             check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
@@ -117,6 +128,7 @@ class AddonScreens : ScreenshotBase() {
             shoot("tv-92-addon-film")
         } finally {
             Addons.enabledForTest = false
+            org.robolectric.shadows.ShadowLog.stream = null
         }
     }
 }
