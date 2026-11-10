@@ -304,7 +304,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 note != null && note.ok ->
                     UpdateLine(if (note.added > 0) "Playlist updated · ${note.added} new" else "Playlist updated", Muted)
                 note != null && vm.loadedAt > 0 ->
-                    UpdateLine("Couldn't update the playlist · this copy is from ${ageText(vm.loadedAt)}", MaterialTheme.colorScheme.error)
+                    UpdateLine("Couldn't update the playlist · last updated ${ageText(vm.loadedAt)}", MaterialTheme.colorScheme.error)
             }
             if (index.all.isNotEmpty()) {
                 SearchAssist(
