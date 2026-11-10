@@ -725,6 +725,7 @@ class StartAndUpdateScreens : ScreenshotBase() {
     // The logo while the saved playlist opens, then the line above the lists as the playlist updates.
     @Test @Config(qualifiers = PHONE)
     fun phoneStartAndUpdate() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+        app.falak.player.ui.stillForTest = true
         vm.showStartForTest(true)
         shoot("phone-00-start")
         vm.showStartForTest(false)
@@ -739,6 +740,7 @@ class StartAndUpdateScreens : ScreenshotBase() {
 
     @Test @Config(qualifiers = TV)
     fun tvStart() = mainScreens("tv", look = "sidebar") { vm, shoot ->
+        app.falak.player.ui.stillForTest = true
         vm.showStartForTest(true)
         shoot("tv-00-start")
     }

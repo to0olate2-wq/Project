@@ -112,6 +112,19 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     }
 }
 
+/** Screenshot tests: progress lines stand still (a moving one never lets a test settle: it hangs). */
+internal var stillForTest = false
+
+/** A thin progress line that keeps moving (standing still in screenshot tests). */
+@Composable
+fun BusyLine(modifier: Modifier) {
+    if (stillForTest) {
+        androidx.compose.material3.LinearProgressIndicator(progress = { 0.4f }, modifier = modifier, color = Signal, trackColor = Hairline)
+    } else {
+        androidx.compose.material3.LinearProgressIndicator(modifier = modifier, color = Signal, trackColor = Hairline)
+    }
+}
+
 /**
  * The app opening: the logo in the middle (where Android's own launch screen had it), the name,
  * and what's happening, until the lists are ready.
@@ -125,11 +138,7 @@ fun StartScreen(status: String) {
             Spacer(Modifier.height(20.dp))
             Wordmark(if (tv) 28 else 24)
             Spacer(Modifier.height(22.dp))
-            androidx.compose.material3.LinearProgressIndicator(
-                Modifier.width(120.dp).height(2.dp),
-                color = Signal,
-                trackColor = Hairline,
-            )
+            BusyLine(Modifier.width(120.dp).height(2.dp))
             Spacer(Modifier.height(12.dp))
             Text(
                 status,

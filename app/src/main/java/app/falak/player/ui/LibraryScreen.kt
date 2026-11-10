@@ -298,7 +298,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             when {
                 (vm.loading || vm.refreshing) && index.all.isNotEmpty() -> {
                     UpdateLine("Updating playlist…", Muted)
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp).height(2.dp), color = Signal, trackColor = Hairline)
+                    BusyLine(Modifier.fillMaxWidth().padding(top = 4.dp).height(2.dp))
                 }
                 err != null -> UpdateLine("Couldn't update the playlist: $err", MaterialTheme.colorScheme.error)
                 note != null && note.ok ->
