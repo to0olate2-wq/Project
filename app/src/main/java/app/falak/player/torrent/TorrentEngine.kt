@@ -1,6 +1,9 @@
 package app.falak.player.torrent
 
 import java.io.File
+import java.io.IOException
+import java.io.RandomAccessFile
+import java.security.MessageDigest
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionHandle
 import org.libtorrent4j.SessionManager
@@ -133,6 +136,7 @@ class TorrentEngine(private val dir: File) {
 
     /** Stops fetching it and deletes what was fetched. */
     fun close(file: TorrentFile) {
+        file.done()
         remove(file.handle)
         runCatching { dir.listFiles()?.forEach { it.deleteRecursively() } }
     }
@@ -282,6 +286,15 @@ class TorrentFile internal constructor(
     private var lastWantAt = 0L
     private var playing = -1
 
+    /** Pieces known to be in the file, not only "here" (see [inFile]); since the last restart. */
+    private val written = BooleanArray(pieces)
+    private val seenAt = LongArray(pieces)
+    private val checksums = info.hasV1()
+    private val digest = MessageDigest.getInstance("SHA-1")
+    private val scratch = ByteArray(128 * 1024)
+    private var checkFile: RandomAccessFile? = null
+    private var checkPath: File? = null
+
     init {
         // (A small file, or one in big pieces, has fewer pieces than that: all of it fitting is enough.)
         if (budget < minOf(pieces, MIN_AHEAD + TAIL + 1)) {
@@ -323,6 +336,9 @@ class TorrentFile internal constructor(
     private fun plan(from: Int): Array<Priority> {
         asked.fill(false)
         askedCount = 0
+        written.fill(false)
+        seenAt.fill(0L)
+        closeCheckFile()
         val list = Array(info.numPieces()) { Priority.IGNORE }
         fun take(piece: Int): Boolean {
             val i = piece - firstPiece
@@ -393,21 +409,82 @@ class TorrentFile internal constructor(
 
     private fun readyRun(offset: Long, limit: Long): Long {
         if (offset < 0 || offset >= size) return 0
-        val h = handle
-        var piece = pieceAt(offset)
-        try {
-            if (!h.isValid || !h.havePiece(piece)) return 0
-            val want = minOf(size, offset + limit)
-            var end = minOf(size, (piece + 1) * pieceLength - base)
-            while (end < want && piece < lastPiece && h.havePiece(piece + 1)) {
-                piece++
-                end = minOf(size, (piece + 1) * pieceLength - base)
+        synchronized(lock) {
+            val h = handle
+            var piece = pieceAt(offset)
+            try {
+                if (!h.isValid || !inFile(h, piece)) return 0
+                val want = minOf(size, offset + limit)
+                var end = minOf(size, (piece + 1) * pieceLength - base)
+                while (end < want && piece < lastPiece && inFile(h, piece + 1)) {
+                    piece++
+                    end = minOf(size, (piece + 1) * pieceLength - base)
+                }
+                return minOf(end, want) - offset
+            } catch (e: RuntimeException) {
+                // (Being started afresh at this very moment: nothing is ready.)
+                return 0
             }
-            return minOf(end, want) - offset
-        } catch (e: RuntimeException) {
-            // (Being started afresh at this very moment: nothing is ready.)
-            return 0
         }
+    }
+
+    /**
+     * The piece is here and in the file. The library says "here" as soon as a piece's checksum is
+     * right, which can be a moment before its last part is written: read then, the file gives
+     * zeros (seen on the build machine). So the file's bytes are checked against the torrent's
+     * own checksum, once for each piece: what the player gets is the film, or nothing yet.
+     * A piece shared with a neighbouring file (the film's first or last) can't be checked from
+     * this file alone: it is given a moment instead.
+     */
+    private fun inFile(h: TorrentHandle, piece: Int): Boolean {
+        val i = piece - firstPiece
+        if (written[i]) return true
+        if (!h.havePiece(piece)) return false
+        val start = piece.toLong() * pieceLength - base
+        val length = info.pieceSize(piece)
+        val ok = if (checksums && start >= 0 && start + length <= size) {
+            matches(piece, start, length)
+        } else {
+            val now = System.nanoTime()
+            if (seenAt[i] == 0L) seenAt[i] = now
+            now - seenAt[i] >= SETTLE_NS
+        }
+        if (ok) written[i] = true
+        return ok
+    }
+
+    private fun matches(piece: Int, start: Long, length: Int): Boolean = try {
+        if (checkPath != path) {
+            closeCheckFile()
+            checkFile = RandomAccessFile(path, "r")
+            checkPath = path
+        }
+        val f = checkFile!!
+        digest.reset()
+        f.seek(start)
+        var left = length
+        while (left > 0) {
+            val n = f.read(scratch, 0, minOf(left, scratch.size))
+            if (n <= 0) break
+            digest.update(scratch, 0, n)
+            left -= n
+        }
+        left == 0 && digest.digest().joinToString("") { "%02x".format(it) }.equals(info.hashForPiece(piece).toHex(), ignoreCase = true)
+    } catch (e: IOException) {
+        // (Not created yet, or gone at a restart.)
+        closeCheckFile()
+        false
+    }
+
+    private fun closeCheckFile() {
+        runCatching { checkFile?.close() }
+        checkFile = null
+        checkPath = null
+    }
+
+    /** Closed with the film (an open file would keep its space taken after it is deleted). */
+    internal fun done() {
+        synchronized(lock) { closeCheckFile() }
     }
 
     override fun want(offset: Long, waiting: Boolean) {
@@ -474,6 +551,7 @@ class TorrentFile internal constructor(
         const val URGENT = 8
         const val TAIL = 2
         const val MAX_RUN = 4L * 1024 * 1024
+        const val SETTLE_NS = 1_500_000_000L
 
         /** Bytes a second while the download is held still (0 would mean "no limit"). */
         const val HOLD = 1
