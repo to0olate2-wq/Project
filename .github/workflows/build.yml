@@ -124,6 +124,19 @@ jobs:
           cp app/build/outputs/apk/github/release/*.apk "out/ThePlayer-$VNAME-build${{ github.run_number }}.apk"
           ls -la out
 
+      # Torrent links (8.16): the app must carry libtorrent for both kinds of device, and the code that
+      # the library calls back into must survive the shrinker. A build without them would only fail on a device.
+      - name: Check the torrent library is in the APK
+        run: |
+          APK=$(ls out/*.apk | head -1)
+          unzip -l "$APK" | grep -E "lib/.*/libtorrent4j\.so" | awk '{print "::notice::" $4 " " $1 " bytes"}'
+          for abi in armeabi-v7a arm64-v8a; do
+            unzip -l "$APK" | grep -q "lib/$abi/libtorrent4j.so" || { echo "::error::lib/$abi/libtorrent4j.so is missing from the APK"; exit 1; }
+          done
+          mkdir -p dexcheck && unzip -q -o "$APK" 'classes*.dex' -d dexcheck
+          grep -l "Lorg/libtorrent4j/swig/libtorrent_jni;" dexcheck/classes*.dex >/dev/null || { echo "::error::org.libtorrent4j.swig.libtorrent_jni is missing from the APK's code"; exit 1; }
+          echo "::notice::torrent library and its Java side are in the APK"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ThePlayer-build
