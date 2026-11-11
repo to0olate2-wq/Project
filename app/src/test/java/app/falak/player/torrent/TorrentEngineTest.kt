@@ -125,9 +125,13 @@ class TorrentEngineTest {
             // A film bigger than the room for it (3 MB here): it still plays from end to end, the
             // older parts making room as it goes, and a jump back fetches that part again.
             val tight = engine.open(TorrentSource(hash), maxBytes = 3L * 1024 * 1024, timeoutMs = 60_000, peer = TcpEndpoint("127.0.0.1", 46881))
+            // Left alone, it fetches the start and the end and stops there (not the whole film).
+            Thread.sleep(1_500)
+            val atRest = onDisk(File(root, "fetched"))
+            assertTrue("only a stretch is fetched before the player asks (it is $atRest bytes)", atRest <= 3L * 1024 * 1024)
             TorrentServer(tight).use { server ->
                 assertArrayEquals("the whole film through a small room", data, get(server.url, null))
-                assertTrue("it was started afresh to make room", tight.generation >= 2)
+                assertTrue("it was started afresh to make room (${tight.generation} times)", tight.generation >= 2)
                 assertArrayEquals("a jump back", data.copyOfRange(1_000_000, 1_500_000), get(server.url, "bytes=1000000-1499999"))
                 val kept = onDisk(File(root, "fetched"))
                 assertTrue("never more on the device than the room (it is $kept bytes)", kept <= 4L * 1024 * 1024)

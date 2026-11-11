@@ -11,6 +11,10 @@ import org.libtorrent4j.TcpEndpoint
 import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
+import org.libtorrent4j.swig.add_torrent_params
+import org.libtorrent4j.swig.byte_vector
+import org.libtorrent4j.swig.string_vector
+import org.libtorrent4j.swig.tcp_endpoint_vector
 
 /**
  * Torrent playback (8.16, GitHub version only; the owner asked for it so add-ons such as Torrentio
@@ -92,7 +96,9 @@ class TorrentEngine(private val dir: File) {
         progress("Opening the link…", 0, 0)
         val folder = File(dir, "g0")
         // (Nothing is fetched until the film has been picked out of it.)
-        val magnet = source.magnet(if (lookOutside) TorrentSource.PUBLIC_TRACKERS else emptyList())
+        val more = if (lookOutside) TorrentSource.PUBLIC_TRACKERS else emptyList()
+        val trackers = (source.trackers + more).distinct()
+        val magnet = source.magnet(more)
         session.download(magnet, folder, TorrentFlags.SEQUENTIAL_DOWNLOAD.or_(TorrentFlags.DEFAULT_DONT_DOWNLOAD))
         val handle = await(10_000, cancelled) { session.find(hash) }
             ?: throw TorrentException("This link couldn't be opened.")
@@ -116,7 +122,7 @@ class TorrentEngine(private val dir: File) {
             )
             val info = handle.torrentFile() ?: throw TorrentException("This link couldn't be read.")
             val index = pickFile(info, source) ?: throw TorrentException("There is no film in this link.")
-            return TorrentFile(this, info, index, handle, folder, maxBytes, listOfNotNull(peer)).also { it.begin() }
+            return TorrentFile(this, info, index, handle, folder, maxBytes, listOfNotNull(peer), trackers).also { it.begin() }
         } catch (e: Throwable) {
             remove(handle)
             throw e
@@ -133,13 +139,32 @@ class TorrentEngine(private val dir: File) {
      * The same torrent again in an empty [folder], the old copy deleted: how the film's older
      * parts make room for the ones the player needs next (see [TorrentFile]).
      */
-    internal fun again(old: TorrentHandle, info: TorrentInfo, index: Int, folder: File, peers: List<TcpEndpoint>): TorrentHandle {
+    internal fun again(
+        old: TorrentHandle,
+        info: TorrentInfo,
+        index: Int,
+        folder: File,
+        peers: List<TcpEndpoint>,
+        trackers: List<String>,
+        pieces: Array<Priority>,
+    ): TorrentHandle {
         val hash = old.infoHash()
         remove(old)
-        val files = Array(info.numFiles()) { if (it == index) Priority.DEFAULT else Priority.IGNORE }
-        session.download(info, folder, null, files, peers, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-        return await(10_000, { false }) { session.find(hash) } ?: throw TorrentException("The film couldn't be carried on.")
+        // Which pieces are wanted goes in with the torrent itself: added first and told a moment
+        // later, it would already be fetching the whole film.
+        val p = add_torrent_params()
+        p.set_ti(info.swig())
+        p.setSave_path(folder.absolutePath)
+        p.set_file_priorities(bytes(Array(info.numFiles()) { if (it == index) Priority.DEFAULT else Priority.IGNORE }))
+        p.set_piece_priorities(bytes(pieces))
+        if (peers.isNotEmpty()) p.setPeers(tcp_endpoint_vector().also { v -> peers.forEach { v.add(it.swig()) } })
+        if (trackers.isNotEmpty()) p.setTrackers(string_vector(trackers))
+        p.setFlags(p.getFlags().or_(TorrentFlags.SEQUENTIAL_DOWNLOAD))
+        session.swig().async_add_torrent(p)
+        return await(10_000, { false }, 20) { session.find(hash) } ?: throw TorrentException("The film couldn't be carried on.")
     }
+
+    private fun bytes(priorities: Array<Priority>) = byte_vector().also { v -> priorities.forEach { v.add(it.swig().toByte()) } }
 
     private fun remove(handle: TorrentHandle) {
         runCatching {
@@ -150,12 +175,12 @@ class TorrentEngine(private val dir: File) {
         }
     }
 
-    private fun <T : Any> await(timeoutMs: Long, cancelled: () -> Boolean, check: () -> T?): T? {
+    private fun <T : Any> await(timeoutMs: Long, cancelled: () -> Boolean, everyMs: Long = 200, check: () -> T?): T? {
         val until = System.nanoTime() + timeoutMs * 1_000_000
         while (true) {
             check()?.let { return it }
             if (cancelled() || System.nanoTime() >= until) return null
-            Thread.sleep(200)
+            Thread.sleep(everyMs)
         }
     }
 
@@ -214,6 +239,7 @@ class TorrentFile internal constructor(
     folder: File,
     maxBytes: Long,
     private val knownPeers: List<TcpEndpoint>,
+    private val trackers: List<String>,
 ) : GrowingFile {
     private val files = info.files()
     override val name: String = files.fileName(index)
@@ -263,20 +289,51 @@ class TorrentFile internal constructor(
     private fun pieceAt(offset: Long): Int = ((base + offset) / pieceLength).toInt().coerceIn(firstPiece, lastPiece)
     private fun isTail(piece: Int) = pieces > 8 && piece > lastPiece - TAIL
 
-    /** The film is picked: its file is the one written to, and nothing of it is asked for yet. */
+    /**
+     * The film is picked: its file is the one written to, and only its start and end are asked for.
+     *
+     * The library takes the choice of file a moment later (when its disk thread has answered), and
+     * only then puts every piece of the film on its list. The list of wanted pieces has to come
+     * after that, or it is overwritten and the whole film is fetched (what 8.17's first build did):
+     * so this waits for it, with the download held still meanwhile.
+     */
     internal fun begin() {
         synchronized(lock) {
-            handle.prioritizeFiles(Array(info.numFiles()) { if (it == index) Priority.DEFAULT else Priority.IGNORE })
-            clearAsked()
+            val probe = firstPiece + pieces / 2
+            handle.setDownloadLimit(HOLD)
+            try {
+                handle.prioritizeFiles(Array(info.numFiles()) { if (it == index) Priority.DEFAULT else Priority.IGNORE })
+                val until = System.nanoTime() + 10_000_000_000L
+                while (System.nanoTime() < until && handle.piecePriority(probe) == Priority.IGNORE) Thread.sleep(5)
+                handle.prioritizePieces(plan(firstPiece))
+            } finally {
+                handle.setDownloadLimit(0)
+            }
             startFrom(firstPiece)
         }
     }
 
-    /** (After the file priorities: those put every piece of the film back on the list.) */
-    private fun clearAsked() {
-        handle.prioritizePieces(Array(info.numPieces()) { Priority.IGNORE })
+    /**
+     * The list started afresh: every piece off it but the end of the film and the stretch from
+     * [from] (as far as the budget goes). Returns it as the library takes it, piece by piece.
+     */
+    private fun plan(from: Int): Array<Priority> {
         asked.fill(false)
         askedCount = 0
+        val list = Array(info.numPieces()) { Priority.IGNORE }
+        fun take(piece: Int): Boolean {
+            val i = piece - firstPiece
+            if (asked[i]) return true
+            if (askedCount >= budget) return false
+            asked[i] = true
+            askedCount++
+            list[piece] = Priority.DEFAULT
+            return true
+        }
+        if (pieces > 8) for (i in lastPiece - TAIL + 1..lastPiece) take(i)
+        var i = from
+        while (i <= lastPiece && i < from + ahead && take(i)) i++
+        return list
     }
 
     /** The stretch from [piece] and the end of the film, the nearest pieces soonest. */
@@ -390,15 +447,15 @@ class TorrentFile internal constructor(
     private fun restart(from: Int) {
         val old = handle
         val peers = (knownPeers + runCatching { old.peerInfo().mapNotNull { endpoint(it.ip()) } }.getOrDefault(emptyList())).take(60)
-        generation++
-        val folder = File(root, "g$generation")
-        val fresh = engine.again(old, info, index, folder, peers)
-        handle = fresh
+        val next = generation + 1
+        val folder = File(root, "g$next")
+        // In this order: whoever sees the new number must never open the old file.
         path = File(files.filePath(index, folder.absolutePath))
-        clearAsked()
+        generation = next
+        handle = engine.again(old, info, index, folder, peers, trackers, plan(from))
         startFrom(from)
         // (libtorrent deletes the old folder's files; the folder itself goes here.)
-        runCatching { File(root, "g${generation - 1}").deleteRecursively() }
+        runCatching { File(root, "g${next - 1}").deleteRecursively() }
     }
 
     private fun endpoint(text: String): TcpEndpoint? = runCatching {
@@ -414,5 +471,8 @@ class TorrentFile internal constructor(
         const val URGENT = 8
         const val TAIL = 2
         const val MAX_RUN = 4L * 1024 * 1024
+
+        /** Bytes a second while the download is held still (0 would mean "no limit"). */
+        const val HOLD = 1
     }
 }
