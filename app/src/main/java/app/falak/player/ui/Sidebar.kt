@@ -6,6 +6,8 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.semantics.selected
@@ -195,9 +197,10 @@ fun SidebarFrame(
 internal fun railWidth(): Dp = if (isTv()) 76.dp else 64.dp
 
 /**
- * Icons only (no names or counts), so the page gets the width: the sections in the middle, then
- * the guide and Recordings; the playlist and Settings at the bottom. Where you are is orange with
- * a mark at the edge; the one the remote is on turns white.
+ * Icons only, so the page gets the width: the sections in the middle, then the guide and
+ * Recordings; the playlist and Settings at the bottom. Where you are is orange with a mark at the
+ * edge; the one the remote is on turns white. TV: while the remote is on the rail it opens over
+ * the page's edge with each icon's name (the page itself doesn't move).
  */
 @Composable
 fun SideRail(
@@ -221,7 +224,12 @@ fun SideRail(
     addonsOpen: Boolean = false,
 ) {
     val tv = isTv()
-    Row(modifier.width(railWidth()).background(Ink2)) {
+    val closed = railWidth()
+    // TV: the remote is on the rail.
+    var here by remember { mutableStateOf(false) }
+    val open = tv && (here || railOpenForTest)
+    val width by animateDpAsState(if (open) RAIL_OPEN else closed, tween(160), label = "railWidth")
+    Row(modifier.width(width).clipToBounds().background(Ink2).onFocusChanged { here = it.hasFocus }) {
         // Short screens (a phone on its side): the icons shrink so every one stays in view.
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
             val slots = sections.size + (if (hasGuide) 1 else 0) + (if (onRecordings != null) 1 else 0) + (if (onAddons != null) 1 else 0) + 2
@@ -231,30 +239,28 @@ fun SideRail(
             val fit = (maxHeight - fixed.dp - gap * (slots + 1)) / slots
             // (24 dp at the least on phones: with every section, Add-ons included, a phone on its side has 11.)
             val box = fit.coerceIn(if (tv) 32.dp else 24.dp, if (tv) 46.dp else 44.dp)
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Everything keeps its place from the left edge, so nothing moves when the rail opens.
+            val brand = if (tv) 32.dp else 28.dp
+            Column(Modifier.fillMaxSize()) {
                 Spacer(Modifier.height(if (tv) 20.dp else 14.dp))
-                BrandMark(if (tv) 32.dp else 28.dp)
+                Box(Modifier.padding(start = (closed - brand) / 2)) { BrandMark(brand) }
                 Spacer(Modifier.height(if (tv) 14.dp else 10.dp))
                 Column(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(gap, Alignment.CenterVertically),
                 ) {
-                    sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box) { onSelect(s) } }
-                    if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, onClick = onGuide)
+                    sections.forEach { s -> RailIcon(navIcon(s), navLabel(s), s == selected, box, closed, open) { onSelect(s) } }
+                    if (hasGuide) RailIcon(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide", false, box, closed, open, onClick = onGuide)
                     if (onRecordings != null) {
-                        RailIcon(painterResource(R.drawable.ic_pl_record), "Recordings", recordingsOpen, box, dot = recordingNow, onClick = onRecordings)
+                        RailIcon(painterResource(R.drawable.ic_pl_record), "Recordings", recordingsOpen, box, closed, open, dot = recordingNow, onClick = onRecordings)
                     }
-                    if (onAddons != null) RailIcon(painterResource(R.drawable.ic_nav_addons), "Add-ons", addonsOpen, box, onClick = onAddons)
+                    if (onAddons != null) RailIcon(painterResource(R.drawable.ic_nav_addons), "Add-ons", addonsOpen, box, closed, open, onClick = onAddons)
                 }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(gap),
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(gap)) {
                     // A short rule sets the playlist and Settings apart from the sections.
-                    Box(Modifier.padding(vertical = 4.dp).width(24.dp).height(1.dp).background(Hairline))
-                    RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, box, onClick = onPlaylists)
-                    RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", settingsOpen, box, onClick = onSettings)
+                    Box(Modifier.padding(start = (closed - 24.dp) / 2, top = 4.dp, bottom = 4.dp).width(24.dp).height(1.dp).background(Hairline))
+                    RailIcon(painterResource(R.drawable.ic_nav_playlists), "Playlists", false, box, closed, open, onClick = onPlaylists)
+                    RailIcon(rememberVectorPainter(Icons.Outlined.Settings), "Settings", settingsOpen, box, closed, open, onClick = onSettings)
                 }
                 Spacer(Modifier.height(if (tv) 16.dp else 10.dp))
             }
@@ -263,9 +269,28 @@ fun SideRail(
     }
 }
 
-/** One square icon button of the rail (its name is read out by TalkBack, not shown). */
+/** The rail's width on a TV while the remote is on it (icons with their names). */
+private val RAIL_OPEN = 212.dp
+
+/** Screen tests: the TV rail drawn open, as when the remote is on it. */
+@androidx.annotation.VisibleForTesting
+internal var railOpenForTest by mutableStateOf(false)
+
+/**
+ * One button of the rail: a square icon ([closedWidth] wide rail), or with the rail [open] the
+ * icon and its name. Closed, the name is only read out by TalkBack.
+ */
 @Composable
-private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, dot: Boolean = false, onClick: () -> Unit) {
+private fun RailIcon(
+    icon: Painter,
+    label: String,
+    selected: Boolean,
+    box: Dp,
+    closedWidth: Dp,
+    open: Boolean,
+    dot: Boolean = false,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(box * 0.3f)
     val bg by animateColorAsState(
@@ -282,7 +307,8 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, d
         selected -> Signal
         else -> Muted
     }
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    val side = (closedWidth - box) / 2
+    Box(Modifier.fillMaxWidth()) {
         // The section you're in: a short orange mark on the rail's edge.
         if (selected) {
             Box(
@@ -294,26 +320,48 @@ private fun RailIcon(icon: Painter, label: String, selected: Boolean, box: Dp, d
                     .background(Signal),
             )
         }
-        Box(
+        Row(
             Modifier
-                .size(box)
+                .padding(start = side)
+                // (Always a width, never a different kind of size: the button keeps the remote's focus as the rail opens.)
+                .width(if (open) RAIL_OPEN - side * 2 else box)
+                .height(box)
                 .onFocusChanged { focused = it.isFocused }
                 .clip(shape)
                 .background(bg)
                 // TalkBack says which page is open.
                 .semantics { this.selected = selected }
                 .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size((box * 0.52f).coerceIn(18.dp, 24.dp)))
-            if (dot) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = box * 0.2f, end = box * 0.2f)
-                        .size(7.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(Signal),
+            Box(Modifier.size(box), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size((box * 0.52f).coerceIn(18.dp, 24.dp)))
+                if (dot) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = box * 0.2f, end = box * 0.2f)
+                            .size(7.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Signal),
+                    )
+                }
+            }
+            if (open) {
+                Text(
+                    label,
+                    fontFamily = Sans,
+                    fontSize = 15.sp,
+                    fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
+                    color = when {
+                        focused -> Ink
+                        selected -> Paper
+                        else -> Muted
+                    },
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.padding(start = 4.dp, end = 12.dp),
                 )
             }
         }
@@ -697,6 +745,7 @@ private fun ContinueCard(ch: Channel, backdrop: String?, watched: Watch?, width:
             .width(width)
             .aspectRatio(16f / 9f)
             .comeBackHere(row, ch.id)
+            .spotlights(ch)
             .cardFocus(shape)
             .clip(shape)
             .background(Ink3)

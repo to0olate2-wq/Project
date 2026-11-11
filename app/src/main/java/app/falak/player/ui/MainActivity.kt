@@ -154,10 +154,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 // Where the user is, for problem reports ("Last steps").
-                LaunchedEffect(vm.screen, vm.section, vm.group != null, s.look, tvNow) {
+                LaunchedEffect(vm.screen, vm.section, vm.group != null, tvNow) {
                     FreezeWatch.note(
                         "screen ${vm.screen.name.lowercase()} · ${vm.section.name.lowercase()}" +
-                            (if (vm.group != null) " · one group" else "") + " · ${s.look} look · " + if (tvNow) "TV" else "phone",
+                            (if (vm.group != null) " · one group" else "") + " · " + if (tvNow) "TV" else "phone",
                     )
                 }
                 androidx.compose.runtime.CompositionLocalProvider(LocalVoiceSearch provides voiceSearch) {
@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
                         val picking = vm.choosingProfile && vm.profilesWanted(state)
                         // Sidebar look: the menu stays beside the lists and the pages opened from them
                         // (a rail on the left, or a bar along the bottom of a phone held upright).
-                        val shell = if (picking) ShellMode.NONE else shellMode(s.look, vm.playlist != null, vm.screen, tv, maxWidth)
+                        val shell = if (picking) ShellMode.NONE else shellMode(vm.playlist != null, vm.screen, tv, maxWidth)
                         // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
                         if (picking) {
                             ProfilePicker(vm, state, onBack = { vm.confirmExit = true })

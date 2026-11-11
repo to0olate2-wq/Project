@@ -132,9 +132,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val section = vm.section.takeIf { it in sections } ?: sections.firstOrNull() ?: Section.LIVE
     val kind = section.kind
     val showGroups = kind != null
-    val sidebarLook = state.settings.look == "sidebar"
-    // The favorites filter chip only exists in the sidebar look.
-    val group = if (showGroups) vm.group?.takeIf { sidebarLook || it != FAV_FILTER } else null
+    val group = if (showGroups) vm.group else null
     val q = vm.query.trim()
     val isVod = section == Section.MOVIES || section == Section.SERIES
     val sort = if (isVod) vm.sort else Sort.DEFAULT
@@ -208,14 +206,11 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    var searching by rememberSaveable { mutableStateOf(vm.query.isNotEmpty()) }
     // The search box opened: names' sounds get worked out meanwhile, for searches in the other script.
-    val searchOpen = searching || vm.searchFocused || vm.query.isNotEmpty()
+    val searchOpen = vm.searchFocused || vm.query.isNotEmpty()
     LaunchedEffect(searchOpen, index) { if (searchOpen) withContext(Dispatchers.Default) { index.search.warmSounds() } }
-    // A search typed elsewhere (the phone remote) opens the search here too.
-    LaunchedEffect(vm.query.isNotEmpty()) { if (vm.query.isNotEmpty()) searching = true }
-    // The sidebar look's search bar is always there: "searching" just means something is typed.
-    val searchOn = if (sidebarLook) vm.query.isNotEmpty() else searching
+    // The search bar is always there: "searching" just means something is typed.
+    val searchOn = vm.query.isNotEmpty()
     val listState = vm.listStateFor(section)
     val gridState = vm.gridStateFor(section)
     LaunchedEffect(section, group, q, sort, savedList) {
@@ -243,7 +238,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             if (section != Section.HOME) vm.focusId = null
             return@LaunchedEffect
         }
-        val usesGrid = if (sidebarLook) kind != null && gridView else isVod
+        val usesGrid = kind != null && gridView
         if (usesGrid) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2).coerceAtLeast(0))
         delay(400)
         vm.focusId = null
@@ -260,10 +255,10 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     val openItem: (Channel) -> Unit = { ch -> openFrom(list, ch) }
     LaunchedEffect(q.isEmpty()) { if (q.isEmpty()) vm.searchFromHome = false }
-    // Sidebar look: recent searches show while the search bar (or the row itself) has the focus.
+    // Recent searches show while the search bar (or the row itself) has the focus.
     var assistFocused by remember { mutableStateOf(false) }
     DisposableEffect(Unit) { onDispose { vm.searchFocused = false } }
-    val showRecent = !vm.kidsActive && (if (sidebarLook) vm.searchFocused || assistFocused else searching)
+    val showRecent = !vm.kidsActive && (vm.searchFocused || assistFocused)
 
     BackHandler(enabled = searchOn || group != null || (section != Section.HOME && Section.HOME in sections)) {
         when {
@@ -272,10 +267,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 vm.searchFromHome = false
                 vm.section = Section.HOME
             }
-            searchOn -> {
-                searching = false
-                vm.query = ""
-            }
+            searchOn -> vm.query = ""
             group != null -> {
                 // The Films or Series front page again, with the remote on the chip picked.
                 if (isVod) vm.returnFocus = ReturnFocus(GROUP_ROW, group.takeUnless { it == ALL_FILTER } ?: ALL_CHIP)
@@ -386,7 +378,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                 when {
                                     visible == null -> Box(m)
                                     // TV, Live TV as a list: the channel the remote is on, beside it.
-                                    sidebarLook && shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections) -> {
+                                    shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections) -> {
                                         var focusedId by remember { mutableStateOf<String?>(null) }
                                         var here by remember { mutableStateOf(false) }
                                         // Opened full screen from here: no preview until the remote moves on.
@@ -415,29 +407,19 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                             )
                                         }
                                     }
-                                    sidebarLook && shown.kind != null && !(shown.name in state.settings.gridSections) -> ChannelList(
+                                    shown.kind != null && !(shown.name in state.settings.gridSections) -> ChannelList(
                                         list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
                                         progress = state.progress, playlistId = state.mine(p.id),
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                         focusId = focusId, modifier = m,
                                     )
-                                    sidebarLook && shown == Section.LIVE -> ChannelGrid(
+                                    shown == Section.LIVE -> ChannelGrid(
                                         list, epg, now, vm.gridStateFor(shown), openItem, { ch -> vm.listSheetFor = ch }, m,
                                     )
-                                    isVod -> Column(m) {
-                                        if (sorts.size > 1 && !sidebarLook) {
-                                            Row(
-                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            ) {
-                                                sorts.forEach { s -> TagChip(s.label, s == sort) { vm.sort = s } }
-                                            }
-                                        }
-                                        PosterGrid(
-                                            list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem,
-                                            { ch -> vm.listSheetFor = ch }, Modifier.weight(1f).fillMaxWidth(),
-                                        )
-                                    }
+                                    isVod -> PosterGrid(
+                                        list, vm.gridStateFor(shown), state.progress, p.id, focusId, openItem,
+                                        { ch -> vm.listSheetFor = ch }, m,
+                                    )
                                     shown == Section.FAVORITES -> Column(m) {
                                         if (noQuery) {
                                             ListChips(lists, favIds.size, savedList, { vm.savedList = it }, { editList = it }) { newList = true }
@@ -459,48 +441,35 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                     )
                                 }
                             }
-                            if (sidebarLook) {
-                                // Sidebar look: a header with the count, sort and grid/list, then the
-                                // groups as chips with counts (the side menu already takes the left).
-                                Column(Modifier.fillMaxSize()) {
-                                    SectionHead(
-                                        title = when {
-                                            !noQuery -> "Results"
-                                            shown == Section.LIVE -> "All channels"
-                                            shown == Section.MOVIES -> "All films"
-                                            shown == Section.SERIES -> "All series"
-                                            shown == Section.RECENT -> "Recently watched"
-                                            else -> shown.label
-                                        },
-                                        count = list.size,
-                                        unit = when (shown) {
-                                            Section.LIVE -> if (list.size == 1) "channel" else "channels"
-                                            Section.MOVIES -> if (list.size == 1) "film" else "films"
-                                            Section.SERIES -> "series"
-                                            else -> if (list.size == 1) "item" else "items"
-                                        },
-                                        sorts = sorts,
-                                        sort = sort,
-                                        onSort = { vm.sort = it },
-                                        grid = if (shown.kind != null) (shown.name in state.settings.gridSections) else null,
-                                        onGrid = { vm.setGridView(shown, it) },
-                                    )
-                                    if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
-                                        FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
-                                    }
-                                    content(Modifier.weight(1f).fillMaxWidth())
+                            // A header with the count, sort and grid/list, then the groups as chips
+                            // with counts (the menu already takes the left).
+                            Column(Modifier.fillMaxSize()) {
+                                SectionHead(
+                                    title = when {
+                                        !noQuery -> "Results"
+                                        shown == Section.LIVE -> "All channels"
+                                        shown == Section.MOVIES -> "All films"
+                                        shown == Section.SERIES -> "All series"
+                                        shown == Section.RECENT -> "Recently watched"
+                                        else -> shown.label
+                                    },
+                                    count = list.size,
+                                    unit = when (shown) {
+                                        Section.LIVE -> if (list.size == 1) "channel" else "channels"
+                                        Section.MOVIES -> if (list.size == 1) "film" else "films"
+                                        Section.SERIES -> "series"
+                                        else -> if (list.size == 1) "item" else "items"
+                                    },
+                                    sorts = sorts,
+                                    sort = sort,
+                                    onSort = { vm.sort = it },
+                                    grid = if (shown.kind != null) (shown.name in state.settings.gridSections) else null,
+                                    onGrid = { vm.setGridView(shown, it) },
+                                )
+                                if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
+                                    FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                 }
-                            } else if (wide && groupsVisible) {
-                                Row(Modifier.fillMaxSize()) {
-                                    GroupColumn(groupMap, base.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS }, Modifier.width(250.dp).fillMaxHeight())
-                                    Spacer(Modifier.width(20.dp))
-                                    content(Modifier.weight(1f).fillMaxHeight())
-                                }
-                            } else {
-                                Column(Modifier.fillMaxSize()) {
-                                    if (groupsVisible) GroupChips(groupMap, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
-                                    content(Modifier.weight(1f).fillMaxWidth())
-                                }
+                                content(Modifier.weight(1f).fillMaxWidth())
                             }
                         }
                     }
@@ -510,81 +479,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         }
     }
 
-    if (sidebarLook) {
-        SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay, hasDownloads = !vm.kidsActive && downloads.isNotEmpty()) { m -> Body(m) }
-    } else {
-        // The Films and Series pages' picture goes behind the masthead and tabs too.
-        MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 40.dp else 16.dp)) {
-            // Masthead
-            Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .focusRing(RoundedCornerShape(8.dp))
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { vm.screen = Screen.PLAYLISTS }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BrandMark(if (tv) 38.dp else 32.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Wordmark(if (tv) 24 else 20)
-                        Text(
-                            "${p.name}  ⌄",
-                            fontFamily = Sans,
-                            fontSize = 12.sp,
-                            color = Faint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                // The icons' touch areas reach past the page edge, so the last icon lines up with the content.
-                Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (tv) Clock(Modifier.padding(horizontal = 8.dp))
-                    if (Kind.LIVE in setOfNotNull(kind) || section == Section.HOME) {
-                        if (index.live.isNotEmpty()) {
-                            IconButton(onClick = { vm.screen = Screen.GUIDE }) {
-                                Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper)
-                            }
-                        }
-                    }
-                    if (vm.profilesWanted(state)) ProfileButton(state, vm.kidsActive) { vm.choosingProfile = true }
-                    // Downloads, once there are any.
-                    if (!vm.kidsActive && downloads.isNotEmpty()) {
-                        IconButton(onClick = { vm.screen = Screen.DOWNLOADS }) {
-                            Icon(downloadIcon(), contentDescription = "Downloads", tint = Paper)
-                        }
-                    }
-                    if (!vm.kidsActive) NoticeBell(state.notices.count { !it.read }) { vm.screen = Screen.NOTICES }
-                    IconButton(onClick = { searching = !searching; if (!searching) vm.query = "" }) {
-                        Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search", tint = Paper)
-                    }
-                    IconButton(onClick = { vm.open(p, refresh = true) }, enabled = !vm.loading) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
-                    }
-                    IconButton(onClick = { vm.screen = Screen.SETTINGS }) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Paper)
-                    }
-                }
-            }
-
-            if (sections.size > 1) {
-                Spacer(Modifier.height(6.dp))
-                NavTabs(sections, section, onSelect = { s -> vm.section = s; vm.group = null }, large = tv)
-            }
-
-            // Voice search heard something: the search row opens with it.
-            LaunchedEffect(vm.voiceHeard) { if (vm.voiceHeard > 0 && vm.query.isNotEmpty()) searching = true }
-            AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                SearchField(vm.query, section.label, VoiceSearch.language(state.settings.voiceLang), { vm.switchVoiceLanguage() }) { vm.query = it }
-            }
-            Body(Modifier.fillMaxSize())
-        }
-        }
-    }
+    SidebarFrame(vm, state, p, sections, section, landing, excluded, onPlay, hasDownloads = !vm.kidsActive && downloads.isNotEmpty()) { m -> Body(m) }
 
     editList?.let { l -> ListEditDialog(vm, l) { editList = null } }
     if (newList) {
@@ -614,37 +509,6 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 }
 
-@Composable
-private fun SearchField(value: String, scope: String, voiceLang: String, onVoiceLang: () -> Unit, onChange: (String) -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp)
-            .panel(RoundedCornerShape(10.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Outlined.Search, contentDescription = null, tint = Muted, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(10.dp))
-        Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) {
-                Text(if (scope == "Home") "Search everything" else "Search ${scope.lowercase()}", color = Faint, fontFamily = Sans, fontSize = 15.sp)
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onChange,
-                singleLine = true,
-                textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 15.sp),
-                cursorBrush = SolidColor(Signal),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-        }
-        if (value.isEmpty()) LocalVoiceSearch.current?.let { speak -> VoiceButtons(voiceLang, speak, onVoiceLang) }
-    }
-}
-
 /** Groups currently hidden behind the parental PIN for the open playlist. */
 @Composable
 fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
@@ -659,40 +523,6 @@ fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
         } else {
             all.mapTo(LinkedHashSet()) { it.group }
                 .filterTo(HashSet()) { g -> g in explicit || (s.lockAdult && ADULT_GROUP.containsMatchIn(g)) }
-        }
-    }
-}
-
-@Composable
-private fun GroupColumn(
-    groups: Map<String, List<Channel>>,
-    total: Int,
-    selected: String?,
-    locked: Set<String>,
-    onSelect: (String?) -> Unit,
-    onOptions: (String) -> Unit,
-    onManage: () -> Unit,
-    modifier: Modifier,
-) {
-    val names = remember(groups) { groups.keys.toList() }
-    LazyColumn(modifier, contentPadding = PaddingValues(bottom = 32.dp)) {
-        item(key = "__all") { GroupLine("All", total, selected == null, false, {}) { onSelect(null) } }
-        items(names, key = { "g:$it" }) { g ->
-            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked, { onOptions(g) }) { onSelect(g) }
-        }
-        item(key = "__manage") {
-            Text(
-                "Show & hide groups",
-                fontFamily = Sans,
-                fontSize = 13.sp,
-                color = Muted,
-                modifier = Modifier
-                    .padding(top = 12.dp)
-                    .focusRing(RoundedCornerShape(6.dp))
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable(onClick = onManage)
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
-            )
         }
     }
 }
@@ -733,31 +563,6 @@ private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boole
         } else {
             Text("$count", style = Tabular.copy(fontSize = 12.sp), color = Faint, modifier = Modifier.padding(end = 8.dp))
         }
-    }
-}
-
-@Composable
-private fun GroupChips(
-    groups: Map<String, List<Channel>>,
-    selected: String?,
-    locked: Set<String>,
-    onSelect: (String?) -> Unit,
-    onOptions: (String) -> Unit,
-    onManage: () -> Unit,
-) {
-    val names = remember(groups) { listOf<String?>(null) + groups.keys }
-    LazyRow(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(names, key = { if (it == null) "__all" else "g:$it" }) { g ->
-            TagChip(
-                if (g != null && g in locked) "🔒 $g" else g ?: "All",
-                selected == g,
-                onLongClick = if (g != null) ({ onOptions(g) }) else null,
-            ) { onSelect(g) }
-        }
-        item(key = "__manage") { TagChip("Edit groups", false, onClick = onManage) }
     }
 }
 

@@ -203,49 +203,6 @@ fun Kicker(text: String, color: Color = Signal) {
     )
 }
 
-/** Text tabs; a short red rule slides under the selected one. */
-@Composable
-fun NavTabs(items: List<Section>, selected: Section, onSelect: (Section) -> Unit, large: Boolean = false) {
-    val density = LocalDensity.current
-    val positions = remember { mutableStateMapOf<Section, Pair<Dp, Dp>>() }
-    val target = positions[selected]
-    val x by animateDpAsState(target?.first ?: 0.dp, tween(320, easing = FastOutSlowInEasing), label = "tabX")
-    val w by animateDpAsState(target?.second ?: 0.dp, tween(320, easing = FastOutSlowInEasing), label = "tabW")
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-        Row(horizontalArrangement = Arrangement.spacedBy(if (large) 30.dp else 22.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-            items.forEach { s ->
-                val sel = s == selected
-                val color by animateColorAsState(if (sel) Paper else Muted, tween(250), label = "tabColor")
-                Text(
-                    s.label,
-                    fontFamily = Sans,
-                    fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
-                    fontSize = if (large) 18.sp else 15.sp,
-                    color = color,
-                    modifier = Modifier
-                        .onGloballyPositioned { c ->
-                            with(density) { positions[s] = c.positionInParent().x.toDp() to c.size.width.toDp() }
-                        }
-                        .focusRing(RoundedCornerShape(6.dp))
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onSelect(s) }
-                        .padding(horizontal = 2.dp, vertical = 8.dp),
-                )
-            }
-        }
-        if (target != null) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(x = x + w / 2 - 9.dp)
-                    .width(18.dp)
-                    .height(3.dp)
-                    .background(Signal, RoundedCornerShape(2.dp)),
-            )
-        }
-    }
-}
-
 /**
  * Main action: paper on ink. The remote's focus shows as a soft ring just outside it (a paper
  * outline would vanish against the paper button).
