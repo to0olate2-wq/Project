@@ -11,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.libtorrent4j.SessionManager
-import org.libtorrent4j.SessionParams
 import org.libtorrent4j.SettingsPack
 import org.libtorrent4j.TcpEndpoint
 import org.libtorrent4j.TorrentBuilder
@@ -102,7 +101,7 @@ class TorrentEngineTest {
             val sp = SettingsPack().listenInterfaces("127.0.0.1:46881")
             sp.setEnableDht(false)
             sp.setEnableLsd(false)
-            seeder.start(SessionParams(sp))
+            seeder.start(TorrentEngine.plainDisk(sp))
             seeder.download(info, seedDir)
             assertNotNull("the sharing side has the film", await(40) { seeder.find(info.infoHash())?.takeIf { it.status().isSeeding } })
 

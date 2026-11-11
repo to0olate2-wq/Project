@@ -62,7 +62,7 @@ class TorrentEngine(private val dir: File) {
             sp.setEnableDht(false)
             sp.setEnableLsd(false)
         }
-        session.start(SessionParams(sp))
+        session.start(plainDisk(sp))
         started = true
     }
 
@@ -193,6 +193,14 @@ class TorrentEngine(private val dir: File) {
     companion object {
         private const val CONNECTIONS = 150
         private const val UPLOAD_LIMIT = 96 * 1024
+        /**
+         * Files read and written the plain way, not mapped into memory (the library's choice on
+         * 64-bit). Mapped, the library takes over the process's SIGSEGV and SIGBUS handlers for
+         * good, and the Java runtime needs those for itself: the tests' JVM died of it now and
+         * then (exit 139, no report). It also means a piece that is "here" is in the file.
+         */
+        fun plainDisk(sp: SettingsPack): SessionParams = SessionParams(sp).also { it.setPosixDiskIO() }
+
         private const val DHT_START = "router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.libtorrent.org:25401"
         private val VIDEO = setOf("mkv", "mp4", "avi", "m4v", "mov", "ts", "m2ts", "webm", "wmv", "mpg", "mpeg", "flv")
 
