@@ -226,7 +226,7 @@ jobs:
           if [ -n "$core" ]; then
             which gdb >/dev/null 2>&1 || sudo apt-get install -y -q gdb >/dev/null 2>&1 || true
             java=$(file "$core" | sed -n "s/.*execfn: '\([^']*\)'.*/\1/p")
-            { ls -la /tmp/core.*; echo "java: $java"; gdb -batch -ex "bt 40" -ex "info sharedlibrary" -ex "thread apply all bt 12" "${java:-java}" "$core" 2>&1 | grep -v "^\[New LWP\|^warning" | head -500; } > /tmp/screens/crash-gdb.txt || true
+            { ls -la /tmp/core.*; echo "java: $java"; gdb -batch -ex "p \$_siginfo.si_signo" -ex "p \$_siginfo.si_code" -ex "p \$_siginfo._sifields" -ex "info registers rip rsp rax" -ex "x/6i \$pc" -ex "x/48ga \$sp" -ex "bt 40" -ex "info sharedlibrary" -ex "thread apply all bt 12" "${java:-java}" "$core" 2>&1 | grep -v "^\[New LWP\|^warning" | head -500; } > /tmp/screens/crash-gdb.txt || true
           fi
           cd /tmp/screens
           git init -q
