@@ -96,7 +96,7 @@ import kotlinx.coroutines.delay
 
 /** The page area the picture is drawn in: its height, where its top is on screen (px), and
  * whether there is room for the picture (TV, tablets, phones on their side). */
-class MarqueeStageInfo(val height: Dp, val wide: Boolean, val top: () -> Float)
+class MarqueeStageInfo(val height: Dp, val wide: Boolean, val portraitArt: Dp, val top: () -> Float)
 
 val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 
@@ -159,16 +159,21 @@ fun MarqueeStage(
         val height = maxHeight
         // TV, tablets and phones on their side: a wide picture; a phone held upright: its poster, edge to edge.
         val wide = tv || maxWidth >= 640.dp
-        val info = remember(height, wide) { MarqueeStageInfo(height, wide) { top[0] } }
+        // A phone held upright: never taller than the poster shown across the width can fill (very tall screens).
+        val portraitArt = minOf(height * marqueeFraction(height, portrait = true), maxWidth * 1.3f)
+        val info = remember(height, wide, portraitArt) { MarqueeStageInfo(height, wide, portraitArt) { top[0] } }
         if (landing != null) {
             MarqueeBackdropFor(
                 vm, landing, excluded, portrait = !wide,
-                modifier = Modifier.fillMaxWidth().height(height * marqueeFraction(height, landing, portrait = !wide, tv = tv)),
+                modifier = Modifier.fillMaxWidth().height(if (wide) height * marqueeFraction(height, landing, tv = tv) else portraitArt),
             )
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
     }
 }
+
+/** What the picture behind the top of a page is drawn from (it cross-fades when any of it changes). */
+private data class ArtKey(val wide: String?, val tall: String?, val mode: ArtMode, val name: String)
 
 /** How the picture behind the top of a page is drawn. */
 private enum class ArtMode {
@@ -194,6 +199,7 @@ private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded:
     MarqueeBackdrop(
         backdrop = vm.heroArt[item.id]?.takeIf { it.isNotBlank() },
         poster = item.logo.ifBlank { null },
+        name = item.name,
         list = vm.marqueeStateFor(section),
         mode = when {
             item.kind == Kind.LIVE -> ArtMode.LOGO
@@ -215,6 +221,8 @@ private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded:
 private fun MarqueeBackdrop(
     backdrop: String?,
     poster: String?,
+    /** A channel's name, for its tile when it has no logo (or its link doesn't load). */
+    name: String,
     list: androidx.compose.foundation.lazy.LazyListState,
     mode: ArtMode,
     scrolls: Boolean,
@@ -248,14 +256,14 @@ private fun MarqueeBackdrop(
                     drawRect(Brush.verticalGradient(fadeFrom to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
                 },
         ) {
-            Crossfade(Triple(backdrop, poster, mode), animationSpec = tween(450), label = "marqueeArt") { (wide, tall, m) ->
+            Crossfade(ArtKey(backdrop, poster, mode, name), animationSpec = tween(450), label = "marqueeArt") { (wide, tall, m, title) ->
                 Box(Modifier.fillMaxSize()) {
                     // Decoded very small, so only its colours show (not smears of its lettering).
                     val wash = remember(tall) {
                         tall?.takeIf { it.isNotBlank() }?.let { ImageRequest.Builder(context).data(it).size(6, 9).memoryCacheKey("$it#tint").build() }
                     }
                     when {
-                        m == ArtMode.LOGO -> if (!tall.isNullOrBlank()) {
+                        m == ArtMode.LOGO -> {
                             // Logos are small and often see-through: on a tile, clear of the bar above it.
                             Box(
                                 Modifier
@@ -266,19 +274,28 @@ private fun MarqueeBackdrop(
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Ink3),
                             ) {
-                                AsyncImage(
-                                    model = tall,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.align(Alignment.Center).fillMaxSize(0.62f),
-                                )
+                                LogoOr(tall.orEmpty(), null, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.62f)) {
+                                    Text(
+                                        title,
+                                        fontFamily = Serif,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 20.sp,
+                                        lineHeight = 25.sp,
+                                        color = Paper,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.align(Alignment.Center).padding(14.dp),
+                                    )
+                                }
                             }
                         }
+                        // (A little down from its top: a poster's faces are rarely at the very top.)
                         m == ArtMode.PORTRAIT && !tall.isNullOrBlank() -> AsyncImage(
                             model = tall,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            alignment = Alignment.TopCenter,
+                            alignment = BiasAlignment(0f, -0.5f),
                             modifier = Modifier.fillMaxSize(),
                         )
                         !wide.isNullOrBlank() -> AsyncImage(
@@ -329,7 +346,7 @@ private fun MarqueeBackdrop(
             if (mode == ArtMode.PORTRAIT) {
                 // Dark at the top for the bar, and under the name and buttons.
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.2f to Color.Transparent)))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.34f to Color.Transparent, 0.82f to Ink.copy(alpha = 0.9f))))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.22f to Color.Transparent, 0.62f to Ink.copy(alpha = 0.94f))))
             } else {
                 // Dark on the left for the words, and at the top for the bars.
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
@@ -402,7 +419,7 @@ fun MarqueeBrowse(
         }
         if (continueOfKind.isNotEmpty()) {
             item(key = "continue") {
-                Box(Modifier.padding(top = 16.dp)) {
+                Box(Modifier.padding(top = if (tv) 2.dp else 16.dp)) {
                     ContinueRow(
                         continueOfKind, vm.heroArt, state.progress, me,
                         title = "Continue watching",
@@ -496,7 +513,8 @@ fun MarqueePage(
         // The hero's height: from the top of this list down to where the picture fades out.
         val heroHeight = if (stage == null) 0.dp else {
             val offset = if (myTop < 0) 110.dp else with(density) { (myTop - stage.top()).toDp() }
-            (stage.height * marqueeFraction(stage.height, section, portrait = !wide) - offset).coerceAtLeast(200.dp)
+            val art = if (wide) stage.height * marqueeFraction(stage.height, section) else stage.portraitArt
+            (art - offset).coerceAtLeast(200.dp)
         }
         if (item != null) {
             // A new title every 7 seconds while the featured one is in view: on a TV until the

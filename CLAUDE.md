@@ -53,12 +53,24 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - **Your own order (Arrange):** `Arrangement.trimmed` keeps only the changed prefix;
   `LibraryIndex.rearranged()` applies an order instantly, without rebuilding the index.
 - **D-pad wrap-around:** `ui/FocusLoop.kt` (`focusLoop` / `loopItem`).
-- **The menu stays (8.8), `ui/Shell.kt`:** Sidebar look with a playlist open: `AppShell` (in `MainActivity`, around
-  the pages) draws the rail (TV, ≥600 dp) or a bottom bar (phones upright: Home, Live, Films, Series, More) for
-  `SHELL_SCREENS` (lists, More, Recordings, Downloads, What's new, Settings and its pages). `SidebarFrame` is only the
-  top bar + page now (no drawer). `LocalShell` tells pages which; Back from those pages is `vm.closePage()` (player
-  detour → player, opened from More → More, else the lists). TV Settings: list of pages left, page right
-  (`twoPane`; focus moves on OK, the page follows the remote after 160 ms). Classic look: unchanged, full pages.
+- **One look, Spotlight (8.14; owner asked for a Netflix/Apple TV-like layout):** Classic and the Look setting are
+  gone (`Settings.look` is left unread: older versions sync it; a second look gets a NEW field). Home and the Films
+  and Series front pages are `MarqueePage` (MarqueeBrowse.kt) inside `MarqueeStage` (draws the picture behind the
+  top bar; `ArtMode`). **TV:** `SpotlightPanel` (Spotlight.kt, fixed 138 dp, nothing to press) shows the card the
+  remote is on: cards call `Modifier.spotlights(ch)` → `vm.spotlight[section]`; a channel shows now/next/time left,
+  a film or series its rating, year and story (asked for after the remote rests 0.5 s, `loadHeroArt`). Before any
+  card has the focus the featured titles take turns. Rows are a `LazyColumn` under it (`HomeScroller` pins rows).
+  **Phone upright:** `PhoneHero` over the poster edge to edge (swipe or 7 s for the next). Tablets and phones on
+  their side: `MarqueeHero` as before. Screen tests set `vm.spotlight[...]` and `railOpenForTest`.
+  **Still to do (owner agreed):** 8.15 = Live TV page and the film/series detail pages in the same style; then a
+  second new look to choose in Appearance (owner picked "a second new look", e.g. "Channels first" opening on live TV).
+- **The menu stays (8.8), `ui/Shell.kt`:** with a playlist open, `AppShell` (in `MainActivity`, around the pages)
+  draws the rail (TV, ≥600 dp; on a TV it opens to 212 dp with names while the remote is on it, over the page, see
+  `SideRail`/`RailIcon`: keep the button's modifiers the same kinds so it keeps the focus) or a bottom bar (phones
+  upright: Home, Live, Films, Series, More) for `SHELL_SCREENS` (lists, More, Recordings, Downloads, What's new,
+  Add-ons, Settings and its pages). `SidebarFrame` is the top bar + page. `LocalShell` tells pages which; Back from
+  those pages is `vm.closePage()` (player detour → player, opened from More → More, else the lists). TV Settings:
+  list of pages left, page right (`twoPane`; focus moves on OK, the page follows the remote after 160 ms).
 - **Player controls (8.10; the owner didn't like 8.8/8.9's More, don't bring it back):** every button on screen.
   Bottom row with names (`pills()`): Back to live, Channels, Record, Two screens, Audio and subtitles (one button,
   `showTracksPanel`: both lists in one panel; the remote's Audio/Subtitles keys still open one list), Speed — each

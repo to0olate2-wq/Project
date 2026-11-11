@@ -192,7 +192,8 @@ fun HomeContent(
             when (row) {
                 "continue" -> if (continueWatching.isNotEmpty()) {
                     item(key = "continue") {
-                        Box(Modifier.padding(top = 16.dp)) {
+                        // (TV: right under the spotlight.)
+                        Box(Modifier.padding(top = if (tvHome) 2.dp else 16.dp)) {
                             ContinueRow(
                                 continueWatching, vm.heroArt, state.progress, me,
                                 title = "Continue watching",
