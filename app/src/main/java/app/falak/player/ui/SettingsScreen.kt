@@ -868,6 +868,21 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
             }
         }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Open on", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "The page a playlist opens on, on this device. Live TV suits you if you mostly watch channels.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    TagChip("Home", s.startOn != "live") { vm.updateSettings { it.copy(startOn = "home") } }
+                    TagChip("Live TV", s.startOn == "live") { vm.updateSettings { it.copy(startOn = "live") } }
+                }
+            }
+        }
 
         item { SectionTitle("Tidy channel list") }
         item {

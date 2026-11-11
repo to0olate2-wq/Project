@@ -406,6 +406,8 @@ data class Settings(
     val notifyNew: Boolean = true,
     /** When the app starts fresh (it was fully closed), play the live channel watched last. */
     val startLastChannel: Boolean = true,
+    /** The page a playlist opens on: "home" or "live" (Live TV, for people who mostly watch channels). This device's. */
+    val startOn: String = "home",
     /** Kids mode: only [kidsGroups] are shown; Settings and group pages need the PIN. */
     val kidsMode: Boolean = false,
     /** playlistId -> the groups kids mode shows. */

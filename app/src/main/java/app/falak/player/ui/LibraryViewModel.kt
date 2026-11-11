@@ -687,7 +687,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             returnFocus = null
             group = null
             query = ""
-            section = Section.HOME
+            // (Settings → Playlists → Open on. A playlist with no channels shows its first page instead.)
+            section = if (state.value.settings.startOn == "live") Section.LIVE else Section.HOME
             sort = Sort.DEFAULT
             listState = LazyListState()
             guideStatus = ""

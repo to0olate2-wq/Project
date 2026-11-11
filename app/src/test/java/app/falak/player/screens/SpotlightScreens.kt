@@ -33,3 +33,15 @@ class TvSpotlightScreens : ScreenshotBase() {
         }
     }
 }
+
+/** Phones, Live TV: the bar under the list that plays the channel watched last (8.15). */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneResumeBarScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = ScreenshotBase.PHONE)
+    fun phoneResumeBar() = mainScreens("phone", watching = true) { vm, shoot ->
+        app.repo.setLastLive(vm.playlist!!.id, vm.index.live.first().id)
+        vm.section = Section.LIVE
+        shoot("phone-75-live-resume-bar")
+    }
+}
