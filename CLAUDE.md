@@ -108,13 +108,22 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `githubImplementation` + android-arm/arm64 natives, `playCompileOnly`, tests use the `-linux` native.
   `BuildConfig.TORRENTS` (`Torrents.available`; tests: `availableForTest`). `TorrentSource` (hash, fileIdx, trackers,
   file name; from an add-on's `infoHash`/`sources` or a magnet) → `TorrentEngine` (no Android in it: magnet →
-  metadata → `pickFile` → sequential download with piece deadlines; polling, no alert listeners) → `TorrentFile`
-  (`GrowingFile`) → `TorrentServer` (127.0.0.1, random port + token, Range requests wait for pieces, drops the
-  connection rather than ending short) → the player opens `http://127.0.0.1:…/video.mkv` like any film.
-  `Torrents` (object) = one at a time: `prepare` / `state` (STARTING, BUFFERING, READY, FAILED) / `stop`; files in
-  `getExternalFilesDir/torrents`, deleted on stop, on leaving the film or the Add-ons page, and at app start.
-  UI: torrent rows in `linkItems`, `TorrentWindow` (AddonsUi). Upload capped at 96 kB/s. Tests:
-  `TorrentServerTest` (runs anywhere), `TorrentEngineTest` (two engines on the CI machine, real transfer).
+  metadata → `pickFile`; polling, no alert listeners) → `TorrentFile` (`GrowingFile`) → `TorrentServer` (127.0.0.1,
+  random port + token, Range requests wait for pieces, drops the connection rather than ending short) → the player
+  opens `http://127.0.0.1:…/video.mkv` like any film. **A stream, not a download (8.17; the owner: "like Stremio",
+  8.16 refused films bigger than the free space and didn't start on his phone):** every piece is priority 0 except
+  a stretch ahead of the player (192 MB, `want()` moves it; first pieces get deadlines) and the last two pieces;
+  at most `maxBytes` kept (free space − 300 MB, 6 GB at most): when that is used up and the player needs more,
+  `restart()` re-adds the torrent in a new folder (`g<generation>`, old one deleted, peers passed on) and carries
+  on from there; the server re-opens the file when `generation` changes. `close_redundant_connections` is off (or
+  the seeds are dropped whenever the stretch is complete). Starts once the first piece (≥2 MB) is here, the end is
+  waited for 6 s at most. Files in `filesDir/torrents` (not the shared storage), deleted on stop, on leaving the
+  film or the Add-ons page, and at app start. `Torrents` (object) = one at a time: `prepare` / `state` / `stop`;
+  `state` keeps counting while it plays (people found/connected, speed, kept, what the player took): shown in
+  `TorrentWindow` and in a line on the film's page (`TorrentNow`) so the owner can say where a film is stuck.
+  Still not seen working on a real device. UI: torrent rows in `linkItems`. Upload capped at 96 kB/s. Tests:
+  `TorrentServerTest` (runs anywhere), `TorrentEngineTest` (two engines on the CI machine, real transfer, also
+  through a 3 MB room with restarts).
   Local type-check without the SDK: compile `torrent/*.kt` (not Torrents.kt) with Gradle's Kotlin compiler against
   the library's Java sources (clone aldenml/libtorrent4j); Maven Central is not reachable from the sandbox.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,

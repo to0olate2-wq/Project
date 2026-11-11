@@ -16,14 +16,17 @@ interface GrowingFile {
     val name: String
     val size: Long
 
-    /** Where its bytes are written. */
+    /** Where its bytes are written now: a new file each time [generation] changes. */
     val path: File
+
+    /** Goes up when the file is started afresh (to make room): what was read from the old [path] no longer counts. */
+    val generation: Int
 
     /** How many bytes from [offset] are on disk in one run (0 when the byte at [offset] isn't there yet). */
     fun readyFrom(offset: Long): Long
 
-    /** The player is reading at [offset]: what comes next there is fetched first. */
-    fun want(offset: Long)
+    /** The player is reading at [offset] ([waiting]: and has nothing to read there): what comes next there is fetched first. */
+    fun want(offset: Long, waiting: Boolean)
 }
 
 /**
@@ -41,6 +44,10 @@ class TorrentServer(private val file: GrowingFile, private val waitMs: Long = 50
 
     @Volatile
     private var closed = false
+
+    /** How much the player has taken so far, and in how many requests (shown while it plays, to tell where a film is stuck). */
+    val served = java.util.concurrent.atomic.AtomicLong()
+    val requests = java.util.concurrent.atomic.AtomicInteger()
 
     /** The link the player opens (the file's ending tells it the kind of file). */
     val url: String
@@ -88,6 +95,7 @@ class TorrentServer(private val file: GrowingFile, private val waitMs: Long = 50
         val path = request.getOrNull(1).orEmpty()
         if (!path.startsWith("/$token/")) return answer(out, "404 Not Found")
         if (method != "GET" && method != "HEAD") return answer(out, "405 Method Not Allowed")
+        requests.incrementAndGet()
 
         val size = file.size
         var start = 0L
@@ -124,32 +132,35 @@ class TorrentServer(private val file: GrowingFile, private val waitMs: Long = 50
         var waited = 0L
         var told = -1L
         var raf: RandomAccessFile? = null
+        var rafGeneration = -1
         try {
             while (pos <= end && !closed) {
                 // Keeps what comes next at the front of the queue as the film plays on.
                 if (told < 0 || pos - told >= TELL_EVERY) {
-                    file.want(pos)
+                    file.want(pos, waiting = false)
                     told = pos
                 }
+                val generation = file.generation
                 val ready = file.readyFrom(pos)
-                if (ready <= 0) {
-                    file.want(pos)
-                    // (Dropped, not ended: see the class comment.)
-                    if (waited >= waitMs) return
-                    Thread.sleep(POLL_MS)
-                    waited += POLL_MS
-                    continue
-                }
-                val n = minOf(ready, end - pos + 1, buffer.size.toLong()).toInt()
-                val f = raf ?: runCatching { RandomAccessFile(file.path, "r") }.getOrNull()?.also { raf = it }
-                val got = if (f == null) {
-                    0
-                } else {
-                    f.seek(pos)
-                    f.read(buffer, 0, n)
+                var got = 0
+                if (ready > 0 && file.generation == generation) {
+                    if (rafGeneration != generation) {
+                        runCatching { raf?.close() }
+                        raf = runCatching { RandomAccessFile(file.path, "r") }.getOrNull()
+                        rafGeneration = if (raf != null) generation else -1
+                    }
+                    val f = raf
+                    if (f != null) {
+                        val n = minOf(ready, end - pos + 1, buffer.size.toLong()).toInt()
+                        f.seek(pos)
+                        got = f.read(buffer, 0, n)
+                        // Started afresh meanwhile: what was read may be from the new, still empty file.
+                        if (file.generation != generation) got = 0
+                    }
                 }
                 if (got <= 0) {
-                    // On disk any moment now (the piece is checked before it is written out).
+                    file.want(pos, waiting = true)
+                    // (Dropped, not ended: see the class comment.)
                     if (waited >= waitMs) return
                     Thread.sleep(POLL_MS)
                     waited += POLL_MS
@@ -157,6 +168,7 @@ class TorrentServer(private val file: GrowingFile, private val waitMs: Long = 50
                 }
                 waited = 0
                 out.write(buffer, 0, got)
+                served.addAndGet(got.toLong())
                 pos += got
             }
             out.flush()

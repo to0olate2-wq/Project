@@ -61,6 +61,14 @@ class TorrentEngineTest {
         return null
     }
 
+    /** What a folder really takes on the disk (a film's file has holes where nothing was fetched). */
+    private fun onDisk(folder: File): Long {
+        val p = ProcessBuilder("du", "-sk", folder.absolutePath).redirectErrorStream(true).start()
+        val kb = p.inputStream.bufferedReader().readText().trim().substringBefore('\t').substringBefore(' ').toLong()
+        p.waitFor()
+        return kb * 1024
+    }
+
     private fun get(url: String, range: String?): ByteArray {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
@@ -107,12 +115,26 @@ class TorrentEngineTest {
                 assertArrayEquals("a jump to the middle", data.copyOfRange(5_000_000, 6_000_000), get(server.url, "bytes=5000000-5999999"))
                 assertArrayEquals("the whole film", data, get(server.url, null))
             }
-            assertTrue(file.readyToPlay())
+            assertTrue(file.startReady())
+            assertTrue(file.endReady())
             assertEquals(1f, file.startProgress(), 0.001f)
+            assertEquals("room for all of it: never started afresh", 0, file.generation)
+            engine.close(file)
+            assertNotNull("deleted when closed", await(20) { if (File(root, "fetched").walkTopDown().none { it.isFile && it.length() > 100_000 }) true else null })
+
+            // A film bigger than the room for it (3 MB here): it still plays from end to end, the
+            // older parts making room as it goes, and a jump back fetches that part again.
+            val tight = engine.open(TorrentSource(hash), maxBytes = 3L * 1024 * 1024, timeoutMs = 60_000, peer = TcpEndpoint("127.0.0.1", 46881))
+            TorrentServer(tight).use { server ->
+                assertArrayEquals("the whole film through a small room", data, get(server.url, null))
+                assertTrue("it was started afresh to make room", tight.generation >= 2)
+                assertArrayEquals("a jump back", data.copyOfRange(1_000_000, 1_500_000), get(server.url, "bytes=1000000-1499999"))
+                val kept = onDisk(File(root, "fetched"))
+                assertTrue("never more on the device than the room (it is $kept bytes)", kept <= 4L * 1024 * 1024)
+            }
+            engine.close(tight)
 
             // Asked for by name (a season pack names the episode's file).
-            engine.close(file)
-            assertNotNull("deleted when closed", await(20) { if (File(root, "fetched").walkTopDown().none { it.isFile && it.length() > 1_000_000 }) true else null })
             val sample = engine.open(TorrentSource(hash, fileName = "sample.mkv"), timeoutMs = 60_000, peer = TcpEndpoint("127.0.0.1", 46881))
             assertEquals("sample.mkv", sample.name)
             engine.close(sample)
