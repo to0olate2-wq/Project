@@ -123,9 +123,24 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `TorrentWindow` and in a line on the film's page (`TorrentNow`) so the owner can say where a film is stuck.
   Still not seen working on a real device. UI: torrent rows in `linkItems`. Upload capped at 96 kB/s. Tests:
   `TorrentServerTest` (runs anywhere), `TorrentEngineTest` (two engines on the CI machine, real transfer, also
-  through a 3 MB room with restarts).
+  through a 3 MB room with restarts, and a small file).
   Local type-check without the SDK: compile `torrent/*.kt` (not Torrents.kt) with Gradle's Kotlin compiler against
   the library's Java sources (clone aldenml/libtorrent4j); Maven Central is not reachable from the sandbox.
+  **What the library does (all met in 8.17; its C++ is arvidn/libtorrent at the commit of libtorrent4j's
+  `swig/deps/libtorrent`):** (1) `prioritizeFiles` takes effect later (after its disk thread answers) and then puts
+  every piece of the file back on the list: `begin()` waits for it (download held at 1 B/s) before giving the piece
+  list; a restart adds the torrent with file and piece priorities inside `add_torrent_params` (pieces win).
+  (2) `handle.torrentFile()` is borrowed and dies with the torrent: keep a copy (`torrent_info(it.swig())`).
+  (3) Memory-mapped disk I/O (its default on 64-bit) and its torrent maker (`TorrentBuilder`) install their own
+  SIGSEGV/SIGBUS handler for the whole process; a JVM then dies now and then (exit 139, no hs_err, `si_code` −6):
+  sessions start with `TorrentEngine.plainDisk` (posix I/O) and the test writes its .torrent by hand.
+  (4) A piece is checked against the torrent's SHA-1 in the file before the player gets it (`inFile`); a piece
+  shared with a neighbouring file waits 1.5 s instead. (5) Public trackers are added to every link
+  (`PUBLIC_TRACKERS`) and passed on at a restart. (6) The Android natives are built for API 28: Android 7–8.1 may
+  fail to load them (shown as "This device can't play torrent links").
+  CI helpers: `[only app.falak.player.torrent.*]` in a commit's first line runs just those tests (2 min, the engine
+  test six times over); a native crash leaves `crash-gdb.txt` on the screenshots branch. The same steps can be
+  tried on the sandbox with `pip download libtorrent` (the same core, Python).
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on
