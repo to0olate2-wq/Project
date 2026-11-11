@@ -340,7 +340,18 @@ abstract class ScreenshotBase {
         }
         val root = activity.window.decorView
         val bmp = Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-        root.draw(Canvas(bmp))
+        val canvas = Canvas(bmp)
+        root.draw(canvas)
+        // A window open over the page (Compose dialogs are windows of their own): dimmed page, window centred.
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val dv = dialog?.takeIf { it.isShowing }?.window?.decorView
+        if (dv != null && dv.width > 0 && dv.height > 0) {
+            canvas.drawColor(0x99000000.toInt())
+            canvas.save()
+            canvas.translate((root.width - dv.width) / 2f, (root.height - dv.height) / 2f)
+            dv.draw(canvas)
+            canvas.restore()
+        }
         val dir = File(System.getProperty("screens.dir") ?: "build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }

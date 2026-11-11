@@ -100,6 +100,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.falak.player.data.Addons
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Playlist
@@ -607,7 +608,11 @@ private fun UpdateDialogs(vm: LibraryViewModel) {
 
 @Composable
 private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
-    var adding by remember { mutableStateOf(state.playlists.isEmpty()) }
+    val addonLinks = if (Addons.enabled) state.settings.addons else emptyList()
+    var adding by remember { mutableStateOf(state.playlists.isEmpty() && addonLinks.isEmpty()) }
+    LaunchedEffect(addAddonForTest) { if (addAddonForTest) adding = true }
+    var addonToRemove by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(addonLinks) { vm.addons.readNames(addonLinks) }
     var toDelete by remember { mutableStateOf<Playlist?>(null) }
     var toRename by remember { mutableStateOf<Playlist?>(null) }
     // Combining playlists: a new combined one (true), or one being edited.
@@ -659,9 +664,14 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
         }
         Spacer(Modifier.height(10.dp))
         Rule()
-        if (state.playlists.isEmpty()) {
+        if (state.playlists.isEmpty() && addonLinks.isEmpty()) {
             Text(
-                "Add your provider's M3U link, an M3U file, or your Xtream login to begin. The Player doesn't come with any channels.",
+                if (Addons.enabled) {
+                    "Add your provider's M3U link, an M3U file, your Xtream login or an add-on to begin. " +
+                        "The Player doesn't come with any channels."
+                } else {
+                    "Add your provider's M3U link, an M3U file, or your Xtream login to begin. The Player doesn't come with any channels."
+                },
                 fontFamily = Sans,
                 fontSize = 14.sp, lineHeight = 20.sp,
                 color = Muted,
@@ -728,6 +738,56 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                 }
                 Rule()
             }
+            // Add-ons (GitHub version): added with the playlists, opened on the Add-ons page.
+            if (addonLinks.isNotEmpty()) {
+                item(key = "__addons") {
+                    Column(Modifier.padding(top = 26.dp)) {
+                        Kicker("Your add-ons", color = Muted)
+                        Spacer(Modifier.height(10.dp))
+                        Rule()
+                    }
+                }
+                items(addonLinks, key = { "addon|$it" }) { link ->
+                    val a = vm.addons.known[link]
+                    val shape = RoundedCornerShape(8.dp)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .animateItem()
+                            .focusRing(shape)
+                            .clip(shape)
+                            .clickable {
+                                vm.addons.returnTo = Screen.PLAYLISTS
+                                vm.screen = Screen.ADDONS
+                            }
+                            .padding(vertical = 16.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "ADD-ON",
+                            style = Tabular.copy(fontSize = 11.sp, letterSpacing = 1.2.sp),
+                            color = Faint,
+                            maxLines = 1,
+                            modifier = Modifier.width(84.dp),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(a?.name ?: hostOf(link), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper, maxLines = 1)
+                            Text(
+                                addonLine(a, link),
+                                fontFamily = Sans,
+                                fontSize = 12.sp,
+                                color = Muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(onClick = { addonToRemove = link }) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = Faint)
+                        }
+                    }
+                    Rule()
+                }
+            }
             item(key = "__credit") {
                 Text(
                     "Made by Ahmed",
@@ -745,7 +805,15 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     // Combining needs two playlists of your own (not combined ones).
     val canCombine = state.playlists.count { !it.isCombined } >= 2
     if (adding) {
-        AddPlaylistDialog(vm, onCombine = if (canCombine) ({ adding = false; combiningNew = true }) else null) { adding = false }
+        AddPlaylistDialog(
+            vm,
+            addonLinks,
+            onCombine = if (canCombine) ({ adding = false; combiningNew = true }) else null,
+            startWithAddon = addAddonForTest,
+        ) { adding = false }
+    }
+    addonToRemove?.let { link ->
+        RemoveAddonDialog(vm.addons.known[link]?.name ?: hostOf(link), onRemove = { vm.removeAddon(link) }) { addonToRemove = null }
     }
     if (combiningNew) CombineDialog(vm, state, null) { combiningNew = false }
     combineEdit?.let { p -> CombineDialog(vm, state, p) { combineEdit = null } }
@@ -832,8 +900,16 @@ private fun CombineDialog(vm: LibraryViewModel, state: AppState, existing: Playl
 }
 
 @Composable
-private fun AddPlaylistDialog(vm: LibraryViewModel, onCombine: (() -> Unit)? = null, onClose: () -> Unit) {
+private fun AddPlaylistDialog(
+    vm: LibraryViewModel,
+    addonLinks: List<String>,
+    onCombine: (() -> Unit)? = null,
+    startWithAddon: Boolean = false,
+    onClose: () -> Unit,
+) {
     var type by remember { mutableStateOf(SourceType.M3U_URL) }
+    // The fourth choice (GitHub version): an add-on, added with just its link.
+    var addon by remember { mutableStateOf(startWithAddon && Addons.enabled) }
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
@@ -848,6 +924,26 @@ private fun AddPlaylistDialog(vm: LibraryViewModel, onCombine: (() -> Unit)? = n
         if (picked != null) file = picked
     }
 
+    if (addon) {
+        AddAddonDialog(
+            vm.addons,
+            already = addonLinks,
+            onAdd = { a ->
+                vm.addAddon(a)
+                onClose()
+            },
+            onDismiss = onClose,
+            kinds = {
+                SourceKinds(null) { t ->
+                    if (t != null) {
+                        type = t
+                        addon = false
+                    }
+                }
+            },
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = { if (!busy) onClose() },
         title = { Text("Add playlist") },
@@ -856,18 +952,13 @@ private fun AddPlaylistDialog(vm: LibraryViewModel, onCombine: (() -> Unit)? = n
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(
-                        SourceType.M3U_URL to "M3U link",
-                        SourceType.M3U_FILE to "M3U file",
-                        SourceType.XTREAM to "Xtream",
-                    ).forEach { (t, label) ->
-                        FilterChip(
-                            selected = type == t,
-                            onClick = { type = t; error = null },
-                            label = { Text(label) },
-                        )
+                SourceKinds(type) { t ->
+                    if (t == null) {
+                        addon = true
+                    } else {
+                        type = t
                     }
+                    error = null
                 }
                 // Two or more playlists already: put them together in one list.
                 if (onCombine != null) {
@@ -918,6 +1009,44 @@ private fun AddPlaylistDialog(vm: LibraryViewModel, onCombine: (() -> Unit)? = n
         dismissButton = { TextButton(enabled = !busy, onClick = onClose) { Text("Cancel") } },
     )
 }
+
+/** The Add window's choices: M3U link, M3U file, Xtream and (GitHub version) Add-on, which is null. */
+@Composable
+private fun SourceKinds(selected: SourceType?, onPick: (SourceType?) -> Unit) {
+    ChipFlow {
+        listOf(
+            SourceType.M3U_URL to "M3U link",
+            SourceType.M3U_FILE to "M3U file",
+            SourceType.XTREAM to "Xtream",
+        ).forEach { (t, label) ->
+            FilterChip(selected = selected == t, onClick = { onPick(t) }, label = { Text(label) })
+        }
+        if (Addons.enabled) {
+            FilterChip(selected = selected == null, onClick = { onPick(null) }, label = { Text("Add-on") })
+        }
+    }
+}
+
+/** Removing an add-on (from the Playlists page or Settings → Playlists). */
+@Composable
+internal fun RemoveAddonDialog(name: String, onRemove: () -> Unit, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Remove $name?") },
+        text = { Text("Its films and series won't show any more, on your linked devices too. You can add it again with its link.") },
+        confirmButton = {
+            TextButton(onClick = {
+                onRemove()
+                onClose()
+            }) { Text("Remove") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
+}
+
+/** Screen tests: the Playlists page opens the Add window on its Add-on choice. */
+@androidx.annotation.VisibleForTesting
+internal var addAddonForTest by mutableStateOf(false)
 
 @Composable
 private fun Field(

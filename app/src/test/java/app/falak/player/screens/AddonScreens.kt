@@ -11,6 +11,8 @@ import app.falak.player.data.AddonVideo
 import app.falak.player.data.Addons
 import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.Screen
+import app.falak.player.ui.SettingsPage
+import app.falak.player.ui.addAddonForTest
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -76,6 +78,21 @@ abstract class AddonShots : ScreenshotBase() {
         addons.showForTest(listOf(addon), rows)
         screen = Screen.ADDONS
     }
+
+    /** A second add-on, for the lists of add-ons (Playlists page, Settings). */
+    protected val oldTv = addon.copy(
+        url = "https://oldtv.example.net/abc123",
+        id = "org.example.oldtv",
+        name = "Old TV",
+        description = "Series from the fifties",
+        types = listOf("series", "tv"),
+        catalogs = emptyList(),
+    )
+
+    protected fun LibraryViewModel.showTwoAddons() {
+        updateSettings { it.copy(addons = listOf(base, oldTv.url)) }
+        addons.showForTest(listOf(addon, oldTv), rows)
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -130,6 +147,49 @@ class TvAddonScreens : AddonShots() {
             check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("tv-92-addon-film")
+            // Added with the playlists: listed under them.
+            vm.addons.closeItem()
+            vm.showTwoAddons()
+            vm.screen = Screen.PLAYLISTS
+            shoot("tv-93-playlists-addons")
+        } finally {
+            Addons.enabledForTest = false
+        }
+    }
+}
+
+// The Playlists page: add-ons listed under the playlists, and the Add window on its Add-on choice.
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhonePlaylistsAddonScreens : AddonShots() {
+    @Test @Config(qualifiers = ScreenshotBase.PHONE)
+    fun phonePlaylistsAddons() = mainScreens("phone") { vm, shoot ->
+        Addons.enabledForTest = true
+        try {
+            vm.showTwoAddons()
+            vm.screen = Screen.PLAYLISTS
+            shoot("phone-95-playlists-addons")
+            addAddonForTest = true
+            shoot("phone-96-add-addon")
+        } finally {
+            addAddonForTest = false
+            Addons.enabledForTest = false
+        }
+    }
+}
+
+// Settings → Playlists: the Add-ons part (tall, so the whole page shows).
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSettingsAddonScreens : AddonShots() {
+    @Test @Config(qualifiers = ScreenshotBase.PHONE_TALL)
+    fun phoneSettingsAddons() = mainScreens("phone") { vm, shoot ->
+        Addons.enabledForTest = true
+        try {
+            vm.showTwoAddons()
+            vm.screen = Screen.SETTINGS
+            vm.settingsPage = SettingsPage.PLAYLISTS
+            shoot("phone-97-settings-addons")
         } finally {
             Addons.enabledForTest = false
         }

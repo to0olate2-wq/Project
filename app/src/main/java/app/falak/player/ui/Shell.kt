@@ -155,7 +155,7 @@ private fun ShellRail(vm: LibraryViewModel, state: AppState, modifier: Modifier)
         recordingNow = recordingNow,
         // Add-ons: GitHub version only, never in the Kids profile.
         onAddons = if (Addons.enabled && !vm.kidsActive) ({
-            vm.addons.fromSettings = false
+            vm.addons.returnTo = null
             vm.screen = Screen.ADDONS
         }) else null,
         addonsOpen = screen == Screen.ADDONS,
@@ -311,7 +311,7 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
             if (Addons.enabled) {
                 item(key = "addons") {
                     MoreRow(painterResource(R.drawable.ic_nav_addons), "Add-ons", count = state.settings.addons.size.takeIf { it > 0 }) {
-                        vm.addons.fromSettings = false
+                        vm.addons.returnTo = null
                         open(Screen.ADDONS)
                     }
                 }

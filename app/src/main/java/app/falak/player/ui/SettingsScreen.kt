@@ -130,6 +130,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var editSubs by remember { mutableStateOf(false) }
     var removeSpeech by remember { mutableStateOf(false) }
     var serviceReport by remember { mutableStateOf(false) }
+    // Add-ons (GitHub version), with the playlists: adding one, and the one being removed.
+    var addingAddon by remember { mutableStateOf(false) }
+    var addonToRemove by remember { mutableStateOf<String?>(null) }
     var addAlertWord by remember { mutableStateOf(false) }
     var homeRowsOpen by remember { mutableStateOf(false) }
     var remoteButtonsOpen by remember { mutableStateOf(false) }
@@ -324,7 +327,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     { HubIcon(painterResource(R.drawable.ic_nav_playlists)) },
                     "Playlists & TV guide",
                     "Refresh $refresh · What's new alerts ${if (s.notifyNew) "on" else "off"}" +
-                        if (p != null && p.epgShiftMinutes != 0) " · Guide ${formatShift(p.epgShiftMinutes)}" else "",
+                        (if (p != null && p.epgShiftMinutes != 0) " · Guide ${formatShift(p.epgShiftMinutes)}" else "") +
+                        when {
+                            !Addons.enabled || vm.kidsActive || s.addons.isEmpty() -> ""
+                            s.addons.size == 1 -> " · 1 add-on"
+                            else -> " · ${s.addons.size} add-ons"
+                        },
                     hubAt(SettingsPage.PLAYLISTS.name),
                     selected = twoPane && (page == SettingsPage.PLAYLISTS || page?.parent == SettingsPage.PLAYLISTS),
                 ) { openPage(SettingsPage.PLAYLISTS) }
@@ -986,6 +994,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        // Add-ons (GitHub version, not in the Kids profile): with the playlists, as on the Playlists page.
+        if (Addons.enabled && !vm.kidsActive) {
+            item {
+                SectionTitle("Add-ons")
+                LaunchedEffect(s.addons) { vm.addons.readNames(s.addons) }
+            }
+            items(s.addons, key = { "addon|$it" }) { link ->
+                val a = vm.addons.known[link]
+                ClickRow(a?.name ?: hostOf(link), addonLine(a, link) + " · Select to remove") { addonToRemove = link }
+            }
+            item {
+                ClickRow(
+                    "Add an add-on",
+                    "Films and series from Stremio-style add-ons. Find them on the Add-ons page (More, or the side menu).",
+                    focusAt("addons"),
+                ) { addingAddon = true }
+            }
+        }
+
         item { SectionTitle("TV guide") }
         if (p == null) {
             item { Note("Open a playlist to choose where its TV guide comes from.") }
@@ -1187,26 +1214,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 focusAt("remote"),
                 arrow = true,
             ) { go("remote") { vm.screen = Screen.REMOTE } }
-        }
-        // Stremio-style add-ons: GitHub version only, not in the Kids profile.
-        if (Addons.enabled && !vm.kidsActive) {
-            item {
-                ClickRow(
-                    "Add-ons",
-                    when (s.addons.size) {
-                        0 -> "Films and series from Stremio-style add-ons you add"
-                        1 -> "1 add-on"
-                        else -> "${s.addons.size} add-ons"
-                    },
-                    focusAt("addons"),
-                    arrow = true,
-                ) {
-                    go("addons") {
-                        vm.addons.fromSettings = true
-                        vm.screen = Screen.ADDONS
-                    }
-                }
-            }
         }
         if (tvLayout) {
             item {
@@ -1442,6 +1449,20 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     }
     if (serviceReport && p != null) {
         ServiceReportDialog(p) { serviceReport = false }
+    }
+    if (addingAddon) {
+        AddAddonDialog(
+            vm.addons,
+            already = s.addons,
+            onAdd = { a ->
+                vm.addAddon(a)
+                addingAddon = false
+            },
+            onDismiss = { addingAddon = false },
+        )
+    }
+    addonToRemove?.let { link ->
+        RemoveAddonDialog(vm.addons.known[link]?.name ?: hostOf(link), onRemove = { vm.removeAddon(link) }) { addonToRemove = null }
     }
     if (removeSpeech) {
         val context = androidx.compose.ui.platform.LocalContext.current
