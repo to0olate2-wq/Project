@@ -81,7 +81,11 @@ class TorrentEngineTest {
     fun fetchesAFilmFromALinkAndFeedsThePlayer() {
         assumeTrue("Runs on the build machine (Linux)", linux)
         assertTrue("libtorrent4j's Linux library is on the test classpath", loadNative())
+        // (Several times over when hunting something that only happens now and then: see build.yml.)
+        repeat(System.getenv("TORRENT_TEST_REPEAT")?.toIntOrNull() ?: 1) { once() }
+    }
 
+    private fun once() {
         val root = Files.createTempDirectory("torrent-test").toFile()
         val seedDir = File(root, "seed").apply { mkdirs() }
         val folder = File(seedDir, "Film.2024.1080p").apply { mkdirs() }
@@ -141,6 +145,9 @@ class TorrentEngineTest {
             // Asked for by name (a season pack names the episode's file).
             val sample = engine.open(TorrentSource(hash, fileName = "sample.mkv"), timeoutMs = 60_000, peer = TcpEndpoint("127.0.0.1", 46881))
             assertEquals("sample.mkv", sample.name)
+            TorrentServer(sample).use { server ->
+                assertArrayEquals("a small file plays too", ByteArray(300_000) { 1 }, get(server.url, null))
+            }
             engine.close(sample)
         } finally {
             engine.stop()

@@ -197,6 +197,7 @@ jobs:
           chmod +x gradlew
           # A quick run of some tests only: "[only app.falak.player.torrent.*]" in the commit's first line.
           only=$(git log -1 --format=%s | sed -n 's/.*\[only \([^]]*\)\].*/\1/p')
+          if [ -n "$only" ]; then export TORRENT_TEST_REPEAT=6; fi
           ./gradlew testPlayDebugUnitTest ${only:+--tests "$only"} --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
       # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".

@@ -283,7 +283,8 @@ class TorrentFile internal constructor(
     private var playing = -1
 
     init {
-        if (budget < MIN_AHEAD + TAIL + 1) {
+        // (A small file, or one in big pieces, has fewer pieces than that: all of it fitting is enough.)
+        if (budget < minOf(pieces, MIN_AHEAD + TAIL + 1)) {
             throw TorrentException("Not enough free space to play this film: about ${(pieceLength * (MIN_AHEAD + TAIL + 2) shr 20) + 1} MB are needed.")
         }
     }
