@@ -419,7 +419,7 @@ fun MarqueeBrowse(
         }
         if (continueOfKind.isNotEmpty()) {
             item(key = "continue") {
-                Box(Modifier.padding(top = if (tv) 2.dp else 16.dp)) {
+                Box(Modifier.padding(top = if (tv) 10.dp else 16.dp)) {
                     ContinueRow(
                         continueOfKind, vm.heroArt, state.progress, me,
                         title = "Continue watching",
