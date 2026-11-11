@@ -19,6 +19,7 @@ class TorrentServerTest {
         override val name = "Film.Name.2024.mkv"
         override val size = data.size.toLong()
         override val path: File = File.createTempFile("film", ".mkv").apply { deleteOnExit() }
+        override val generation = 0
         private val have = BooleanArray(data.size / pieceSize)
 
         @Volatile
@@ -49,7 +50,7 @@ class TorrentServerTest {
             return end - offset
         }
 
-        override fun want(offset: Long) {
+        override fun want(offset: Long, waiting: Boolean) {
             wanted = (offset / pieceSize).toInt()
         }
     }

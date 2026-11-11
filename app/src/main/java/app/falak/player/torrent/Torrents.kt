@@ -38,8 +38,13 @@ object Torrents {
         val note: String = "",
         val name: String = "",
         val size: Long = 0,
+        /** People connected to now, and people known to share it. */
         val peers: Int = 0,
+        val found: Int = 0,
         val bytesPerSecond: Int = 0,
+        /** How much of the film is on the device now, and how much the player has taken (READY). */
+        val keptBytes: Long = 0,
+        val playedBytes: Long = 0,
         /** 0–1 of the start of the film that has to be here before it plays. */
         val progress: Float = 0f,
         /** READY: the link the player opens. */
@@ -62,12 +67,16 @@ object Torrents {
 
     fun keyOf(source: TorrentSource): String = source.infoHash + "#" + (source.fileIdx ?: source.fileName)
 
-    private fun dir(context: Context): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "torrents")
+    /** In the app's own storage (a real disk: what libtorrent writes there can be read back at once). */
+    private fun dir(context: Context): File = File(context.filesDir, "torrents")
 
-    /** At app start: whatever a crash or a kill left behind. */
+    /** At app start: whatever a crash or a kill left behind (8.16 kept it in the shared storage). */
     fun clearLeftovers(context: Context) {
         val app = context.applicationContext
-        scope.launch { runCatching { dir(app).deleteRecursively() } }
+        scope.launch {
+            runCatching { dir(app).deleteRecursively() }
+            runCatching { app.getExternalFilesDir(null)?.let { File(it, "torrents").deleteRecursively() } }
+        }
     }
 
     /** Gets [source] ready to play (the same link again, still here: ready at once). */
@@ -88,26 +97,48 @@ object Torrents {
                     it.start()
                     engine = it
                 }
-                val f = e.open(source, cancelled = { !me.isActive }) { note -> state.value = state.value.copy(note = note) }
+                // A stream, not a download: only some of the film is on the device at a time, so one
+                // bigger than the free space plays too. This much of it at most:
+                val room = (folder.usableSpace - RESERVE).coerceAtMost(MAX_KEPT)
+                val f = e.open(source, maxBytes = room, cancelled = { !me.isActive }) { note, found, connected ->
+                    state.value = state.value.copy(note = note, found = found, peers = connected)
+                }
                 file = f
                 ensureActive()
-                val free = folder.usableSpace
-                if (free < f.size + RESERVE) {
-                    throw TorrentException("Not enough free space: this film is ${gb(f.size)} and this device has ${gb(free)} free.")
-                }
                 state.value = State(Stage.BUFFERING, key, name = f.name, size = f.size)
                 var quiet = 0
-                while (!f.readyToPlay()) {
+                var startAt = 0L
+                while (true) {
                     ensureActive()
                     val s = f.stats()
-                    state.value = state.value.copy(peers = s.peers, bytesPerSecond = s.bytesPerSecond, progress = f.startProgress())
+                    state.value = state.value.copy(
+                        peers = s.peers, found = s.found, bytesPerSecond = s.bytesPerSecond, keptBytes = s.keptBytes, progress = f.startProgress(),
+                    )
+                    if (f.startReady()) {
+                        // The end too, where many films keep their index; not waited for long.
+                        if (startAt == 0L) startAt = System.nanoTime()
+                        if (f.endReady() || System.nanoTime() - startAt > END_WAIT_NS) break
+                    }
                     quiet = if (s.bytesPerSecond == 0) quiet + 1 else 0
-                    if (quiet > QUIET_TICKS) throw TorrentException("Nobody is sharing this link right now. Try another one.")
+                    if (quiet > QUIET_TICKS) {
+                        throw TorrentException(
+                            if (s.peers == 0) "Nobody sharing this link could be reached. Try another one."
+                            else "The ${s.peers} people sharing this link aren't sending anything. Try another one.",
+                        )
+                    }
                     delay(TICK_MS)
                 }
                 val srv = TorrentServer(f)
                 server = srv
                 state.value = state.value.copy(stage = Stage.READY, progress = 1f, url = srv.url)
+                // While it plays: how it is going (shown on the film's page; it also tells where a film is stuck).
+                while (true) {
+                    delay(1_000)
+                    val s = f.stats()
+                    state.value = state.value.copy(
+                        peers = s.peers, found = s.found, bytesPerSecond = s.bytesPerSecond, keptBytes = s.keptBytes, playedBytes = srv.served.get(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -159,9 +190,12 @@ object Torrents {
         else -> "${bytesPerSecond / 1000} kB/s"
     }
 
+    /** Free space never touched, and the most of a film kept on the device at a time. */
     private const val RESERVE = 300L * 1024 * 1024
+    private const val MAX_KEPT = 6L * 1024 * 1024 * 1024
     private const val TICK_MS = 500L
 
-    /** Two minutes with nothing arriving. */
-    private const val QUIET_TICKS = 240
+    /** A minute and a half with nothing arriving. */
+    private const val QUIET_TICKS = 180
+    private const val END_WAIT_NS = 6_000_000_000L
 }

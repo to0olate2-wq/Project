@@ -443,6 +443,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.linkItems(st: AddonSt
     }
     // Torrent links play in the GitHub version (8.16); elsewhere they are counted and left out.
     val torrents = if (Torrents.available) st.torrentLinks.take(MAX_TORRENT_LINKS) else emptyList()
+    if (Torrents.available) item(key = "torrent-now") { TorrentNow() }
     if (st.playable.isEmpty() && torrents.isEmpty()) item(key = "links-none") { Note("No links that play in the app.") }
     items(st.playable, key = { "s:" + it.url }) { s -> StreamRow(s) { onPlay(s) } }
     items(torrents, key = { "t:" + it.addonName + Torrents.keyOf(it.torrent!!) }) { s -> StreamRow(s) { onPlay(s) } }
@@ -452,6 +453,25 @@ private fun androidx.compose.foundation.lazy.LazyListScope.linkItems(st: AddonSt
         st.failed.takeIf { it.isNotEmpty() }?.let { "Didn't answer: ${it.joinToString(", ")}." },
     )
     if (left.isNotEmpty()) item(key = "links-left") { Note(left.joinToString("\n")) }
+}
+
+/**
+ * While a torrent is playing (or was, and is still here): how it is going. Back from the player
+ * with a film that wouldn't start, this line says which side is stuck.
+ */
+@Composable
+private fun TorrentNow() {
+    val st by Torrents.state.collectAsStateWithLifecycle()
+    if (st.stage != Torrents.Stage.READY) return
+    Text(
+        "Torrent: connected to ${st.peers} of ${maxOf(st.found, st.peers)} people  ·  ${Torrents.speed(st.bytesPerSecond)}  ·  " +
+            "${Torrents.gb(st.keptBytes)} here  ·  the player took ${Torrents.gb(st.playedBytes)}",
+        fontFamily = Sans,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        color = Muted,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+    )
 }
 
 /** No more torrent links than this in one list (an add-on can send hundreds). */
@@ -483,7 +503,7 @@ private fun TorrentWindow(s: AddonStream, onReady: (String) -> Unit, onCancel: (
                         Text(
                             listOf(
                                 Torrents.gb(st.size),
-                                if (st.peers == 1) "1 person sharing" else "${st.peers} people sharing",
+                                "connected to ${st.peers} of ${maxOf(st.found, st.peers)} people",
                                 Torrents.speed(st.bytesPerSecond),
                             ).joinToString("  ·  "),
                             fontFamily = Sans,
@@ -498,12 +518,23 @@ private fun TorrentWindow(s: AddonStream, onReady: (String) -> Unit, onCancel: (
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    else -> Text(if (mine) st.note.ifBlank { "Starting…" } else "Starting…")
+                    else -> {
+                        Text(if (mine) st.note.ifBlank { "Starting…" } else "Starting…")
+                        if (mine && st.found > 0) {
+                            Spacer(Modifier.size(6.dp))
+                            Text(
+                                "Found ${st.found} ${if (st.found == 1) "person" else "people"}, connected to ${st.peers}.",
+                                fontFamily = Sans,
+                                fontSize = 13.sp,
+                                color = Muted,
+                            )
+                        }
+                    }
                 }
                 if (!failed) {
                     Spacer(Modifier.size(14.dp))
                     Text(
-                        "It starts by itself. While it plays, parts of the film are also shared with other people, as torrents do.",
+                        "It starts by itself, and only the part you are watching is fetched. While it plays, parts of the film are also shared with other people, as torrents do.",
                         fontFamily = Sans,
                         fontSize = 12.sp,
                         lineHeight = 16.sp,

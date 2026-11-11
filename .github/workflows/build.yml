@@ -195,7 +195,15 @@ jobs:
         timeout-minutes: 32
         run: |
           chmod +x gradlew
-          ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
+          # A quick run of some tests only: "[only app.falak.player.torrent.*]" in the commit's first line.
+          only=$(git log -1 --format=%s | sed -n 's/.*\[only \([^]]*\)\].*/\1/p')
+          if [ -n "$only" ]; then
+            export TORRENT_TEST_REPEAT=6
+            # A crash in native code leaves its memory behind, for gdb to say where (below).
+            sudo sysctl -q -w kernel.core_pattern=/tmp/core.%p || true
+            ulimit -c unlimited || true
+          fi
+          ./gradlew testPlayDebugUnitTest ${only:+--tests "$only"} --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
       # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".
       - name: Publish to the screenshots branch
@@ -210,6 +218,16 @@ jobs:
           # Compile errors first, then the end of the run (the last test started is the one that stuck).
           { grep -E "^e: |^w: .*screens" screens.log | head -40; echo "----- last lines -----"; grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | tail -120; } > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
+          # A test that crashed in native code (the torrent library): where, from Java's own crash report.
+          find . /tmp -maxdepth 4 -name "hs_err_pid*.log" 2>/dev/null | head -3 | while read -r f; do head -150 "$f" > "/tmp/screens/crash-$(basename "$f" .log).txt"; done || true
+          grep -n -B2 -A12 "^# \|fatal error\|exit value 13" screens.log | head -120 > /tmp/screens/crash-log.txt || true
+          [ -s /tmp/screens/crash-log.txt ] || rm -f /tmp/screens/crash-log.txt
+          core=$(ls /tmp/core.* 2>/dev/null | head -1)
+          if [ -n "$core" ]; then
+            which gdb >/dev/null 2>&1 || sudo apt-get install -y -q gdb >/dev/null 2>&1 || true
+            java=$(file "$core" | sed -n "s/.*execfn: '\([^']*\)'.*/\1/p")
+            { ls -la /tmp/core.*; echo "java: $java"; gdb -batch -ex "p \$_siginfo.si_signo" -ex "p \$_siginfo.si_code" -ex "p \$_siginfo._sifields" -ex "info registers rip rsp rax" -ex "x/6i \$pc" -ex "x/48ga \$sp" -ex "bt 40" -ex "info sharedlibrary" -ex "thread apply all bt 12" "${java:-java}" "$core" 2>&1 | grep -v "^\[New LWP\|^warning" | head -500; } > /tmp/screens/crash-gdb.txt || true
+          fi
           cd /tmp/screens
           git init -q
           git checkout -q -b "$TARGET"

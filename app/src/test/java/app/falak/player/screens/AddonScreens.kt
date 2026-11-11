@@ -223,7 +223,7 @@ class PhoneTorrentScreens : AddonShots() {
             shoot("phone-98-addon-torrent-links")
             Torrents.state.value = Torrents.State(
                 Torrents.Stage.BUFFERING, Torrents.keyOf(big),
-                name = "Charade.1963.2160p.HDR.mkv", size = 15_200_000_000L, peers = 45, bytesPerSecond = 2_400_000, progress = 0.6f,
+                name = "Charade.1963.2160p.HDR.mkv", size = 15_200_000_000L, peers = 45, found = 120, bytesPerSecond = 2_400_000, progress = 0.6f,
             )
             vm.addons.showPreparingForTest(links.torrentLinks[0])
             shoot("phone-99-torrent-getting-ready")
