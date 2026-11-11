@@ -13,7 +13,6 @@ import org.junit.Test
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.SettingsPack
 import org.libtorrent4j.TcpEndpoint
-import org.libtorrent4j.TorrentBuilder
 import org.libtorrent4j.TorrentInfo
 
 /**
@@ -84,6 +83,40 @@ class TorrentEngineTest {
         repeat(System.getenv("TORRENT_TEST_REPEAT")?.toIntOrNull() ?: 1) { once() }
     }
 
+    /**
+     * A .torrent of [names] in [folder], written out here. (The library's own maker reads the files
+     * mapped into memory, and with that takes over the process's SIGSEGV handler, which Java needs:
+     * the test's JVM then died now and then, exit 139 with no report. The app never makes torrents.)
+     */
+    private fun torrentOf(folder: File, names: List<String>, pieceLength: Int): ByteArray {
+        val all = java.io.ByteArrayOutputStream()
+        names.forEach { all.write(File(folder, it).readBytes()) }
+        val bytes = all.toByteArray()
+        val sha = java.security.MessageDigest.getInstance("SHA-1")
+        val pieces = java.io.ByteArrayOutputStream()
+        var at = 0
+        while (at < bytes.size) {
+            val n = minOf(pieceLength, bytes.size - at)
+            sha.update(bytes, at, n)
+            pieces.write(sha.digest())
+            at += n
+        }
+        val out = java.io.ByteArrayOutputStream()
+        fun text(t: String) = out.write("${t.toByteArray().size}:$t".toByteArray())
+        out.write("d4:infod5:filesl".toByteArray())
+        for (name in names) {
+            out.write("d6:lengthi${File(folder, name).length()}e4:pathl".toByteArray())
+            text(name)
+            out.write("ee".toByteArray())
+        }
+        out.write("e4:name".toByteArray())
+        text(folder.name)
+        out.write("12:piece lengthi${pieceLength}e6:pieces${pieces.size()}:".toByteArray())
+        out.write(pieces.toByteArray())
+        out.write("ee".toByteArray())
+        return out.toByteArray()
+    }
+
     private fun once() {
         val root = Files.createTempDirectory("torrent-test").toFile()
         val seedDir = File(root, "seed").apply { mkdirs() }
@@ -93,7 +126,7 @@ class TorrentEngineTest {
         File(folder, "Film.2024.1080p.mkv").writeBytes(data)
         File(folder, "sample.mkv").writeBytes(ByteArray(300_000) { 1 })
         File(folder, "readme.txt").writeText("hello")
-        val info = TorrentInfo.bdecode(TorrentBuilder().path(folder).pieceSize(64 * 1024).flags(TorrentBuilder.V1_ONLY).generate().entry().bencode())
+        val info = TorrentInfo.bdecode(torrentOf(folder, listOf("readme.txt", "Film.2024.1080p.mkv", "sample.mkv"), 64 * 1024))
 
         val seeder = SessionManager(false)
         val engine = TorrentEngine(File(root, "fetched"))
