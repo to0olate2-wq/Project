@@ -24,7 +24,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 
 /**
- * The Add-ons page (8.12, GitHub version only): the add-ons added in Settings → their lists of
+ * The Add-ons page (8.12, GitHub version only): the add-ons added (with the playlists) → their lists of
  * films and series, a search across them, a title's details (seasons and episodes) and its links.
  * Kept while the page is away, like the lists.
  */
@@ -56,8 +56,33 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
     var searching by mutableStateOf(false)
         private set
 
-    /** Opened from Settings: Back goes back there. */
-    var fromSettings = false
+    /** The page it was opened from when that isn't the lists (the Playlists page): Back goes back there. */
+    var returnTo: Screen? = null
+
+    /**
+     * Add-ons read so far, by link: their names for the Playlists page and Settings. Those only read
+     * the add-on itself ([readNames]), not its lists.
+     */
+    val known = mutableStateMapOf<String, Addon>()
+    private val naming = mutableSetOf<String>()
+
+    /** Reads the add-ons not known yet (just each add-on's own description, once). */
+    fun readNames(links: List<String>) {
+        for (l in links) {
+            if (l in known || !naming.add(l)) continue
+            scope.launch {
+                try {
+                    known[l] = client.manifest(l)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Shown by its address; the Add-ons page says why when it's opened.
+                } finally {
+                    naming.remove(l)
+                }
+            }
+        }
+    }
 
     // The title open.
     var open by mutableStateOf<AddonItem?>(null)
@@ -103,6 +128,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
             loading = true
             val got = links.map { l -> async { l to runCatching { client.manifest(l) } } }.awaitAll()
             addons = got.mapNotNull { it.second.getOrNull() }
+            for (a in addons) known[a.url] = a
             broken = got.filter { it.second.isFailure }.associate { (l, r) -> l to reason(r.exceptionOrNull()) }
             loading = false
             for (r in rowsToShow()) {
@@ -239,6 +265,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
     ) {
         loadJob?.cancel()
         this.addons = addons
+        for (a in addons) known[a.url] = a
         this.broken = emptyMap()
         this.loading = false
         this.rows.clear()

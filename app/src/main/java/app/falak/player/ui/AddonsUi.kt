@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
@@ -74,22 +75,14 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val links = state.settings.addons
     androidx.compose.runtime.LaunchedEffect(links) { m.load(links) }
     var adding by remember { mutableStateOf(false) }
-    var managing by remember { mutableStateOf(false) }
     val leave = {
-        if (m.fromSettings) {
-            m.fromSettings = false
-            vm.screen = Screen.SETTINGS
-        } else {
-            vm.closePage()
-        }
+        val back = m.returnTo
+        m.returnTo = null
+        if (back != null) vm.screen = back else vm.closePage()
     }
     val open = m.open
     BackHandler {
-        when {
-            m.open != null -> { m.closeItem() }
-            managing -> { managing = false }
-            else -> { leave() }
-        }
+        if (m.open != null) m.closeItem() else leave()
     }
     val play = { s: AddonStream ->
         val ch = m.channelFor(s)
@@ -108,17 +101,14 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     else -> m.addons.joinToString(" · ") { it.name }.ifBlank { null }
                 },
             )
-            ChipFlow(Modifier.padding(bottom = 8.dp)) {
-                TagChip("+ Add an add-on", false) { adding = true }
-                if (links.isNotEmpty()) {
-                    TagChip(if (managing) "✓ Your add-ons (${links.size})" else "Your add-ons (${links.size})", managing) { managing = !managing }
-                    if (!managing) TagChip("Reload", false) { m.load(links, force = true) }
+            // Adding and removing add-ons is with the playlists (the Playlists page, Settings → Playlists).
+            if (links.isEmpty()) {
+                AddonsIntro { adding = true }
+            } else {
+                ChipFlow(Modifier.padding(bottom = 8.dp)) {
+                    TagChip("Reload", false) { m.load(links, force = true) }
                 }
-            }
-            when {
-                links.isEmpty() -> AddonsIntro()
-                managing -> AddonsManage(vm, m, links)
-                else -> AddonsBrowse(m)
+                AddonsBrowse(m)
             }
         }
     }
@@ -127,20 +117,45 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             m,
             already = links,
             onAdd = { a ->
-                vm.updateSettings { s -> if (a.url in s.addons) s else s.copy(addons = s.addons + a.url) }
+                vm.addAddon(a)
                 adding = false
-                managing = false
             },
             onDismiss = { adding = false },
         )
     }
 }
 
+/** Adds an add-on checked by [AddAddonDialog] (it reaches linked devices with the settings). */
+internal fun LibraryViewModel.addAddon(a: Addon) {
+    addons.known[a.url] = a
+    updateSettings { s -> if (a.url in s.addons) s else s.copy(addons = s.addons + a.url) }
+}
+
+internal fun LibraryViewModel.removeAddon(link: String) {
+    updateSettings { s -> s.copy(addons = s.addons - link) }
+}
+
+/** What an add-on offers, for its line on the Playlists page and in Settings ("Films · Series"). */
+internal fun addonLine(a: Addon?, link: String, broken: String? = null): String {
+    if (broken != null) return "Can't be reached: $broken"
+    if (a == null) return hostOf(link)
+    val kinds = a.types.map {
+        when (it.lowercase()) {
+            "movie" -> "Films"
+            "series" -> "Series"
+            "tv" -> "TV"
+            "channel" -> "Channels"
+            else -> it.replaceFirstChar { c -> c.uppercase() }
+        }
+    }.distinct()
+    return if (kinds.isEmpty()) hostOf(link) else kinds.joinToString(" · ")
+}
+
 /** No add-on yet: what they are, and what plays. */
 @Composable
-private fun AddonsIntro() {
+private fun AddonsIntro(onAdd: () -> Unit) {
     val tv = isTv()
-    Column(Modifier.fillMaxWidth().padding(top = 28.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
         Text("Films and series from add-ons", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = Paper)
         Spacer(Modifier.size(10.dp))
         listOf(
@@ -151,6 +166,15 @@ private fun AddonsIntro() {
             .forEach { line ->
                 Text("•  $line", fontFamily = Sans, fontSize = 14.sp, lineHeight = 20.sp, color = Muted, modifier = Modifier.padding(bottom = 6.dp))
             }
+        Spacer(Modifier.size(14.dp))
+        PaperButton("Add an add-on", Icons.Filled.Add, onClick = onAdd)
+        Text(
+            "Later: on the Playlists page, or Settings → Playlists.",
+            fontFamily = Sans,
+            fontSize = 12.sp,
+            color = Faint,
+            modifier = Modifier.padding(top = 10.dp),
+        )
     }
 }
 
@@ -262,7 +286,7 @@ private fun Note(text: String, error: Boolean = false) {
     )
 }
 
-private fun hostOf(link: String) = link.substringAfter("://").substringBefore('/')
+internal fun hostOf(link: String) = link.substringAfter("://").substringBefore('/')
 
 /** A film or series: about it, its seasons and episodes, and its links. */
 @Composable
@@ -424,45 +448,16 @@ private fun EpisodeRow(v: AddonVideo, onClick: () -> Unit) {
     }
 }
 
-/** The add-ons added: each with what it is, and Remove. */
-@Composable
-private fun AddonsManage(vm: LibraryViewModel, m: AddonsModel, links: List<String>) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
-        item(key = "note") { Note("Add-ons you add reach your other devices with Wi-Fi linking.") }
-        items(links, key = { it }) { link ->
-            val a = m.addons.firstOrNull { it.url == link }
-            val shape = RoundedCornerShape(10.dp)
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(shape).background(Ink2).padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(a?.name ?: hostOf(link), fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val why = m.broken[link]
-                    Text(
-                        when {
-                            why != null -> "Can't be reached: $why"
-                            a == null -> hostOf(link)
-                            else -> a.description.ifBlank { hostOf(link) }
-                        },
-                        fontFamily = Sans,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        color = if (why != null) MaterialTheme.colorScheme.error else Muted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(Modifier.size(10.dp))
-                TagChip("Remove", false) { vm.updateSettings { s -> s.copy(addons = s.addons - link) } }
-            }
-        }
-    }
-}
-
 /** Pasting an add-on's link: it's checked before it's added. */
 @Composable
-private fun AddAddonDialog(m: AddonsModel, already: List<String>, onAdd: (Addon) -> Unit, onDismiss: () -> Unit) {
+internal fun AddAddonDialog(
+    m: AddonsModel,
+    already: List<String>,
+    onAdd: (Addon) -> Unit,
+    onDismiss: () -> Unit,
+    // The Add playlist window's choices (M3U link, M3U file, Xtream, Add-on) when opened from there.
+    kinds: (@Composable () -> Unit)? = null,
+) {
     var text by remember { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -489,6 +484,10 @@ private fun AddAddonDialog(m: AddonsModel, already: List<String>, onAdd: (Addon)
         title = { Text("Add an add-on") },
         text = {
             Column {
+                if (kinds != null) {
+                    kinds()
+                    Spacer(Modifier.size(10.dp))
+                }
                 Text(
                     "Paste the add-on's link (it ends in manifest.json). Only links that play in the app are shown: torrent links aren't supported.",
                     style = MaterialTheme.typography.bodySmall,
