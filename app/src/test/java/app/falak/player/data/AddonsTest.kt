@@ -82,15 +82,28 @@ class AddonsTest {
             """{"streams":[
                 {"name":"1080p","description":"file.mkv\n2.1 GB","url":"https://cdn.example.com/a.mkv",
                  "behaviorHints":{"proxyHeaders":{"request":{"user-agent":"UA/1","Referer":"https://site"}}}},
-                {"name":"4K","infoHash":"abc","fileIdx":0},
-                {"name":"magnet","url":"magnet:?xt=urn:btih:abc"},
+                {"name":"4K","title":"Film.2160p.mkv\n12 sharing","infoHash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","fileIdx":3,
+                 "sources":["tracker:udp://t.example:80/announce","dht:abcdef0123456789abcdef0123456789abcdef01"],
+                 "behaviorHints":{"filename":"Film.2160p.mkv"}},
+                {"name":"magnet","url":"magnet:?xt=urn:btih:1234567890123456789012345678901234567890&tr=http%3A%2F%2Ft%2Fa"},
+                {"name":"broken","infoHash":"abc"},
                 {"ytId":"xyz"},{"externalUrl":"https://site/watch"}]}""",
         )
         assertEquals(1, s.playable.size)
         assertEquals("UA/1", s.playable[0].userAgent)
         assertEquals("https://site", s.playable[0].referrer)
         assertEquals("file.mkv\n2.1 GB", s.playable[0].description)
+        // Torrent links (8.16): read with everything needed to play them; a broken one is left out.
         assertEquals(2, s.torrents)
-        assertEquals(2, s.others)
+        assertEquals(2, s.torrentLinks.size)
+        val t = s.torrentLinks[0].torrent!!
+        assertEquals("abcdef0123456789abcdef0123456789abcdef01", t.infoHash)
+        assertEquals(3, t.fileIdx)
+        assertEquals(listOf("udp://t.example:80/announce"), t.trackers)
+        assertEquals("Film.2160p.mkv", t.fileName)
+        assertEquals("", s.torrentLinks[0].url)
+        assertEquals("1234567890123456789012345678901234567890", s.torrentLinks[1].torrent!!.infoHash)
+        assertEquals(listOf("http://t/a"), s.torrentLinks[1].torrent!!.trackers)
+        assertEquals(3, s.others)
     }
 }

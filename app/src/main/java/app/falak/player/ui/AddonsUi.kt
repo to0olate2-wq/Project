@@ -1,5 +1,7 @@
 package app.falak.player.ui
 
+import app.falak.player.torrent.Torrents
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.falak.player.data.Addons
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -84,9 +86,31 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     BackHandler {
         if (m.open != null) m.closeItem() else leave()
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val play = { s: AddonStream ->
-        val ch = m.channelFor(s)
-        onPlay(listOf(ch), ch)
+        if (s.torrent != null && s.url.isEmpty()) {
+            // A torrent link: got ready first (its window says how it is going), then played like any link.
+            m.prepareTorrent(context, s)
+        } else {
+            val ch = m.channelFor(s)
+            onPlay(listOf(ch), ch)
+        }
+    }
+    // Leaving the Add-ons page for another one: a torrent still arriving is ended (not when the
+    // screen is only being rebuilt, for example when the phone is turned).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { if (vm.screen != Screen.ADDONS) m.stopTorrent() }
+    }
+    m.preparing?.let { s ->
+        TorrentWindow(
+            s,
+            onReady = { url ->
+                m.torrentStarted()
+                val ch = m.channelFor(s.copy(url = url))
+                onPlay(listOf(ch), ch)
+            },
+            onCancel = { m.stopTorrent() },
+        )
     }
     if (open != null) {
         AddonDetails(m, open, onBack = { m.closeItem() }, onPlay = play)
@@ -108,7 +132,26 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                 ChipFlow(Modifier.padding(bottom = 8.dp)) {
                     TagChip("Reload", false) { m.load(links, force = true) }
                 }
-                AddonsBrowse(m)
+                // Add-ons that only find links (Torrentio and the like) need lists to pick films from:
+                // the standard ones are a tap away (still the owner's choice: nothing is added by itself).
+                val scope = androidx.compose.runtime.rememberCoroutineScope()
+                var listsNote by remember { mutableStateOf<String?>(null) }
+                AddonsBrowse(
+                    m,
+                    listsNote = listsNote,
+                    onAddLists = {
+                        listsNote = "Adding…"
+                        scope.launch {
+                            m.check(Addons.STANDARD_LISTS).fold(
+                                onSuccess = { a ->
+                                    listsNote = null
+                                    vm.addAddon(a)
+                                },
+                                onFailure = { e -> listsNote = "Couldn't add them: ${e.message ?: "no answer"}" },
+                            )
+                        }
+                    },
+                )
             }
         }
     }
@@ -139,6 +182,8 @@ internal fun LibraryViewModel.removeAddon(link: String) {
 internal fun addonLine(a: Addon?, link: String, broken: String? = null): String {
     if (broken != null) return "Can't be reached: $broken"
     if (a == null) return hostOf(link)
+    // Nothing to browse in it: it finds links for the films of your list add-ons.
+    if (a.catalogs.isEmpty()) return "Links only · needs a list add-on to pick films from"
     val kinds = a.types.map {
         when (it.lowercase()) {
             "movie" -> "Films"
@@ -161,7 +206,8 @@ private fun AddonsIntro(onAdd: () -> Unit) {
         listOf(
             "Add-ons work like Stremio's: each one brings lists of films and series, and links to play them.",
             "Add one with its link (it ends in manifest.json). The app comes with none: you choose your own.",
-            "Only links that play in the app are shown: torrent links aren't supported.",
+            "Some add-ons bring the lists (Cinemeta is the standard one); others, like Torrentio, only find links for the films in those lists. You need one of each.",
+            if (Torrents.available) "Web links and torrent links both play in the app." else "Only web links play in this version of the app: torrent links don't.",
         ).plus(if (tv) listOf("Easier on your phone: add it there, and it reaches this TV with Wi-Fi linking.") else emptyList())
             .forEach { line ->
                 Text("•  $line", fontFamily = Sans, fontSize = 14.sp, lineHeight = 20.sp, color = Muted, modifier = Modifier.padding(bottom = 6.dp))
@@ -180,7 +226,7 @@ private fun AddonsIntro(onAdd: () -> Unit) {
 
 /** The add-ons' lists, and a search across those that can search. */
 @Composable
-private fun AddonsBrowse(m: AddonsModel) {
+private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: () -> Unit = {}) {
     var text by rememberSaveable { mutableStateOf(m.query) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
         if (m.canSearch) {
@@ -241,10 +287,28 @@ private fun AddonsBrowse(m: AddonsModel) {
         }
         if (!m.loading && m.addons.isNotEmpty() && rows.isEmpty()) {
             item(key = "norows") {
-                Note(
-                    if (m.canSearch) "Your add-ons have no lists to show: search them above."
-                    else "Your add-ons have no lists of their own: they add links to films and series from your other add-ons.",
-                )
+                if (m.canSearch) {
+                    Note("Your add-ons have no lists to show: search them above.")
+                } else {
+                    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                        Text("No films to pick from yet", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper)
+                        Spacer(Modifier.size(6.dp))
+                        Text(
+                            "Your add-ons only find links: they have no lists of films and series of their own. " +
+                                "Add a list add-on, pick a film from it, and their links show on the film's page.",
+                            fontFamily = Sans,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = Muted,
+                        )
+                        Spacer(Modifier.size(14.dp))
+                        PaperButton("Add the standard lists (Cinemeta)", Icons.Filled.Add, onClick = onAddLists)
+                        if (listsNote != null) {
+                            Spacer(Modifier.size(8.dp))
+                            Text(listsNote, fontFamily = Sans, fontSize = 13.sp, color = Muted)
+                        }
+                    }
+                }
             }
         }
     }
@@ -377,14 +441,79 @@ private fun androidx.compose.foundation.lazy.LazyListScope.linkItems(st: AddonSt
         item(key = "links-wait") { Note("Asking your add-ons…") }
         return
     }
-    if (st.playable.isEmpty()) item(key = "links-none") { Note("No links that play in the app.") }
+    // Torrent links play in the GitHub version (8.16); elsewhere they are counted and left out.
+    val torrents = if (Torrents.available) st.torrentLinks.take(MAX_TORRENT_LINKS) else emptyList()
+    if (st.playable.isEmpty() && torrents.isEmpty()) item(key = "links-none") { Note("No links that play in the app.") }
     items(st.playable, key = { "s:" + it.url }) { s -> StreamRow(s) { onPlay(s) } }
+    items(torrents, key = { "t:" + it.addonName + Torrents.keyOf(it.torrent!!) }) { s -> StreamRow(s) { onPlay(s) } }
     val left = listOfNotNull(
-        st.torrents.takeIf { it > 0 }?.let { "$it torrent link${if (it == 1) "" else "s"} not shown: the app can't play torrents." },
+        st.torrents.takeIf { it > 0 && !Torrents.available }?.let { "$it torrent link${if (it == 1) "" else "s"} not shown: this version of the app can't play torrents." },
         st.others.takeIf { it > 0 }?.let { "$it link${if (it == 1) "" else "s"} for other apps not shown." },
         st.failed.takeIf { it.isNotEmpty() }?.let { "Didn't answer: ${it.joinToString(", ")}." },
     )
     if (left.isNotEmpty()) item(key = "links-left") { Note(left.joinToString("\n")) }
+}
+
+/** No more torrent links than this in one list (an add-on can send hundreds). */
+private const val MAX_TORRENT_LINKS = 60
+
+/**
+ * A torrent link being got ready (see Torrents): what is happening, how many people are sharing
+ * it and how fast it is coming, then the film starts by itself. Cancel ends it.
+ */
+@Composable
+private fun TorrentWindow(s: AddonStream, onReady: (String) -> Unit, onCancel: () -> Unit) {
+    val st by Torrents.state.collectAsStateWithLifecycle()
+    val key = s.torrent?.let { Torrents.keyOf(it) }
+    val mine = st.key == key
+    androidx.compose.runtime.LaunchedEffect(st.stage, st.url, mine) {
+        if (mine && st.stage == Torrents.Stage.READY && st.url.isNotEmpty()) onReady(st.url)
+    }
+    val failed = mine && st.stage == Torrents.Stage.FAILED
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(if (failed) "This link didn't work" else "Getting the film ready") },
+        text = {
+            Column {
+                when {
+                    failed -> Text(st.error.ifBlank { "This link couldn't be played." })
+                    mine && st.stage == Torrents.Stage.BUFFERING -> {
+                        Text(st.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.size(6.dp))
+                        Text(
+                            listOf(
+                                Torrents.gb(st.size),
+                                if (st.peers == 1) "1 person sharing" else "${st.peers} people sharing",
+                                Torrents.speed(st.bytesPerSecond),
+                            ).joinToString("  ·  "),
+                            fontFamily = Sans,
+                            fontSize = 13.sp,
+                            color = Muted,
+                        )
+                        Spacer(Modifier.size(12.dp))
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { st.progress },
+                            color = Signal,
+                            trackColor = Hairline,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    else -> Text(if (mine) st.note.ifBlank { "Starting…" } else "Starting…")
+                }
+                if (!failed) {
+                    Spacer(Modifier.size(14.dp))
+                    Text(
+                        "It starts by itself. While it plays, parts of the film are also shared with other people, as torrents do.",
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = Faint,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCancel) { Text(if (failed) "Close" else "Cancel") } },
+    )
 }
 
 @Composable
@@ -405,7 +534,11 @@ private fun StreamRow(s: AddonStream, onClick: () -> Unit) {
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                listOf(s.name.lines().joinToString(" ").trim().ifBlank { "Link" }, s.addonName).joinToString("  ·  "),
+                listOfNotNull(
+                    s.name.lines().joinToString(" ").trim().ifBlank { "Link" },
+                    s.addonName.takeIf { it.isNotBlank() && !s.name.contains(it, ignoreCase = true) },
+                    "Torrent".takeIf { s.torrent != null },
+                ).joinToString("  ·  "),
                 fontFamily = Sans,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp,
@@ -489,7 +622,7 @@ internal fun AddAddonDialog(
                     Spacer(Modifier.size(10.dp))
                 }
                 Text(
-                    "Paste the add-on's link (it ends in manifest.json). Only links that play in the app are shown: torrent links aren't supported.",
+                    "Paste the add-on's link (it ends in manifest.json).",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )

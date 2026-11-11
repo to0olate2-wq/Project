@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.15"
+        versionName = "8.16"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -71,12 +71,15 @@ android {
             buildConfigField("boolean", "SELF_UPDATE", "true")
             // Stremio-style add-ons (8.12): only in this version, never on Google Play.
             buildConfigField("boolean", "ADDONS", "true")
+            // Torrent links from add-ons (8.16): only in this version (the library isn't in the Play one).
+            buildConfigField("boolean", "TORRENTS", "true")
             signingConfig = signingConfigs.getByName("debug")
         }
         create("play") {
             dimension = "store"
             buildConfigField("boolean", "SELF_UPDATE", "false")
             buildConfigField("boolean", "ADDONS", "false")
+            buildConfigField("boolean", "TORRENTS", "false")
             // Play rejects bundles signed with a debug key: use the upload key when CI has it.
             signingConfig = signingConfigs.findByName("upload")
         }
@@ -186,6 +189,17 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     // QR code for "Your devices" (scan with a phone to open the sharing page).
     implementation("com.google.zxing:core:3.5.3")
+
+    // Torrent links from add-ons (8.16): libtorrent through libtorrent4j (MIT). In the GitHub version only;
+    // the Play version compiles against it but ships without it (and never calls it: BuildConfig.TORRENTS).
+    // The tests run two engines against each other on the build machine (Linux).
+    val torrent = "2.1.0-39"
+    "githubImplementation"("org.libtorrent4j:libtorrent4j:$torrent")
+    "githubImplementation"("org.libtorrent4j:libtorrent4j-android-arm:$torrent")
+    "githubImplementation"("org.libtorrent4j:libtorrent4j-android-arm64:$torrent")
+    "playCompileOnly"("org.libtorrent4j:libtorrent4j:$torrent")
+    testImplementation("org.libtorrent4j:libtorrent4j:$torrent")
+    testRuntimeOnly("org.libtorrent4j:libtorrent4j-linux:$torrent")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.15.1")

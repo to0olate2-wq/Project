@@ -13,6 +13,8 @@ import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.Screen
 import app.falak.player.ui.SettingsPage
 import app.falak.player.ui.addAddonForTest
+import app.falak.player.torrent.TorrentSource
+import app.falak.player.torrent.Torrents
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -191,6 +193,43 @@ class PhoneSettingsAddonScreens : AddonShots() {
             vm.settingsPage = SettingsPage.PLAYLISTS
             shoot("phone-97-settings-addons")
         } finally {
+            Addons.enabledForTest = false
+        }
+    }
+}
+
+// Torrent links (8.16, GitHub version): listed with the other links, and the window while one gets ready.
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneTorrentScreens : AddonShots() {
+    @Test @Config(qualifiers = ScreenshotBase.PHONE)
+    fun phoneTorrents() = mainScreens("phone", look = "sidebar") { vm, shoot ->
+        Addons.enabledForTest = true
+        Torrents.availableForTest = true
+        try {
+            vm.showAddons()
+            val big = TorrentSource("a".repeat(40), 0)
+            val links = AddonStreams(
+                playable = emptyList(),
+                torrents = 2,
+                others = 0,
+                failed = emptyList(),
+                torrentLinks = listOf(
+                    AddonStream("Torrentio", "", "Torrentio\n4k HDR", "Charade.1963.2160p.HDR.mkv\n45 sharing · 15.2 GB", "", "", big),
+                    AddonStream("Torrentio", "", "Torrentio\n1080p", "Charade.1963.1080p.BluRay.mkv\n120 sharing · 2.4 GB", "", "", TorrentSource("b".repeat(40), 0)),
+                ),
+            )
+            vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = links, streamsTitle = film.name)
+            shoot("phone-98-addon-torrent-links")
+            Torrents.state.value = Torrents.State(
+                Torrents.Stage.BUFFERING, Torrents.keyOf(big),
+                name = "Charade.1963.2160p.HDR.mkv", size = 15_200_000_000L, peers = 45, bytesPerSecond = 2_400_000, progress = 0.6f,
+            )
+            vm.addons.showPreparingForTest(links.torrentLinks[0])
+            shoot("phone-99-torrent-getting-ready")
+        } finally {
+            Torrents.state.value = Torrents.State()
+            Torrents.availableForTest = false
             Addons.enabledForTest = false
         }
     }

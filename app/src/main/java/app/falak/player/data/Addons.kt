@@ -1,5 +1,7 @@
 package app.falak.player.data
 
+import app.falak.player.torrent.TorrentSource
+import app.falak.player.torrent.Torrents
 import app.falak.player.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -108,16 +110,20 @@ data class AddonStream(
     val description: String,
     val userAgent: String,
     val referrer: String,
+    /** A torrent link (8.16): [url] is empty until it has been got ready to play (see Torrents). */
+    val torrent: TorrentSource? = null,
 )
 
 data class AddonStreams(
     val playable: List<AddonStream>,
-    /** Torrent links left out (the app has no torrent engine). */
+    /** How many torrent links there are (shown only where torrents play, see [torrentLinks]). */
     val torrents: Int,
     /** Other links left out (YouTube, "open in a browser"). */
     val others: Int,
     /** Add-ons that didn't answer. */
     val failed: List<String>,
+    /** The torrent links themselves: played by the GitHub version (8.16), counted and left out elsewhere. */
+    val torrentLinks: List<AddonStream> = emptyList(),
 )
 
 object Addons {
@@ -127,6 +133,12 @@ object Addons {
     /** Screenshot tests (which run the Play version). */
     @Volatile
     internal var enabledForTest = false
+
+    /**
+     * Cinemeta, Stremio's own lists of films and series (posters and descriptions, no links): offered
+     * in one tap when the add-ons added only find links. Never added by itself.
+     */
+    const val STANDARD_LISTS = "https://v3-cinemeta.strem.io"
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -266,14 +278,38 @@ object Addons {
 
     fun parseStreams(addonName: String, text: String): AddonStreams {
         val o = json.parseToJsonElement(text) as? JsonObject ?: return AddonStreams(emptyList(), 0, 0, emptyList())
-        var torrents = 0
         var others = 0
         val playable = ArrayList<AddonStream>()
+        val torrentLinks = ArrayList<AddonStream>()
         for (e in (o["streams"] as? JsonArray).orEmpty()) {
             val s = e as? JsonObject ?: continue
             val url = s.str("url")
             when {
-                s.str("infoHash").isNotEmpty() || url.startsWith("magnet:", ignoreCase = true) -> torrents++
+                s.str("infoHash").isNotEmpty() || url.startsWith("magnet:", ignoreCase = true) -> {
+                    val fileIdx = (s["fileIdx"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                    val fileName = (s["behaviorHints"] as? JsonObject)?.str("filename").orEmpty()
+                    val source = TorrentSource.cleanHash(s.str("infoHash"))?.let { hash ->
+                        TorrentSource(
+                            hash,
+                            fileIdx,
+                            TorrentSource.trackersFrom(s.strings("sources").orEmpty()),
+                            fileName,
+                        )
+                    } ?: TorrentSource.fromMagnet(url, fileIdx, fileName)
+                    if (source == null) {
+                        others++
+                    } else {
+                        torrentLinks += AddonStream(
+                            addonName = addonName,
+                            url = "",
+                            name = s.str("name"),
+                            description = s.str("description").ifEmpty { s.str("title") },
+                            userAgent = "",
+                            referrer = "",
+                            torrent = source,
+                        )
+                    }
+                }
                 url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true) -> {
                     val headers = ((s["behaviorHints"] as? JsonObject)?.get("proxyHeaders") as? JsonObject)
                         ?.get("request") as? JsonObject
@@ -289,7 +325,7 @@ object Addons {
                 else -> others++
             }
         }
-        return AddonStreams(playable, torrents, others, emptyList())
+        return AddonStreams(playable, torrentLinks.size, others, emptyList(), torrentLinks)
     }
 
     private fun JsonObject.str(key: String): String = when (val v = this[key]) {
@@ -359,6 +395,8 @@ class AddonClient(private val http: OkHttpClient) {
             torrents = answers.sumOf { it.torrents },
             others = answers.sumOf { it.others },
             failed = answers.flatMap { it.failed },
+            torrentLinks = answers.flatMap { it.torrentLinks }
+                .distinctBy { Torrents.keyOf(it.torrent!!) },
         )
     }
 
