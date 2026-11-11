@@ -365,7 +365,7 @@ data class Settings(
     val theme: Int = 0,
     /** "auto" (light from sunrise, dark from sunset, see SunTimes), "light" or "dark". */
     val themeMode: String = "auto",
-    /** "sidebar" (side menu, big continue cards, filter chips; the default) or "classic" (tabs on top, slideshow). */
+    /** Not used since 8.14 (one look, Spotlight); kept so settings saved or synced by older versions still read. */
     val look: String = "sidebar",
     /** Idle or paused for a while: a slideshow of the library with the time (instead of a still picture). */
     val ambient: Boolean = true,

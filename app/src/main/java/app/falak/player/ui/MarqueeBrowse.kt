@@ -30,8 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -47,11 +46,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
@@ -62,6 +63,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -94,7 +96,7 @@ import kotlinx.coroutines.delay
 
 /** The page area the picture is drawn in: its height, where its top is on screen (px), and
  * whether there is room for the picture (TV, tablets, phones on their side). */
-class MarqueeStageInfo(val height: Dp, val wide: Boolean, val top: () -> Float)
+class MarqueeStageInfo(val height: Dp, val wide: Boolean, val portraitArt: Dp, val top: () -> Float)
 
 val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
 
@@ -102,7 +104,11 @@ val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
  * How much of the page the picture covers: most of a TV, a little more of a short screen. Home's
  * is shorter, so the row under it (Continue watching) is in view at once.
  */
-private fun marqueeFraction(height: Dp, section: Section? = null): Float = when {
+private fun marqueeFraction(height: Dp, section: Section? = null, portrait: Boolean = false, tv: Boolean = false): Float = when {
+    // A phone held upright: the picture takes the top of the page, the first row in view under it.
+    portrait -> 0.56f
+    // TV: behind the bar and the spotlight, fading out behind the first row.
+    tv -> 0.62f
     height < 480.dp -> 0.84f
     section == Section.HOME -> 0.6f
     else -> 0.74f
@@ -151,88 +157,201 @@ fun MarqueeStage(
     val tv = isTv()
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
-        // TV, tablets and phones on their side; a phone held upright has the tall poster card instead.
+        // TV, tablets and phones on their side: a wide picture; a phone held upright: its poster, edge to edge.
         val wide = tv || maxWidth >= 640.dp
-        val info = remember(height, wide) { MarqueeStageInfo(height, wide) { top[0] } }
-        if (wide && landing != null) {
-            MarqueeBackdropFor(vm, landing, excluded, Modifier.fillMaxWidth().height(height * marqueeFraction(height, landing)))
+        // A phone held upright: never taller than the poster shown across the width can fill (very tall screens).
+        val portraitArt = minOf(height * marqueeFraction(height, portrait = true), maxWidth * 1.3f)
+        val info = remember(height, wide, portraitArt) { MarqueeStageInfo(height, wide, portraitArt) { top[0] } }
+        if (landing != null) {
+            MarqueeBackdropFor(
+                vm, landing, excluded, portrait = !wide,
+                modifier = Modifier.fillMaxWidth().height(if (wide) height * marqueeFraction(height, landing, tv = tv) else portraitArt),
+            )
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
     }
 }
 
-/** The picture of the title the page is showing. */
+/** What the picture behind the top of a page is drawn from (it cross-fades when any of it changes). */
+private data class ArtKey(val wide: String?, val tall: String?, val mode: ArtMode, val name: String)
+
+/** How the picture behind the top of a page is drawn. */
+private enum class ArtMode {
+    /** Wide art filling the width; with a poster only, the poster standing on the right. */
+    POSTER,
+
+    /** TV: with a poster only, a wide slice of it on the right. */
+    BAND,
+
+    /** A phone held upright: the poster, edge to edge. */
+    PORTRAIT,
+
+    /** A channel: its logo on a tile on the right. */
+    LOGO,
+}
+
+/** The picture of the title the page is showing (TV: of the card the remote is on). */
 @Composable
-private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded: Set<String>, modifier: Modifier) {
+private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded: Set<String>, portrait: Boolean, modifier: Modifier) {
+    val tv = isTv()
     val featured = rememberMarqueeFeatured(vm, section, excluded)
-    val item = featured.getOrNull(marqueeSlot(vm, section, featured)) ?: return
+    val item = (if (tv) vm.spotlight[section] else null) ?: featured.getOrNull(marqueeSlot(vm, section, featured)) ?: return
     MarqueeBackdrop(
         backdrop = vm.heroArt[item.id]?.takeIf { it.isNotBlank() },
         poster = item.logo.ifBlank { null },
+        name = item.name,
         list = vm.marqueeStateFor(section),
+        mode = when {
+            item.kind == Kind.LIVE -> ArtMode.LOGO
+            portrait -> ArtMode.PORTRAIT
+            tv -> ArtMode.BAND
+            else -> ArtMode.POSTER
+        },
+        // TV: the spotlight stays put, so its picture does too.
+        scrolls = !tv,
         modifier = modifier,
     )
 }
 
 /**
- * The featured picture: wide art filling the width, or a poster on the right over a soft wash
- * of it. It fades as the page scrolls past it ([list]).
+ * The picture behind the top of the page (see [ArtMode]). Where the featured title scrolls with
+ * the page ([scrolls]), it fades as the page scrolls past it ([list]).
  */
 @Composable
-private fun MarqueeBackdrop(backdrop: String?, poster: String?, list: androidx.compose.foundation.lazy.LazyListState, modifier: Modifier) {
+private fun MarqueeBackdrop(
+    backdrop: String?,
+    poster: String?,
+    /** A channel's name, for its tile when it has no logo (or its link doesn't load). */
+    name: String,
+    list: androidx.compose.foundation.lazy.LazyListState,
+    mode: ArtMode,
+    scrolls: Boolean,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
     BoxWithConstraints(modifier) {
         val h = maxHeight
         val fadePx = with(LocalDensity.current) { (h * 0.7f).toPx() }.coerceAtLeast(1f)
+        // Where the picture starts fading into the page (a channel's tile sits whole above it).
+        val fadeFrom = when (mode) {
+            ArtMode.LOGO -> 0.64f
+            ArtMode.PORTRAIT -> 0.5f
+            else -> 0.45f
+        }
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     // Read while drawing: scrolling only redraws the picture.
-                    alpha = if (list.firstVisibleItemIndex > 0) 0f else (1f - list.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
+                    alpha = when {
+                        !scrolls -> 1f
+                        list.firstVisibleItemIndex > 0 -> 0f
+                        else -> (1f - list.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
+                    }
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
                 // The lower part fades out into the page (whatever is behind it), with no edge.
                 .drawWithContent {
                     drawContent()
-                    drawRect(Brush.verticalGradient(0.45f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    drawRect(Brush.verticalGradient(fadeFrom to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
                 },
         ) {
-            Crossfade(backdrop to poster, animationSpec = tween(450), label = "marqueeArt") { (wide, tall) ->
+            Crossfade(ArtKey(backdrop, poster, mode, name), animationSpec = tween(450), label = "marqueeArt") { (wide, tall, m, title) ->
                 Box(Modifier.fillMaxSize()) {
-                    if (!wide.isNullOrBlank()) {
-                        AsyncImage(
+                    // Decoded very small, so only its colours show (not smears of its lettering).
+                    val wash = remember(tall) {
+                        tall?.takeIf { it.isNotBlank() }?.let { ImageRequest.Builder(context).data(it).size(6, 9).memoryCacheKey("$it#tint").build() }
+                    }
+                    when {
+                        m == ArtMode.LOGO -> {
+                            // Logos are small and often see-through: on a tile, clear of the bar above it.
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 74.dp, end = 40.dp)
+                                    .height(118.dp)
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Ink3),
+                            ) {
+                                LogoOr(tall.orEmpty(), null, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.62f)) {
+                                    Text(
+                                        title,
+                                        fontFamily = Serif,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 20.sp,
+                                        lineHeight = 25.sp,
+                                        color = Paper,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.align(Alignment.Center).padding(14.dp),
+                                    )
+                                }
+                            }
+                        }
+                        // (A little down from its top: a poster's faces are rarely at the very top.)
+                        m == ArtMode.PORTRAIT && !tall.isNullOrBlank() -> AsyncImage(
+                            model = tall,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            alignment = BiasAlignment(0f, -0.5f),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        !wide.isNullOrBlank() -> AsyncImage(
                             model = wide,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            alignment = Alignment.TopCenter,
+                            alignment = if (m == ArtMode.PORTRAIT) Alignment.Center else Alignment.TopCenter,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    } else if (!tall.isNullOrBlank()) {
-                        // A poster only: a soft wash of it (decoded tiny, so it costs nothing to draw),
-                        // and the whole poster sharp on the right.
-                        val wash = remember(tall) {
-                            // Decoded very small, so only its colours show (not smears of its lettering).
-                            ImageRequest.Builder(context).data(tall).size(6, 9).memoryCacheKey("$tall#tint").build()
+                        !tall.isNullOrBlank() && m == ArtMode.BAND -> {
+                            // A poster only: a soft wash of it, and a wide slice of it on the right,
+                            // fading in from the left so it has no edge.
+                            AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
+                            AsyncImage(
+                                model = tall,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                alignment = BiasAlignment(0f, -0.5f),
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(0.5f)
+                                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(Brush.horizontalGradient(0f to Color.Transparent, 0.4f to Color.Black), blendMode = BlendMode.DstIn)
+                                    },
+                            )
                         }
-                        AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
-                        AsyncImage(
-                            model = tall,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = h * 0.2f, end = 48.dp)
-                                .height(h * 0.62f)
-                                .aspectRatio(2f / 3f)
-                                .clip(RoundedCornerShape(10.dp)),
-                        )
+                        !tall.isNullOrBlank() -> {
+                            // A poster only: a soft wash of it, and the whole poster sharp on the right.
+                            AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.5f, modifier = Modifier.fillMaxSize())
+                            AsyncImage(
+                                model = tall,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = h * 0.2f, end = 48.dp)
+                                    .height(h * 0.62f)
+                                    .aspectRatio(2f / 3f)
+                                    .clip(RoundedCornerShape(10.dp)),
+                            )
+                        }
                     }
                 }
             }
-            // Dark on the left for the words, and at the top for the bars.
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent)))
+            if (mode == ArtMode.PORTRAIT) {
+                // Dark at the top for the bar, and under the name and buttons.
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.2f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.22f to Color.Transparent, 0.62f to Ink.copy(alpha = 0.94f))))
+            } else {
+                // Dark on the left for the words, and at the top for the bars.
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent)))
+            }
         }
     }
 }
@@ -300,7 +419,7 @@ fun MarqueeBrowse(
         }
         if (continueOfKind.isNotEmpty()) {
             item(key = "continue") {
-                Box(Modifier.padding(top = 16.dp)) {
+                Box(Modifier.padding(top = if (tv) 10.dp else 16.dp)) {
                     ContinueRow(
                         continueOfKind, vm.heroArt, state.progress, me,
                         title = "Continue watching",
@@ -337,9 +456,11 @@ fun MarqueeBrowse(
 }
 
 /**
- * The page under a featured picture: on a TV, a tablet or a phone on its side, the featured title
- * over its picture (the page frame draws the picture, see [MarqueeStage]); on a phone held
- * upright, the tall poster card. Then [rows]. On a TV, rows the remote moves to slide to the top.
+ * The page under a featured picture (drawn by the page frame, see [MarqueeStage]), then [rows].
+ * TV: the spotlight (the card the remote is on, see Spotlight.kt) stays at the top and the rows
+ * move under it, each sliding to the top as the remote reaches it. A tablet or a phone on its
+ * side: the featured title over its picture, scrolling with the rows. A phone held upright: the
+ * same over its poster, edge to edge.
  */
 @Composable
 fun MarqueePage(
@@ -371,23 +492,36 @@ fun MarqueePage(
     }
     val rowStates = remember(vm, section) { { key: String -> vm.rowState(section, key) } }
     val tapMemory = remember(vm) { { row: String?, id: String -> vm.lastCard = ReturnFocus(row, id) } }
+    // TV: the card the remote is on shows in the spotlight.
+    val spotter: ((Channel) -> Unit)? = remember(vm, section, tv) {
+        if (tv) ({ ch: Channel -> vm.spotlight[section] = ch }) else null
+    }
 
     Box(Modifier.fillMaxSize().onGloballyPositioned { myTop = it.positionInRoot().y }) {
         val wide = stage?.wide == true
         val current = marqueeSlot(vm, section, featured)
         val item = featured.getOrNull(current)
+        val spot = if (tv) vm.spotlight[section] else null
         // A series' details are a bigger download (every episode), so only the one on show.
         LaunchedEffect(item?.id) { if (item != null && item.isSeriesFolder) vm.loadHeroArt(listOf(item), series = true) }
+        // TV: the story and wide picture of the card the remote rests on, once it has stayed a moment.
+        LaunchedEffect(spot?.id) {
+            val ch = spot ?: return@LaunchedEffect
+            delay(if (ch.isSeriesFolder) 900 else 500)
+            vm.loadHeroArt(listOf(ch), series = ch.isSeriesFolder)
+        }
         // The hero's height: from the top of this list down to where the picture fades out.
         val heroHeight = if (stage == null) 0.dp else {
             val offset = if (myTop < 0) 110.dp else with(density) { (myTop - stage.top()).toDp() }
-            (stage.height * marqueeFraction(stage.height, section) - offset).coerceAtLeast(200.dp)
+            val art = if (wide) stage.height * marqueeFraction(stage.height, section) else stage.portraitArt
+            (art - offset).coerceAtLeast(200.dp)
         }
-        if (wide && item != null) {
-            // A new title every 7 seconds while the top of the page is in view (and the remote isn't on it).
-            val heroInView = listState.firstVisibleItemIndex == 0
-            LaunchedEffect(current, featured.size, heroInView, heroFocused) {
-                if (featured.size > 1 && heroInView && !heroFocused) {
+        if (item != null) {
+            // A new title every 7 seconds while the featured one is in view: on a TV until the
+            // remote is on a card, elsewhere unless its buttons have the focus.
+            val heroInView = tv || listState.firstVisibleItemIndex == 0
+            LaunchedEffect(current, featured.size, heroInView, heroFocused, spot == null) {
+                if (featured.size > 1 && heroInView && !heroFocused && spot == null) {
                     delay(7_000)
                     vm.marqueeIndex[section] = (current + 1) % featured.size
                 }
@@ -400,188 +534,167 @@ fun MarqueePage(
             LocalRowStates provides rowStates,
             LocalCardTap provides tapMemory,
             LocalReturnFocus provides returning,
+            LocalSpotlight provides spotter,
         ) {
-            LazyColumn(
-                Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
-                state = listState,
-                contentPadding = PaddingValues(bottom = 40.dp),
-            ) {
-                if (wide && item != null) {
-                    item(key = "hero") {
-                        MarqueeHero(
-                            item = item,
-                            info = vm.heroInfo[item.id],
-                            count = featured.size,
-                            current = current,
-                            height = heroHeight,
-                            onPrimary = onPrimary,
-                            onDetails = { ch -> vm.openDetails(ch) },
-                            onFocus = { heroFocused = it },
-                            compact = section == Section.HOME && (stage?.height ?: 0.dp) >= 480.dp,
-                        )
-                    }
-                } else if (featured.isNotEmpty()) {
-                    item(key = "hero") {
-                        PhoneFeature(
-                            items = featured,
-                            current = current,
-                            art = vm.heroArt,
-                            info = vm.heroInfo,
-                            onCurrent = { vm.marqueeIndex[section] = it },
-                            onPrimary = onPrimary,
-                            onDetails = { ch -> vm.openDetails(ch) },
-                        )
+            if (tv) {
+                Column(Modifier.fillMaxSize()) {
+                    SpotlightPanel(vm, spot ?: item)
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { scroller?.viewport = it },
+                        state = listState,
+                        contentPadding = PaddingValues(bottom = 40.dp),
+                    ) {
+                        rows()
                     }
                 }
-                rows()
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = listState,
+                    contentPadding = PaddingValues(bottom = 40.dp),
+                ) {
+                    if (item != null) {
+                        item(key = "hero") {
+                            if (wide) {
+                                MarqueeHero(
+                                    item = item,
+                                    info = vm.heroInfo[item.id],
+                                    count = featured.size,
+                                    current = current,
+                                    height = heroHeight,
+                                    onPrimary = onPrimary,
+                                    onDetails = { ch -> vm.openDetails(ch) },
+                                    onFocus = { heroFocused = it },
+                                    compact = section == Section.HOME && (stage?.height ?: 0.dp) >= 480.dp,
+                                )
+                            } else {
+                                PhoneHero(
+                                    item = item,
+                                    info = vm.heroInfo[item.id],
+                                    count = featured.size,
+                                    current = current,
+                                    height = heroHeight,
+                                    onCurrent = { vm.marqueeIndex[section] = it },
+                                    onPrimary = onPrimary,
+                                    onDetails = { ch -> vm.openDetails(ch) },
+                                )
+                            }
+                        }
+                    }
+                    rows()
+                }
             }
         }
     }
 }
 
 /**
- * A phone held upright: the featured titles as a card you can swipe (a new one every 7 seconds).
- * The picture keeps its own shape: a wide picture fills the 16:9 frame; a poster stands whole in
- * the middle over a soft wash of itself. The name, rating, story and buttons sit under the
- * picture, so nothing is cut off or covered.
+ * A phone held upright: the featured title's name, story and buttons over the lower part of its
+ * picture (the page frame draws it edge to edge, behind the top bar too). A new title every 7
+ * seconds, or swipe sideways for the next or the one before.
  */
 @Composable
-private fun PhoneFeature(
-    items: List<Channel>,
+private fun PhoneHero(
+    item: Channel,
+    info: app.falak.player.data.VodInfo?,
+    count: Int,
     current: Int,
-    art: Map<String, String>,
-    info: Map<String, app.falak.player.data.VodInfo>,
+    height: Dp,
     onCurrent: (Int) -> Unit,
     onPrimary: (Channel) -> Unit,
     onDetails: (Channel) -> Unit,
 ) {
-    val size = items.size
-    val start = remember(size) { if (size <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % size } + current.coerceIn(0, size - 1) }
-    val pager = rememberPagerState(initialPage = start, pageCount = { if (size <= 1) size else Int.MAX_VALUE })
-    val shown = if (size == 0) 0 else pager.currentPage % size
-    LaunchedEffect(pager.settledPage, size) {
-        if (size > 0) onCurrent(pager.settledPage % size)
-        if (size > 1) {
-            delay(7_000)
-            pager.animateScrollToPage(pager.settledPage + 1, animationSpec = tween(600))
-        }
-    }
-    val item = items.getOrNull(shown) ?: return
-    val context = LocalContext.current
-    // Room for two lines of story once any featured title has one, so the rows below stay put.
-    val anyPlot = items.any { !info[it.id]?.plot.isNullOrBlank() }
-
-    Column(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Ink2)) {
-            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-                val ch = items[page % size]
-                val wide = art[ch.id]?.takeIf { it.isNotBlank() }
-                Box(Modifier.fillMaxSize()) {
-                    if (wide != null) {
-                        AsyncImage(model = wide, contentDescription = ch.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    } else if (ch.logo.isNotBlank()) {
-                        val wash = remember(ch.logo) {
-                            // Decoded very small, so only its colours show (not smears of its lettering).
-                            ImageRequest.Builder(context).data(ch.logo).size(6, 9).memoryCacheKey(ch.logo + "#tint").build()
-                        }
-                        AsyncImage(model = wash, contentDescription = null, contentScale = ContentScale.Crop, alpha = 0.55f, modifier = Modifier.fillMaxSize())
-                        AsyncImage(
-                            model = ch.logo,
-                            contentDescription = ch.name,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(vertical = 14.dp)
-                                .fillMaxHeight()
-                                .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
-                                .clip(RoundedCornerShape(8.dp)),
-                        )
-                    }
-                }
-            }
-            if (size > 1) {
-                // In the corner, clear of a poster standing in the middle.
-                Row(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 10.dp, bottom = 10.dp)
-                        .background(Color(0x66000000), RoundedCornerShape(50))
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    repeat(size) { i ->
-                        Box(
-                            Modifier
-                                .width(if (i == shown) 16.dp else 6.dp)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(if (i == shown) Color.White else Color.White.copy(alpha = 0.45f)),
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        AnimatedContent(
-            targetState = item,
-            transitionSpec = { fadeIn(tween(300)).togetherWith(fadeOut(tween(150))) },
-            label = "phoneFeatureText",
-        ) { ch ->
-            val details = info[ch.id]
-            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Kicker(
-                        when {
-                            ch.isNew() && ch.isSeriesFolder -> "New series"
-                            ch.isNew() -> "New film"
-                            ch.isSeriesFolder -> "Series"
-                            else -> "Film"
+    val swipe = with(LocalDensity.current) { 56.dp.toPx() }
+    val shown by rememberUpdatedState(current)
+    val change by rememberUpdatedState(onCurrent)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .pointerInput(count) {
+                if (count > 1) {
+                    var moved = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { moved = 0f },
+                        onDragEnd = {
+                            if (moved <= -swipe) {
+                                change((shown + 1) % count)
+                            } else if (moved >= swipe) {
+                                change((shown - 1 + count) % count)
+                            }
                         },
-                    )
-                    qualityTag(ch)?.let {
-                        Spacer(Modifier.width(8.dp))
-                        CardBadge(it, Paper)
-                    }
+                    ) { _, dx -> moved += dx }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    ch.name,
-                    fontFamily = Serif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 26.sp,
-                    lineHeight = 30.sp,
-                    color = Paper,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val meta = listOfNotNull(
-                    ratingLabel(details?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
-                    details?.year?.takeIf { it.isNotBlank() }?.take(4),
-                    (details?.genre?.takeIf { it.isNotBlank() }?.substringBefore(',') ?: ch.group.takeIf { it.isNotBlank() }),
-                    details?.duration?.takeIf { it.isNotBlank() },
-                ).joinToString("  ·  ")
-                Spacer(Modifier.height(4.dp))
-                Text(meta.ifEmpty { " " }, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (anyPlot) {
+            },
+    ) {
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = 4.dp)) {
+            AnimatedContent(
+                targetState = item to info,
+                transitionSpec = { fadeIn(tween(300)).togetherWith(fadeOut(tween(150))) },
+                label = "phoneHeroText",
+            ) { (ch, details) ->
+                Column(Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Kicker(
+                            when {
+                                ch.isNew() && ch.isSeriesFolder -> "New series"
+                                ch.isNew() -> "New film"
+                                ch.isSeriesFolder -> "Series"
+                                else -> "Film"
+                            },
+                        )
+                        qualityTag(ch)?.let {
+                            Spacer(Modifier.width(8.dp))
+                            CardBadge(it, Paper)
+                        }
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        details?.plot.orEmpty(),
-                        fontFamily = Sans,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        color = Muted,
-                        minLines = 2,
+                        ch.name,
+                        fontFamily = Serif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 28.sp,
+                        lineHeight = 32.sp,
+                        color = Paper,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val meta = listOfNotNull(
+                        ratingLabel(details?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
+                        details?.year?.takeIf { it.isNotBlank() }?.take(4),
+                        (details?.genre?.takeIf { it.isNotBlank() }?.substringBefore(',') ?: ch.group.takeIf { it.isNotBlank() }),
+                        details?.duration?.takeIf { it.isNotBlank() },
+                    ).joinToString("  ·  ")
+                    if (meta.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(meta, fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    details?.plot?.takeIf { it.isNotBlank() }?.let { plot ->
+                        Spacer(Modifier.height(6.dp))
+                        Text(plot, fontFamily = Sans, fontSize = 13.sp, lineHeight = 19.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
-        }
-        Spacer(Modifier.height(14.dp))
-        // The buttons stay put while the titles change; they act on the one shown.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow, Modifier.weight(1f)) { onPrimary(item) }
-            if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
+            Spacer(Modifier.height(14.dp))
+            // The buttons stay put while the titles change; they act on the one shown.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow, Modifier.weight(1f)) { onPrimary(item) }
+                if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
+            }
+            if (count > 1) {
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.align(Alignment.CenterHorizontally), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(count) { i ->
+                        Box(
+                            Modifier
+                                .width(if (i == current) 16.dp else 6.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(if (i == current) Paper else Paper.copy(alpha = 0.35f)),
+                        )
+                    }
+                }
+            }
         }
     }
 }

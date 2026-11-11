@@ -55,13 +55,14 @@ import app.falak.player.data.mine
 import app.falak.player.record.RecState
 
 /*
- * The app's menu around its pages (Sidebar look, with a playlist open): a slim rail of icons on
- * the left (TV, tablets, phones on their side) or a bar along the bottom (phones held upright:
+ * The app's menu around its pages (with a playlist open): a slim rail of icons on the left (TV,
+ * tablets, phones on their side; on a TV it opens with names while the remote is on it) or a bar
+ * along the bottom (phones held upright:
  * Home, Live, Films, Series, More). Settings, Recordings, Downloads and What's new open inside
  * it, so the menu never goes away while you move between them.
  */
 
-/** Where the menu is: a rail on the left, a bar at the bottom, or none (classic look, full pages). */
+/** Where the menu is: a rail on the left, a bar at the bottom, or none (full pages). */
 enum class ShellMode { NONE, RAIL, BAR }
 
 /** The menu around the page on show; pages use it for Back (to More) and to leave out what the menu already has. */
@@ -73,9 +74,9 @@ val BAR_HEIGHT = 64.dp
 /** The pages drawn inside the menu: the lists, More, and the pages opened from them. */
 val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES, Screen.ADDONS) + SETTINGS_SCREENS
 
-/** The menu for [screen]: none outside the Sidebar look, before a playlist is open, or on full-screen pages. */
-fun shellMode(look: String, hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp): ShellMode = when {
-    look != "sidebar" || !hasPlaylist || screen !in SHELL_SCREENS -> ShellMode.NONE
+/** The menu for [screen]: none before a playlist is open, or on full-screen pages. */
+fun shellMode(hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp): ShellMode = when {
+    !hasPlaylist || screen !in SHELL_SCREENS -> ShellMode.NONE
     tv || width >= 600.dp -> ShellMode.RAIL
     else -> ShellMode.BAR
 }

@@ -207,6 +207,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Which featured title Home, Films and Series show (it changes every few seconds). */
     val marqueeIndex = androidx.compose.runtime.mutableStateMapOf<Section, Int>()
 
+    /** TV: the card the remote is on (Home, Films, Series): the top of the page shows it (see Spotlight.kt). */
+    val spotlight = androidx.compose.runtime.mutableStateMapOf<Section, Channel>()
+
     /** The Films and Series pages' scroll places, kept while the app is open (Home's is [homeState]). */
     private val marqueeStates = HashMap<Section, LazyListState>()
     fun marqueeStateFor(s: Section): LazyListState = if (s == Section.HOME) homeState else marqueeStates.getOrPut(s) { LazyListState() }
@@ -678,6 +681,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             heroQueue.clear()
             marqueeStates.clear()
             marqueeIndex.clear()
+            spotlight.clear()
             rowStates.clear()
             lastCard = null
             returnFocus = null
