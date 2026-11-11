@@ -62,8 +62,13 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   card has the focus the featured titles take turns. Rows are a `LazyColumn` under it (`HomeScroller` pins rows).
   **Phone upright:** `PhoneHero` over the poster edge to edge (swipe or 7 s for the next). Tablets and phones on
   their side: `MarqueeHero` as before. Screen tests set `vm.spotlight[...]` and `railOpenForTest`.
-  **Still to do (owner agreed):** 8.15 = Live TV page and the film/series detail pages in the same style; then a
-  second new look to choose in Appearance (owner picked "a second new look", e.g. "Channels first" opening on live TV).
+  **Live TV in the same look (8.15; the owner asked to mix "Channels first" into Spotlight rather than keep it a
+  separate look):** TV list view = three columns (`GroupColumn` | `ChannelList` | `LivePreviewPane`; grid view and
+  phones keep the chips); Settings → Playlists → "Open on" Home / Live TV (`Settings.startOn`, this device's);
+  phones upright get `ResumeBar` under the Live list (`state.lastLive`, hidden while the mini player is up).
+  **Still to do (owner agreed):** a second look to choose in Appearance, Apple TV-like but under our own name
+  ("Cinema": menu as words along the top, full-screen picture, a big "Up next" row; only the menu and
+  Home/Films/Series differ, the rest is shared) — send the owner a sketch first; and the film/series detail pages.
 - **The menu stays (8.8), `ui/Shell.kt`:** with a playlist open, `AppShell` (in `MainActivity`, around the pages)
   draws the rail (TV, ≥600 dp; on a TV it opens to 212 dp with names while the remote is on it, over the page, see
   `SideRail`/`RailIcon`: keep the button's modifiers the same kinds so it keeps the focus) or a bottom bar (phones

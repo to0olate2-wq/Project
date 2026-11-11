@@ -108,6 +108,8 @@ object SyncMerge {
         "liveBuffer", "liveBufferMinutes", "recordDir", "startOnBoot", "keyActions",
         // 8.8: the TV's live preview.
         "livePreview",
+        // 8.15: the page a playlist opens on (a TV may open on Live TV, the phone on Home).
+        "startOn",
     )
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

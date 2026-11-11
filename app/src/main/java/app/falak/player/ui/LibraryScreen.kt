@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DateRange
@@ -278,6 +279,12 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     val tv = isTv()
+    // The live channel watched last (never one from a hidden or locked group), for the phone's bar under Live TV.
+    val lastId = state.lastLive[state.mine(p.id)]
+    val lastWatched = remember(lastId, index, excluded) {
+        lastId?.let { index.byId[it] }?.takeIf { it.kind == Kind.LIVE && it.group !in excluded }
+    }
+    val miniOpen by MiniPlayerState.request.collectAsStateWithLifecycle()
 
     // Everything under the top bar: progress, errors, Home or the section's lists.
     @Composable
@@ -466,10 +473,36 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                     grid = if (shown.kind != null) (shown.name in state.settings.gridSections) else null,
                                     onGrid = { vm.setGridView(shown, it) },
                                 )
-                                if (groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())) {
+                                val groupsWanted = groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())
+                                // TV, Live TV as a list: three columns (groups, channels, what's on), so the
+                                // groups are a column beside the channels rather than chips above them.
+                                val columns = groupsWanted && shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections)
+                                if (groupsWanted && !columns) {
                                     FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
                                 }
-                                content(Modifier.weight(1f).fillMaxWidth())
+                                if (columns) {
+                                    Row(Modifier.weight(1f).fillMaxWidth()) {
+                                        GroupColumn(
+                                            groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup,
+                                            { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS },
+                                            Modifier.width(184.dp).fillMaxHeight(),
+                                        )
+                                        Spacer(Modifier.width(18.dp))
+                                        content(Modifier.weight(1f).fillMaxHeight())
+                                    }
+                                } else {
+                                    content(Modifier.weight(1f).fillMaxWidth())
+                                }
+                                // Phones held upright, Live TV: the channel watched last, one tap away under
+                                // the list (not while it is already playing small in the corner).
+                                if (shown == Section.LIVE && noQuery && lastWatched != null && miniOpen == null && LocalShell.current == ShellMode.BAR) {
+                                    ResumeBar(lastWatched, Epg.current(epg[lastWatched.epgKey], now)) {
+                                        val row = list.takeIf { l -> l.any { it.id == lastWatched.id } }
+                                            ?: index.groupsOf(Kind.LIVE)[lastWatched.group]
+                                            ?: listOf(lastWatched)
+                                        onPlay(row, lastWatched)
+                                    }
+                                }
                             }
                         }
                     }
@@ -563,6 +596,81 @@ private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boole
         } else {
             Text("$count", style = Tabular.copy(fontSize = 12.sp), color = Faint, modifier = Modifier.padding(end = 8.dp))
         }
+    }
+}
+
+/**
+ * TV, Live TV: "All channels", your favorites and the provider's groups as a column beside the
+ * channels (OK picks one; hold OK on a group for its options).
+ */
+@Composable
+private fun GroupColumn(
+    groups: Map<String, List<Channel>>,
+    total: Int,
+    favorites: Int,
+    selected: String?,
+    locked: Set<String>,
+    onSelect: (String?) -> Unit,
+    onOptions: (String) -> Unit,
+    onManage: () -> Unit,
+    modifier: Modifier,
+) {
+    val names = remember(groups) { groups.keys.toList() }
+    LazyColumn(modifier, contentPadding = PaddingValues(top = 2.dp, bottom = 32.dp)) {
+        item(key = "__all") { GroupLine("All channels", total, selected == null, false, {}) { onSelect(null) } }
+        if (favorites > 0) {
+            item(key = "__fav") { GroupLine("★ Favorites", favorites, selected == FAV_FILTER, false, {}) { onSelect(FAV_FILTER) } }
+        }
+        items(names, key = { "g:$it" }) { g ->
+            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked, { onOptions(g) }) { onSelect(g) }
+        }
+        item(key = "__manage") {
+            Text(
+                "Edit groups",
+                fontFamily = Sans,
+                fontSize = 13.sp,
+                color = Muted,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .focusRing(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onManage() }
+                    .padding(horizontal = 13.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+/** Phones, under the Live TV list: the channel watched last and what's on it now; a tap plays it. */
+@Composable
+private fun ResumeBar(ch: Channel, current: Program?, onPlay: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 8.dp)
+            .clip(shape)
+            .background(Ink3)
+            .clickable(onClick = onPlay)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(64.dp).height(40.dp).clip(RoundedCornerShape(8.dp)).background(Ink2), contentAlignment = Alignment.Center) {
+            LogoOr(ch.logo, null, ContentScale.Fit, Modifier.fillMaxSize(0.8f)) { Initials(ch.name, 13.sp) }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(ch.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull("Last watched", current?.title?.takeIf { it.isNotBlank() }).joinToString("  ·  "),
+                fontFamily = Sans,
+                fontSize = 12.sp,
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(Icons.Filled.PlayArrow, contentDescription = "Watch ${ch.name}", tint = Paper, modifier = Modifier.size(28.dp))
     }
 }
 
