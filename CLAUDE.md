@@ -94,14 +94,29 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   missing or its link fails.
 - **Add-ons (8.12), GitHub version only:** Stremio-style add-ons (open format: manifest, catalog, meta, stream).
   `BuildConfig.ADDONS` (github true, play false; screen tests use `Addons.enabledForTest`). `data/Addons.kt`: link
-  normalising, lenient parsing, `AddonClient` (OkHttp). Only http(s) stream links play; torrents/magnets and other
-  links are counted, never played (owner: no torrent engine). No add-on ships with the app. Links in
+  normalising, lenient parsing, `AddonClient` (OkHttp). http(s) stream links play; torrent links play too since
+  8.16 (see Torrents below); other links are counted. No add-on ships with the app (Cinemeta, `STANDARD_LISTS`,
+  is offered in one tap when the add-ons added are links-only, e.g. Torrentio: owner's OK, 8.16). Links in
   `Settings.addons` (sync with Wi-Fi linking). `ui/AddonsModel.kt` (state, in `vm.addons`; `known` = names read
   with `readNames`, manifests only) + `ui/AddonsUi.kt` (`Screen.ADDONS`: browse only — rows per catalog, search,
   details, a series' episode links in a dialog; `returnTo` = page to go Back to). Added and removed with the playlists
   (owner, 8.13): "Add-on" choice in the Add playlist window (`SourceKinds`, `AddAddonDialog`), "Your add-ons" on the
   Playlists page, an Add-ons part in Settings → Playlists. Browsing: More (phones), rail, Playlists page rows; hidden
   in Kids. Playing: `Channel` id `addon:…` = one-off (no Recent, no resume, no Watch Next).
+- **Torrents (8.16), GitHub version only, `torrent/`:** the owner asked for it (Torrentio and the like must play;
+  he will make the repo private later; before that the rule was "no torrent engine"). libtorrent4j 2.1.0-39 (MIT):
+  `githubImplementation` + android-arm/arm64 natives, `playCompileOnly`, tests use the `-linux` native.
+  `BuildConfig.TORRENTS` (`Torrents.available`; tests: `availableForTest`). `TorrentSource` (hash, fileIdx, trackers,
+  file name; from an add-on's `infoHash`/`sources` or a magnet) → `TorrentEngine` (no Android in it: magnet →
+  metadata → `pickFile` → sequential download with piece deadlines; polling, no alert listeners) → `TorrentFile`
+  (`GrowingFile`) → `TorrentServer` (127.0.0.1, random port + token, Range requests wait for pieces, drops the
+  connection rather than ending short) → the player opens `http://127.0.0.1:…/video.mkv` like any film.
+  `Torrents` (object) = one at a time: `prepare` / `state` (STARTING, BUFFERING, READY, FAILED) / `stop`; files in
+  `getExternalFilesDir/torrents`, deleted on stop, on leaving the film or the Add-ons page, and at app start.
+  UI: torrent rows in `linkItems`, `TorrentWindow` (AddonsUi). Upload capped at 96 kB/s. Tests:
+  `TorrentServerTest` (runs anywhere), `TorrentEngineTest` (two engines on the CI machine, real transfer).
+  Local type-check without the SDK: compile `torrent/*.kt` (not Torrents.kt) with Gradle's Kotlin compiler against
+  the library's Java sources (clone aldenml/libtorrent4j); Maven Central is not reachable from the sandbox.
 - **Recording & pause live (8.7), `record/`:** `Capture` = one provider connection (plain TS or HLS, AES-128,
   fMP4) feeding a disk `Ring` (cacheDir/timeshift, marks = time→offset at key frames) and recording `Sink`s.
   `Captures` shares one capture per URL between the player and recordings. `LocalStream` serves the ring on

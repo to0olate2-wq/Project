@@ -1,5 +1,6 @@
 package app.falak.player.ui
 
+import app.falak.player.torrent.Torrents
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -210,6 +211,34 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         meta = null
         streams = null
         streamsFor = null
+        stopTorrent()
+    }
+
+    /** The torrent link being got ready to play (8.16): its window is up while this is set. */
+    var preparing by mutableStateOf<AddonStream?>(null)
+        private set
+
+    /** A torrent link was picked: see Torrents, whose state the window shows. */
+    fun prepareTorrent(context: android.content.Context, s: AddonStream) {
+        val source = s.torrent ?: return
+        preparing = s
+        Torrents.prepare(context, source)
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun showPreparingForTest(s: AddonStream) {
+        preparing = s
+    }
+
+    /** The link is ready and handed to the player (the film carries on arriving behind it). */
+    fun torrentStarted() {
+        preparing = null
+    }
+
+    /** Leaving the film, its links or the page (or Cancel in the window): nothing more is fetched, and it is deleted. */
+    fun stopTorrent() {
+        preparing = null
+        if (Torrents.available) Torrents.stop()
     }
 
     /** The episode's links closed. */
@@ -217,6 +246,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         streamJob?.cancel()
         streamsFor = null
         streams = null
+        stopTorrent()
     }
 
     fun seasons(): List<Int> = meta?.videos?.map { it.season }?.distinct().orEmpty()

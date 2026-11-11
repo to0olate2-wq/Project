@@ -23,3 +23,8 @@
 # sherpa-onnx (auto captions): its native code reads these classes' fields by name.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 -dontwarn com.k2fsa.sherpa.onnx.**
+
+# libtorrent4j (torrent links, GitHub version): its native code calls back into these classes by name.
+# The Play version is built without the library.
+-keep class org.libtorrent4j.** { *; }
+-dontwarn org.libtorrent4j.**

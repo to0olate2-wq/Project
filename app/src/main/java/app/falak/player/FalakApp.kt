@@ -54,6 +54,8 @@ class FalakApp : Application(), ImageLoaderFactory {
         OfflineCenter.init(this)
         // Recordings: what's due starts, the next one gets its alarm; old pause buffers go.
         app.falak.player.record.Captures.clearLeftovers(this)
+        // Torrent links: whatever a film that was still arriving left behind.
+        if (app.falak.player.torrent.Torrents.available) app.falak.player.torrent.Torrents.clearLeftovers(this)
         app.falak.player.record.RecordCenter.init(this)
         app.falak.player.record.RecordCenter.onAppStart()
         // "Open when the TV starts": also when it wakes from standby with the app left open.
