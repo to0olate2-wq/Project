@@ -195,7 +195,9 @@ jobs:
         timeout-minutes: 32
         run: |
           chmod +x gradlew
-          ./gradlew testPlayDebugUnitTest --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
+          # A quick run of some tests only: "[only app.falak.player.torrent.*]" in the commit's first line.
+          only=$(git log -1 --format=%s | sed -n 's/.*\[only \([^]]*\)\].*/\1/p')
+          ./gradlew testPlayDebugUnitTest ${only:+--tests "$only"} --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
       # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".
       - name: Publish to the screenshots branch
@@ -210,6 +212,8 @@ jobs:
           # Compile errors first, then the end of the run (the last test started is the one that stuck).
           { grep -E "^e: |^w: .*screens" screens.log | head -40; echo "----- last lines -----"; grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | tail -120; } > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
+          # A test that crashed in native code (the torrent library): where, from Java's own crash report.
+          find . -name "hs_err_pid*.log" | head -3 | while read -r f; do head -150 "$f" > "/tmp/screens/crash-$(basename "$f" .log).txt"; done || true
           cd /tmp/screens
           git init -q
           git checkout -q -b "$TARGET"
