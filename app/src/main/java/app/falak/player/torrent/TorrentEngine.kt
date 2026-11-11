@@ -15,6 +15,7 @@ import org.libtorrent4j.swig.add_torrent_params
 import org.libtorrent4j.swig.byte_vector
 import org.libtorrent4j.swig.string_vector
 import org.libtorrent4j.swig.tcp_endpoint_vector
+import org.libtorrent4j.swig.torrent_info
 
 /**
  * Torrent playback (8.16, GitHub version only; the owner asked for it so add-ons such as Torrentio
@@ -120,7 +121,8 @@ class TorrentEngine(private val dir: File) {
                     else -> "The people sharing this link didn't answer in time. Try another one."
                 },
             )
-            val info = handle.torrentFile() ?: throw TorrentException("This link couldn't be read.")
+            // A copy of our own: the library's belongs to the torrent and goes with it at a restart.
+            val info = handle.torrentFile()?.let { TorrentInfo(torrent_info(it.swig())) } ?: throw TorrentException("This link couldn't be read.")
             val index = pickFile(info, source) ?: throw TorrentException("There is no film in this link.")
             return TorrentFile(this, info, index, handle, folder, maxBytes, listOfNotNull(peer), trackers).also { it.begin() }
         } catch (e: Throwable) {
