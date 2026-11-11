@@ -11,15 +11,31 @@ data class TorrentSource(
     val trackers: List<String> = emptyList(),
     val fileName: String = "",
 ) {
-    fun magnet(): String = buildString {
+    /**
+     * The link as a magnet. [more]: trackers added to the link's own. Many links come with none
+     * (only "look it up in the DHT"), and the big public trackers find people much sooner.
+     */
+    fun magnet(more: List<String> = emptyList()): String = buildString {
         append("magnet:?xt=urn:btih:").append(infoHash)
-        for (t in trackers.distinct().take(MAX_TRACKERS)) {
+        for (t in (trackers + more).distinct().take(MAX_TRACKERS)) {
             append("&tr=").append(java.net.URLEncoder.encode(t, "UTF-8"))
         }
     }
 
     companion object {
         private const val MAX_TRACKERS = 40
+
+        /** Big public trackers (open to any torrent), as torrent apps add by default. */
+        val PUBLIC_TRACKERS = listOf(
+            "udp://tracker.opentrackr.org:1337/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://open.stealth.si:80/announce",
+            "udp://tracker.torrent.eu.org:451/announce",
+            "udp://exodus.desync.com:6969/announce",
+            "udp://tracker.openbittorrent.com:6969/announce",
+            "udp://explodie.org:6969/announce",
+            "http://tracker.opentrackr.org:1337/announce",
+        )
         private val HEX = Regex("[0-9a-fA-F]{40}")
         private val BASE32 = Regex("[A-Za-z2-7]{32}")
 

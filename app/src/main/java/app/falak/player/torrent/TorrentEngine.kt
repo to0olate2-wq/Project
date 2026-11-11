@@ -29,6 +29,9 @@ class TorrentEngine(private val dir: File) {
     @Volatile
     private var started = false
 
+    /** Whether people are looked for out on the internet (not in the test, where the other side is given). */
+    private var lookOutside = true
+
     /** [listen]: the address to listen on (tests use "127.0.0.1:46882"), else every interface. */
     @Synchronized
     fun start(listen: String? = null, findPeers: Boolean = true) {
@@ -44,6 +47,7 @@ class TorrentEngine(private val dir: File) {
             // people who have all of it must not be hung up on (they are needed again right away).
             .setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.close_redundant_connections.swigValue(), false)
         if (listen != null) sp.listenInterfaces(listen)
+        lookOutside = findPeers
         if (findPeers) {
             sp.setDhtBootstrapNodes(DHT_START)
         } else {
@@ -88,7 +92,8 @@ class TorrentEngine(private val dir: File) {
         progress("Opening the link…", 0, 0)
         val folder = File(dir, "g0")
         // (Nothing is fetched until the film has been picked out of it.)
-        session.download(source.magnet(), folder, TorrentFlags.SEQUENTIAL_DOWNLOAD.or_(TorrentFlags.DEFAULT_DONT_DOWNLOAD))
+        val magnet = source.magnet(if (lookOutside) TorrentSource.PUBLIC_TRACKERS else emptyList())
+        session.download(magnet, folder, TorrentFlags.SEQUENTIAL_DOWNLOAD.or_(TorrentFlags.DEFAULT_DONT_DOWNLOAD))
         val handle = await(10_000, cancelled) { session.find(hash) }
             ?: throw TorrentException("This link couldn't be opened.")
         try {
