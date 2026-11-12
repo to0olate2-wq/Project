@@ -47,9 +47,12 @@ protected fun openSampleSeries(vm: LibraryViewModel) {
 class TvTitlePageScreens : TitlePageShots() {
     @Test @Config(qualifiers = ScreenshotBase.TV)
     fun tvTitlePages() = mainScreens("tv", watching = true) { vm, shoot ->
+        // (A picture asked for the first time isn't in the first frame drawn: each page is drawn twice.)
         vm.openDetails(vm.index.movies.first())
         shoot("tv-title-1-film")
+        shoot("tv-title-1-film")
         openSampleSeries(vm)
+        shoot("tv-title-2-series")
         shoot("tv-title-2-series")
     }
 }
@@ -62,7 +65,9 @@ class PhoneTitlePageScreens : TitlePageShots() {
     fun phoneTitlePages() = mainScreens("phone", watching = true) { vm, shoot ->
         vm.openDetails(vm.index.movies.first())
         shoot("phone-title-1-film")
+        shoot("phone-title-1-film")
         openSampleSeries(vm)
+        shoot("phone-title-2-series")
         shoot("phone-title-2-series")
     }
 }
