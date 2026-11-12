@@ -1,5 +1,8 @@
 package app.falak.player.ui
 
+import androidx.compose.ui.platform.LocalContext
+import app.falak.player.data.GroupFolders
+import app.falak.player.data.Habits
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExitTransition
@@ -164,6 +167,35 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     val visibleTotal = remember(groupMap) { groupMap.values.sumOf { it.size } }
     val gridView = section.name in state.settings.gridSections
+    // Live TV for a big playlist (GroupsUi.kt): the groups folded into folders, a window to find one
+    // by typing, and the groups watched lately for the short chip row.
+    val liveTree = remember(groupMap, state.settings.groupFolders, kind) {
+        val names = groupMap.keys.toList()
+        if (kind == Kind.LIVE && state.settings.groupFolders) GroupFolders.build(names) else GroupFolders.flat(names)
+    }
+    val manyGroups = kind == Kind.LIVE && (liveTree.hasFolders || groupMap.size > MANY_GROUPS)
+    val latelyGroups = remember(recentIds, index, groupMap, kind) {
+        if (kind != Kind.LIVE) emptyList() else recentIds.asSequence().mapNotNull { index.byId[it] }
+            .filter { it.kind == Kind.LIVE && it.group in groupMap }.map { it.group }.distinct().take(4).toList()
+    }
+    // "All channels" opens on your own channels: favorites, then what you often watch around now
+    // (learned on this device, see Habits), as tiles above the list.
+    val context = LocalContext.current
+    val me = state.mine(p.id)
+    val quarter = now / (15 * 60_000L)
+    val oftenIds by produceState(emptyList<String>(), me, quarter, section == Section.LIVE) {
+        value = if (section != Section.LIVE) emptyList() else withContext(Dispatchers.IO) {
+            runCatching { Habits.forNow(Habits.read(context.filesDir), me, System.currentTimeMillis()) }.getOrDefault(emptyList())
+        }
+    }
+    val mineFav = remember(favOfKind, excluded, section) {
+        if (section != Section.LIVE) emptyList() else favOfKind.filter { it.group !in excluded }.take(12)
+    }
+    val mineOften = remember(oftenIds, index, excluded, mineFav) {
+        val shown = mineFav.mapTo(HashSet()) { it.id }
+        oftenIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && it.group !in excluded && it.id !in shown }.take(6)
+    }
+    val mineShown = section == Section.LIVE && !gridView && group == null && q.isEmpty() && (mineFav.isNotEmpty() || mineOften.isNotEmpty())
     // With a search: every match in the section (all of them from Home), best first (see
     // SearchIndex), and the best five for the row under the search box.
     val result by produceState<Pair<List<Channel>, List<Channel>>?>(null, base, group, q, sort, excluded, groupMap, favOfKind, section) {
@@ -240,7 +272,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             return@LaunchedEffect
         }
         val usesGrid = kind != null && gridView
-        if (usesGrid) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2).coerceAtLeast(0))
+        // (The tiles of your own channels are the list's first item.)
+        if (usesGrid) gridState.scrollToItem(idx) else listState.scrollToItem((idx - 2 + (if (mineShown) 1 else 0)).coerceAtLeast(0))
         delay(400)
         vm.focusId = null
     }
@@ -399,6 +432,14 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                                 onOpen = { ch -> opened = true; openItem(ch) }, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                                 focusId = focusId, modifier = Modifier.weight(0.6f).fillMaxHeight(),
                                                 onFocus = { ch -> focusedId = ch.id },
+                                                header = if (mineShown) ({
+                                                    YourChannels(
+                                                        mineFav, mineOften, epg, now,
+                                                        onOpen = { row, ch -> opened = true; openFrom(row, ch) },
+                                                        onLongPress = { ch -> vm.listSheetFor = ch },
+                                                        onFocus = { ch -> focusedId = ch.id },
+                                                    )
+                                                }) else null,
                                             )
                                             Spacer(Modifier.width(24.dp))
                                             LivePreviewPane(
@@ -419,6 +460,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         progress = state.progress, playlistId = state.mine(p.id),
                                         onOpen = openItem, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
                                         focusId = focusId, modifier = m,
+                                        header = if (mineShown && shown == Section.LIVE) ({
+                                            YourChannels(mineFav, mineOften, epg, now, onOpen = openFrom, onLongPress = { ch -> vm.listSheetFor = ch }, onFocus = null)
+                                        }) else null,
                                     )
                                     shown == Section.LIVE -> ChannelGrid(
                                         list, epg, now, vm.gridStateFor(shown), openItem, { ch -> vm.listSheetFor = ch }, m,
@@ -454,7 +498,12 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                 SectionHead(
                                     title = when {
                                         !noQuery -> "Results"
-                                        shown == Section.LIVE -> "All channels"
+                                        // A group of a folder is named with it ("UK · Sports").
+                                        shown == Section.LIVE -> when (pickedGroup) {
+                                            null -> "All channels"
+                                            FAV_FILTER -> "Favorites"
+                                            else -> liveTree.title(pickedGroup)
+                                        }
                                         shown == Section.MOVIES -> "All films"
                                         shown == Section.SERIES -> "All series"
                                         shown == Section.RECENT -> "Recently watched"
@@ -478,14 +527,23 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                 // groups are a column beside the channels rather than chips above them.
                                 val columns = groupsWanted && shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections)
                                 if (groupsWanted && !columns) {
-                                    FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    if (manyGroups && shown == Section.LIVE) {
+                                        // Many groups: a short row and a window to find one, not hundreds of chips.
+                                        GroupBar(
+                                            groupMap, liveTree, visibleTotal, favOfKind.size, pickedGroup, locked, latelyGroups, selectGroup,
+                                            { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS },
+                                        ) { groupFinderOpen = true }
+                                    } else {
+                                        FilterChips(groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup, { if (!vm.kidsActive) groupMenu = it }) { vm.screen = Screen.GROUPS }
+                                    }
                                 }
                                 if (columns) {
                                     Row(Modifier.weight(1f).fillMaxWidth()) {
                                         GroupColumn(
-                                            groupMap, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup,
+                                            groupMap, liveTree, visibleTotal, favOfKind.size, pickedGroup, locked, selectGroup,
                                             { if (!vm.kidsActive) groupMenu = it }, { vm.screen = Screen.GROUPS },
-                                            Modifier.width(184.dp).fillMaxHeight(),
+                                            onFind = if (manyGroups) ({ groupFinderOpen = true }) else null,
+                                            modifier = Modifier.width(if (liveTree.hasFolders) 204.dp else 184.dp).fillMaxHeight(),
                                         )
                                         Spacer(Modifier.width(18.dp))
                                         content(Modifier.weight(1f).fillMaxHeight())
@@ -526,6 +584,23 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         GroupMenu(vm, kind, g) { groupMenu = null }
     }
 
+    if (groupFinderOpen && kind == Kind.LIVE) {
+        GroupFinderDialog(
+            groupMap, liveTree, visibleTotal, favOfKind.size, pickedGroup, locked, latelyGroups,
+            onPick = { g ->
+                groupFinderOpen = false
+                selectGroup(g)
+            },
+            onOptions = { g ->
+                if (!vm.kidsActive) {
+                    groupFinderOpen = false
+                    groupMenu = g
+                }
+            },
+            onDismiss = { groupFinderOpen = false },
+        )
+    }
+
     pinForGroup?.let { g ->
         PinDialog(
             title = "Enter PIN to open “$g”",
@@ -556,87 +631,6 @@ fun rememberLockedGroups(vm: LibraryViewModel, state: AppState): Set<String> {
         } else {
             all.mapTo(LinkedHashSet()) { it.group }
                 .filterTo(HashSet()) { g -> g in explicit || (s.lockAdult && ADULT_GROUP.containsMatchIn(g)) }
-        }
-    }
-}
-
-@Composable
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-private fun GroupLine(name: String, count: Int, selected: Boolean, locked: Boolean, onLongClick: () -> Unit, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(6.dp)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .focusRing(shape)
-            .clip(shape)
-            .background(if (selected) Ink3 else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .padding(end = 10.dp)
-                .width(3.dp)
-                .height(18.dp)
-                .background(if (selected) Signal else Color.Transparent, RoundedCornerShape(2.dp)),
-        )
-        Text(
-            name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontFamily = Sans,
-            fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) Paper else Muted,
-            modifier = Modifier.weight(1f),
-        )
-        if (locked) {
-            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Faint, modifier = Modifier.padding(end = 8.dp).size(14.dp))
-        } else {
-            Text("$count", style = Tabular.copy(fontSize = 12.sp), color = Faint, modifier = Modifier.padding(end = 8.dp))
-        }
-    }
-}
-
-/**
- * TV, Live TV: "All channels", your favorites and the provider's groups as a column beside the
- * channels (OK picks one; hold OK on a group for its options).
- */
-@Composable
-private fun GroupColumn(
-    groups: Map<String, List<Channel>>,
-    total: Int,
-    favorites: Int,
-    selected: String?,
-    locked: Set<String>,
-    onSelect: (String?) -> Unit,
-    onOptions: (String) -> Unit,
-    onManage: () -> Unit,
-    modifier: Modifier,
-) {
-    val names = remember(groups) { groups.keys.toList() }
-    LazyColumn(modifier, contentPadding = PaddingValues(top = 2.dp, bottom = 32.dp)) {
-        item(key = "__all") { GroupLine("All channels", total, selected == null, false, {}) { onSelect(null) } }
-        if (favorites > 0) {
-            item(key = "__fav") { GroupLine("★ Favorites", favorites, selected == FAV_FILTER, false, {}) { onSelect(FAV_FILTER) } }
-        }
-        items(names, key = { "g:$it" }) { g ->
-            GroupLine(g, groups[g]?.size ?: 0, selected == g, g in locked, { onOptions(g) }) { onSelect(g) }
-        }
-        item(key = "__manage") {
-            Text(
-                "Edit groups",
-                fontFamily = Sans,
-                fontSize = 13.sp,
-                color = Muted,
-                modifier = Modifier
-                    .padding(top = 12.dp)
-                    .focusRing(RoundedCornerShape(6.dp))
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onManage() }
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
-            )
         }
     }
 }
@@ -730,6 +724,8 @@ private fun ChannelList(
     emptyText: String = "Nothing here yet",
     /** The remote moved onto a row. */
     onFocus: ((Channel) -> Unit)? = null,
+    /** Drawn above the first row, scrolling with the list (Live TV's tiles of your own channels). */
+    header: (@Composable () -> Unit)? = null,
 ) {
     if (list.isEmpty()) {
         Box(modifier.padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
@@ -739,7 +735,12 @@ private fun ChannelList(
     }
     // The remote goes round: down on the last one comes back to the first.
     val loop = rememberFocusLoop()
-    LazyColumn(modifier.focusLoop(loop, state, list.size), state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
+    LazyColumn(
+        modifier.focusLoop(loop, state, list.size, offset = if (header != null) 1 else 0),
+        state = state,
+        contentPadding = PaddingValues(bottom = 32.dp),
+    ) {
+        if (header != null) item(key = "__header") { header() }
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null

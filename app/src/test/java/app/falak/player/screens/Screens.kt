@@ -378,6 +378,16 @@ abstract class ScreenshotBase {
 
     // ---------- sample content (all names invented) ----------
 
+    /** A big playlist's way of naming groups ("UK | News", "AR | Kids"), for Live TV's folders. */
+    protected var groupPrefixes = false
+
+    private fun shownGroup(plain: String) = when {
+        !groupPrefixes -> plain
+        plain == "News" || plain == "Sports" -> "UK | $plain"
+        plain == "Kids" || plain == "Documentary" -> "AR | $plain"
+        else -> plain
+    }
+
     private val liveGroups = linkedMapOf(
         "News" to listOf("Atlas News", "Meridian 24", "Harbor News", "Northwind World", "Civic Report"),
         "Sports" to listOf("Pulse Sports 1", "Pulse Sports 2", "Arena Live", "Fairway Golf", "Racing Line"),
@@ -412,7 +422,8 @@ abstract class ScreenshotBase {
     private fun writeCache(dir: File, liveOnly: Boolean, messy: Boolean = false, ramadan: Boolean = false) {
         val now = System.currentTimeMillis() / 1000
         val out = ArrayList<Channel>()
-        for ((group, names) in liveGroups) for (name in names) {
+        for ((plain, names) in liveGroups) for (name in names) {
+            val group = shownGroup(plain)
             val id = slug(name)
             val url = "http://127.0.0.1:1/live/$id.m3u8"
             out += Channel(
@@ -467,7 +478,8 @@ abstract class ScreenshotBase {
     private fun buildM3u(dir: File, liveOnly: Boolean = false, messy: Boolean = false): String = buildString {
         append("#EXTM3U\n")
         var n = 0
-        for ((group, names) in liveGroups) {
+        for ((plain, names) in liveGroups) {
+            val group = shownGroup(plain)
             for (name in names) {
                 val id = slug(name)
                 val logo = image(dir, "logo-$id.png", 240, 240, palette[n % palette.size], initials(name), round = true)
@@ -491,7 +503,8 @@ abstract class ScreenshotBase {
 
     private fun sampleChannels(): List<Channel> {
         val out = ArrayList<Channel>()
-        for ((group, names) in liveGroups) for (name in names) {
+        for ((plain, names) in liveGroups) for (name in names) {
+            val group = shownGroup(plain)
             val logo = File(app.filesDir, "sample/logo-${slug(name)}.png")
             out += Channel(
                 id = slug(name), name = name, group = group, url = "http://127.0.0.1:1/live/${slug(name)}.m3u8",
