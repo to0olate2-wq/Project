@@ -178,7 +178,7 @@ fun MarqueeStage(
 private data class ArtKey(val wide: String?, val tall: String?, val mode: ArtMode, val name: String)
 
 /** How the picture behind the top of a page is drawn. */
-private enum class ArtMode {
+internal enum class ArtMode {
     /** Wide art filling the width; with a poster only, the poster standing on the right. */
     POSTER,
 
@@ -221,7 +221,7 @@ private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded:
  * the page ([scrolls]), it fades as the page scrolls past it ([list]).
  */
 @Composable
-private fun MarqueeBackdrop(
+internal fun MarqueeBackdrop(
     backdrop: String?,
     poster: String?,
     /** A channel's name, for its tile when it has no logo (or its link doesn't load). */
