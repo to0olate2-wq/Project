@@ -2,6 +2,18 @@
 
 package app.falak.player.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,117 +68,124 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val p = vm.playlist ?: return
     val show = vm.series ?: return
     val info = vm.seriesInfo
+    val me = state.mine(p.id)
     var seasonNumber by rememberSaveable(show.id) { mutableStateOf<Int?>(null) }
+    val list = rememberLazyListState()
+    val playFocus = remember { FocusRequester() }
+    val tv = isTv()
 
     BackHandler { vm.screen = Screen.LIBRARY }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.screen = Screen.LIBRARY }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                show.name,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            // Follow: What's new (and a notification) when new episodes come out.
-            if (show.seriesId.isNotEmpty()) {
-                val following = state.followed[p.id].orEmpty().any { it.seriesId == show.seriesId }
-                val count = info?.seasons?.sumOf { it.episodes.size } ?: 0
-                TagChip(if (following) "✓ Following" else "Follow", following) { vm.toggleFollow(show, count) }
-            }
-        }
+    // The player gets every episode of every season, so the next one follows across seasons.
+    val all = remember(info) { info?.seasons?.flatMap { it.episodes }.orEmpty() }
+    // Where to carry on: the episode watched last (the one after it when that one is as good as
+    // finished), or the first.
+    val last = all.mapNotNull { ep -> state.progress[progressKey(me, ep.id)]?.let { ep to it } }.maxByOrNull { it.second.at }
+    val lastDone = last != null && last.second.dur > 0 && last.second.pos >= last.second.dur * 0.95
+    val next = when {
+        last == null -> all.firstOrNull()
+        lastDone -> all.getOrNull(all.indexOf(last.first) + 1) ?: last.first
+        else -> last.first
+    }
+    LaunchedEffect(show.id, next != null) { if (next != null) runCatching { playFocus.requestFocus() } }
 
-        when {
-            info == null && vm.seriesError == null -> Centered {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
-                Text("Loading episodes…")
-            }
-            info == null -> Centered {
-                Text(vm.seriesError.orEmpty(), color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = { vm.openSeries(show) }) { Text("Try again") }
-            }
-            info.seasons.isEmpty() -> Centered { Text("No episodes found for this series.") }
-            else -> {
-                val season = info.seasons.firstOrNull { it.number == seasonNumber } ?: info.seasons.first()
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                    val cover = info.cover.ifBlank { show.logo }
-                    if (info.plot.isNotBlank() || cover.isNotBlank()) {
-                        item(key = "about") {
-                            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                                if (cover.isNotBlank()) {
-                                    AsyncImage(
-                                        model = cover,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(96.dp, 140.dp).clip(RoundedCornerShape(10.dp)),
-                                    )
-                                    Spacer(Modifier.width(14.dp))
-                                }
-                                Column {
-                                    val meta = listOfNotNull(
-                                        info.year.takeIf { it.isNotBlank() },
-                                        ratingLabel(info.rating.ifBlank { show.rating }),
-                                        "${info.seasons.size} season" + if (info.seasons.size == 1) "" else "s",
-                                    ).joinToString("  ·  ")
-                                    Text(meta, style = MaterialTheme.typography.bodyMedium)
-                                    if (info.genre.isNotBlank()) {
-                                        Text(info.genre, style = MaterialTheme.typography.bodySmall, color = Amber)
-                                    }
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        info.plot,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 8,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    if (info.cast.isNotBlank()) {
-                                        Text(
-                                            "Cast: ${info.cast}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(top = 6.dp),
-                                        )
-                                    }
-                                }
+    val cover = info?.cover?.takeIf { it.isNotBlank() } ?: show.logo
+    TitleStage(info?.backdrop, cover, show.name, list, onBack = { vm.screen = Screen.LIBRARY }) { stage ->
+        // (TV: the episodes keep to the left, the picture in view beside them.)
+        val column = Modifier.padding(horizontal = pageMargin()).widthIn(max = if (stage.tv) 600.dp else 760.dp).fillMaxWidth()
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
+            item(key = "head") {
+                TitleHead(
+                    stage,
+                    kicker = show.group.ifBlank { "Series" },
+                    name = show.name,
+                    meta = listOfNotNull(
+                        info?.year?.takeIf { it.isNotBlank() },
+                        ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: show.rating),
+                        info?.seasons?.size?.takeIf { it > 0 }?.let { "$it season" + if (it == 1) "" else "s" },
+                    ).joinToString("  ·  "),
+                    genre = info?.genre,
+                    plot = info?.plot,
+                ) {
+                    ButtonRow(stage.tv) {
+                        if (next != null) {
+                            PaperButton(
+                                if (last != null && !lastDone) "Resume" else if (last != null) "Next episode" else "Play",
+                                Icons.Filled.PlayArrow,
+                                Modifier.focusRequester(playFocus),
+                            ) { onPlay(all, next) }
+                        }
+                        // Follow: What's new (and a notification) when new episodes come out.
+                        if (show.seriesId.isNotEmpty()) {
+                            val following = state.followed[p.id].orEmpty().any { it.seriesId == show.seriesId }
+                            GhostButton(if (following) "Following" else "Follow", if (following) Icons.Filled.Check else Icons.Filled.Add) {
+                                vm.toggleFollow(show, all.size)
+                            }
+                        }
+                        if (vm.index.byId.containsKey(show.id)) {
+                            val isFav = show.id in state.favorites[me].orEmpty() || state.favLists[me].orEmpty().any { show.id in it.ids }
+                            GhostButton(if (isFav) "In my list" else "My list", if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder) {
+                                vm.onStar(show)
                             }
                         }
                     }
+                    // Which episode the button plays.
+                    if (next != null && last != null) {
+                        Text(next.name, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            }
+            info?.cast?.takeIf { it.isNotBlank() }?.let { cast ->
+                item(key = "credits") {
+                    Column(Modifier.padding(horizontal = pageMargin()).padding(top = 16.dp).widthIn(max = 760.dp)) { Credit("Cast", cast) }
+                }
+            }
+            when {
+                info == null && vm.seriesError == null -> item(key = "loading") {
+                    Column(column.padding(top = 22.dp)) {
+                        Text("Loading episodes…", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                        BusyLine(Modifier.padding(top = 10.dp).widthIn(max = 420.dp).fillMaxWidth())
+                    }
+                }
+                info == null -> item(key = "error") {
+                    Column(column.padding(top = 22.dp)) {
+                        Text(vm.seriesError.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(12.dp))
+                        GhostButton("Try again", Icons.Filled.Refresh) { vm.openSeries(show) }
+                    }
+                }
+                info.seasons.isEmpty() -> item(key = "none") {
+                    Text("No episodes found for this series.", style = MaterialTheme.typography.bodyMedium, color = Muted, modifier = column.padding(top = 22.dp))
+                }
+                else -> {
+                    val season = info.seasons.firstOrNull { it.number == seasonNumber }
+                        // Open on the season of the episode to carry on with.
+                        ?: info.seasons.firstOrNull { s -> next != null && s.episodes.any { it.id == next.id } }
+                        ?: info.seasons.first()
                     if (info.seasons.size > 1) {
                         item(key = "seasons") {
                             LazyRow(
-                                Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                Modifier.fillMaxWidth().padding(top = 18.dp),
+                                contentPadding = PaddingValues(horizontal = pageMargin()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 items(info.seasons, key = { it.number }) { s ->
-                                    FilterChip(
-                                        selected = s.number == season.number,
-                                        onClick = { seasonNumber = s.number },
-                                        label = { Text("Season ${s.number}") },
-                                    )
+                                    TagChip("Season ${s.number}", s.number == season.number) { seasonNumber = s.number }
                                 }
                             }
                         }
                     }
                     // Save the whole season to watch without internet.
                     item(key = "download") {
-                        ChipFlow(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        ChipFlow(column.padding(top = 10.dp, bottom = 8.dp)) {
                             SeasonDownload(vm, season.episodes)
                             SeasonDelete(season.episodes)
                         }
                     }
-                    // The player gets every episode of every season, so the next one follows across seasons.
-                    val all = info.seasons.flatMap { it.episodes }
                     items(season.episodes, key = { it.id }) { ep ->
-                        EpisodeRow(vm, ep, state.progress[progressKey(state.mine(p.id), ep.id)]) { onPlay(all, ep) }
+                        Box(column) {
+                            EpisodeRow(vm, ep, state.progress[progressKey(me, ep.id)], upNext = last != null && ep.id == next?.id) { onPlay(all, ep) }
+                        }
                     }
                 }
             }
@@ -175,7 +194,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
 }
 
 @Composable
-private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, onClick: () -> Unit) {
+private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, upNext: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
     Row(
@@ -197,15 +216,19 @@ private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, onCli
                     .background(Ink3),
             )
         } else {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(32.dp))
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Muted, modifier = Modifier.size(32.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(ep.name, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(ep.info, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            // The one the page's button plays.
+            if (upNext) Kicker("Up next")
+            Text(ep.name, style = MaterialTheme.typography.bodyLarge, color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (ep.info.isNotBlank()) Text(ep.info, style = MaterialTheme.typography.bodySmall, color = Muted)
             if (watched != null && watched.dur > 0) {
                 LinearProgressIndicator(
                     progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
+                    color = Signal,
+                    trackColor = Hairline,
                     modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp),
                 )
             }

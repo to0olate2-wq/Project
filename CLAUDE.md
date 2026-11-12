@@ -66,7 +66,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   separate look):** TV list view = three columns (`GroupColumn` | `ChannelList` | `LivePreviewPane`; grid view and
   phones keep the chips); Settings → Playlists → "Open on" Home / Live TV (`Settings.startOn`, this device's);
   phones upright get `ResumeBar` under the Live list (`state.lastLive`, hidden while the mini player is up).
-  **Still to do (owner agreed):** the film/series detail pages in the same style.
+  **A film's page and a series' page in the same style (8.19, `ui/TitlePage.kt`, both looks):** `TitleStage` draws
+  the same picture as Home (`MarqueeBackdrop`: TV full screen and fixed, phone upright the poster edge to edge fading
+  as the page scrolls, otherwise wide art or the poster standing on the right) with Back over the page; `TitleHead`
+  = kicker, name, a line about it, story, buttons (TV: story before the buttons, six lines at most; phone: buttons
+  first, the story whole). Both pages are a `LazyColumn`. Film (`DetailsScreen`): the old buttons, cast and
+  director, then "More like this" (other films of its group; opening one stays on the page, back at the top).
+  Series (`SeriesScreen`): Play / Resume / Next episode (the episode watched last by `Watch.at`, the one after it
+  when that is 95% done; its name under the buttons and "Up next" on its row; the page opens on its season),
+  Follow, My list, season chips, the season's downloads, episodes (600 dp wide on a TV, the picture beside them).
+  Tests: `TitlePageScreens.kt`.
 - **A second look, Cinema (8.18; the owner asked for an Apple TV-like one under our own name and OK'd the sketch):**
   Settings → Appearance → Look (`LookOption`), `Settings.appLook` "spotlight" / "cinema", this device's
   (`DEVICE_SETTINGS`); `LocalCinema` / `isCinema()` (FalakTheme). Only the menu and Home/Films/Series differ
@@ -179,6 +188,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `TEST-*.xml` files are there.
 - Screen tests: one `mainScreens` test per class. A second test in the same class stops redrawing (every picture
   is the first frame, no error, checks still pass).
+- A picture asked for the first time is not in the frame drawn then (a page opened in a screen test shows
+  without its artwork): `shoot` the page twice (`TitlePageScreens.kt`).
 - `capture` draws an open dialog (`ShadowDialog.getLatestDialog()`) centred over the dimmed page.
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 

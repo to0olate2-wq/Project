@@ -1,5 +1,10 @@
 package app.falak.player.ui
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import app.falak.player.data.Kind
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -65,144 +70,98 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val watched = state.progress[progressKey(me, ch.id)]
     val isFav = ch.id in state.favorites[me].orEmpty() || state.favLists[me].orEmpty().any { ch.id in it.ids }
     val context = LocalContext.current
-    val colors = MaterialTheme.colorScheme
     val playFocus = remember { FocusRequester() }
+    val list = rememberLazyListState()
+    // Other films of the same group, to carry on from here.
+    val more = remember(ch.id, vm.index) {
+        vm.index.groupsOf(Kind.MOVIE)[ch.group].orEmpty().asSequence().filter { it.id != ch.id }.take(24).toList()
+    }
 
     BackHandler { vm.screen = Screen.LIBRARY }
-    LaunchedEffect(ch.id) { runCatching { playFocus.requestFocus() } }
+    LaunchedEffect(ch.id) {
+        // (Also when another film is opened from "More like this": back at its top, on Play.)
+        list.scrollToItem(0)
+        runCatching { playFocus.requestFocus() }
+    }
 
     val poster = info?.poster?.takeIf { it.isNotBlank() } ?: ch.logo
-
-    val tv = isTv()
-    Box(Modifier.fillMaxSize()) {
-        // The film's picture across the top, fading out into the page. Without wide artwork, the poster
-        // decoded tiny and stretched: a soft wash of its colours (no ghost of its lettering).
-        val top = if (tv) 420.dp else 320.dp
-        val wide = info?.backdrop?.takeIf { it.isNotBlank() }
-        val model: Any? = wide ?: poster.takeIf { it.isNotBlank() }?.let {
-            coil.request.ImageRequest.Builder(context).data(it).size(24, 36).memoryCacheKey("$it#wash").build()
-        }
-        AsyncImage(
-            model = model,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(top)
-                .graphicsLayer {
-                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                    alpha = if (wide != null) 0.55f else 0.45f
-                }
-                .drawWithContent {
-                    drawContent()
-                    drawRect(
-                        Brush.verticalGradient(0f to Color.Black, 0.55f to Color.Black.copy(alpha = 0.6f), 1f to Color.Transparent),
-                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                    )
-                },
-        )
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = pageMargin()),
-        ) {
-            Box(Modifier.padding(top = 6.dp)) {
-                IconButton(onClick = { vm.screen = Screen.LIBRARY }, modifier = Modifier.offset(x = (-12).dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper)
-                }
-            }
-            Spacer(Modifier.height(if (tv) 28.dp else 36.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                AsyncImage(
-                    model = poster.ifBlank { null },
-                    contentDescription = ch.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .width(if (tv) 180.dp else 120.dp)
-                        .height(if (tv) 270.dp else 180.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Ink3),
-                )
-                Spacer(Modifier.width(if (tv) 28.dp else 16.dp))
-                Column(Modifier.weight(1f)) {
-                    Kicker(ch.group.ifBlank { "Film" })
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        ch.name,
-                        fontFamily = Serif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = if (tv) 36.sp else 26.sp,
-                        lineHeight = if (tv) 40.sp else 30.sp,
-                        color = Paper,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val meta = listOfNotNull(
+    TitleStage(info?.backdrop, poster, ch.name, list, onBack = { vm.screen = Screen.LIBRARY }) { stage ->
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 32.dp)) {
+            item(key = "head") {
+                TitleHead(
+                    stage,
+                    kicker = ch.group.ifBlank { "Film" },
+                    name = ch.name,
+                    meta = listOfNotNull(
                         info?.year?.takeIf { it.isNotBlank() },
                         info?.duration?.let { formatRuntime(it) },
                         ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
-                    ).joinToString("  ·  ")
-                    if (meta.isNotEmpty()) {
-                        Text(meta, style = MaterialTheme.typography.bodyMedium, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                    ).joinToString("  ·  "),
+                    genre = info?.genre,
+                    plot = info?.plot,
+                ) {
+                    ButtonRow(stage.tv) {
+                        PaperButton(
+                            if (watched != null) "Resume ${formatClock(watched.pos)}" else "Play",
+                            Icons.Filled.PlayArrow,
+                            Modifier.focusRequester(playFocus),
+                        ) { onPlay(listOf(ch), ch) }
+                        if (watched != null) {
+                            GhostButton("Start over", Icons.Filled.Refresh) { vm.clearProgress(ch); onPlay(listOf(ch), ch) }
+                        }
+                        info?.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
+                            GhostButton("Trailer") {
+                                val url = if (trailer.startsWith("http")) trailer else "https://www.youtube.com/watch?v=$trailer"
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                }
+                            }
+                        }
+                        GhostButton(if (isFav) "In my list" else "My list", if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder) {
+                            vm.onStar(ch)
+                        }
+                        // Save it to watch without internet; delete the copy once it's downloaded.
+                        DownloadActions(vm, ch)
                     }
-                    info?.genre?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = Amber, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+                    DownloadProgress(ch)
+                    if (watched != null && watched.dur > 0) {
+                        LinearProgressIndicator(
+                            progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
+                            color = Signal,
+                            trackColor = Hairline,
+                            modifier = Modifier.padding(top = 12.dp).widthIn(max = 420.dp).fillMaxWidth().height(3.dp),
+                        )
+                    }
+                    if (vm.detailsLoading) BusyLine(Modifier.padding(top = 14.dp).widthIn(max = 420.dp).fillMaxWidth())
+                }
+            }
+            val cast = info?.cast?.takeIf { it.isNotBlank() }
+            val director = info?.director?.takeIf { it.isNotBlank() }
+            if (cast != null || director != null) {
+                item(key = "credits") {
+                    Column(Modifier.padding(horizontal = pageMargin()).padding(top = 18.dp).widthIn(max = 760.dp)) {
+                        cast?.let { Credit("Cast", it) }
+                        director?.let { Credit("Director", it) }
                     }
                 }
             }
-
-            Spacer(Modifier.height(22.dp))
-            ButtonRow(tv) {
-                PaperButton(
-                    if (watched != null) "Resume ${formatClock(watched.pos)}" else "Play",
-                    Icons.Filled.PlayArrow,
-                    Modifier.focusRequester(playFocus),
-                ) { onPlay(listOf(ch), ch) }
-                if (watched != null) {
-                    GhostButton("Start over", Icons.Filled.Refresh) { vm.clearProgress(ch); onPlay(listOf(ch), ch) }
-                }
-                info?.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
-                    GhostButton("Trailer") {
-                        val url = if (trailer.startsWith("http")) trailer else "https://www.youtube.com/watch?v=$trailer"
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            if (more.isNotEmpty()) {
+                item(key = "more") {
+                    Box(Modifier.padding(horizontal = pageMargin() - 4.dp)) {
+                        Shelf("More like this") {
+                            items(more, key = { it.id }) { other ->
+                                PosterCard(other, state.progress[progressKey(me, other.id)], onClick = { vm.openDetails(other) })
+                            }
                         }
                     }
                 }
-                GhostButton(if (isFav) "In my list" else "My list", if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder) {
-                    vm.onStar(ch)
-                }
-                // Save it to watch without internet; delete the copy once it's downloaded.
-                DownloadActions(vm, ch)
             }
-            DownloadProgress(ch)
-            if (watched != null && watched.dur > 0) {
-                LinearProgressIndicator(
-                    progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
-                    color = Signal,
-                    trackColor = Hairline,
-                    modifier = Modifier.padding(top = 12.dp).widthIn(max = 420.dp).fillMaxWidth().height(3.dp),
-                )
-            }
-
-            Spacer(Modifier.height(22.dp))
-            if (vm.detailsLoading) {
-                LinearProgressIndicator(Modifier.widthIn(max = 420.dp).fillMaxWidth(), color = Signal, trackColor = Hairline)
-            }
-            // Readable line length on wide screens.
-            Column(Modifier.widthIn(max = 760.dp)) {
-                info?.plot?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodyLarge, color = Paper)
-                    Spacer(Modifier.height(16.dp))
-                }
-                info?.cast?.takeIf { it.isNotBlank() }?.let { Credit("Cast", it) }
-                info?.director?.takeIf { it.isNotBlank() }?.let { Credit("Director", it) }
-            }
-            Spacer(Modifier.height(32.dp))
         }
     }
 }
 
 @Composable
-private fun Credit(label: String, value: String) {
+internal fun Credit(label: String, value: String) {
     Row(Modifier.padding(bottom = 6.dp)) {
         Text("$label: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = Paper)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = Muted)
@@ -234,7 +193,7 @@ internal fun formatClock(ms: Long): String {
 /** The page's buttons: one line on TV (the remote scrolls along it); on phones they wrap, so none is off the edge. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ButtonRow(tv: Boolean, content: @Composable () -> Unit) {
+internal fun ButtonRow(tv: Boolean, content: @Composable () -> Unit) {
     if (tv) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) { content() }
     } else {
