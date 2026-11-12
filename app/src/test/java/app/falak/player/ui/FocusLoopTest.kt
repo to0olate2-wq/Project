@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
@@ -144,5 +145,66 @@ class FocusLoopTest {
         compose.onNodeWithTag("cell6").performKeyInput { pressKey(Key.DirectionDown) }
         compose.waitForIdle()
         compose.onNodeWithTag("cell0").assertIsFocused()
+    }
+
+    /**
+     * The Cinema look on a TV (8.18): the menu, then the panel's buttons, then the rows, which place
+     * themselves at the top of their list (HomeScroller). Up from a row lower down must go to the
+     * row above it (by then scrolled out of view), not jump to the buttons over the list; only
+     * the first row leads up to the buttons, and they to the menu.
+     */
+    @Test
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+    fun cinemaRowsButtonsAndMenu() {
+        compose.setContent {
+            val state = rememberLazyListState()
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            val inherited = androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current
+            val scroller = androidx.compose.runtime.remember { HomeScroller(state, scope, inherited) }
+            androidx.compose.foundation.layout.Column(Modifier.size(960.dp, 540.dp)) {
+                Box(Modifier.size(80.dp, 40.dp).testTag("menu").focusable())
+                androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp, 150.dp))
+                Box(Modifier.size(120.dp, 40.dp).testTag("play").focusable())
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalHomeScroller provides scroller,
+                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides scroller.manual,
+                ) {
+                    LazyColumn(
+                        Modifier.size(960.dp, 310.dp).onGloballyPositioned { scroller.viewport = it },
+                        state = state,
+                    ) {
+                        itemsIndexed((0 until 6).toList()) { r, _ ->
+                            androidx.compose.foundation.layout.Column(Modifier.size(960.dp, 252.dp).pinToTop()) {
+                                androidx.compose.runtime.CompositionLocalProvider(
+                                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides scroller.inner,
+                                ) {
+                                    androidx.compose.foundation.lazy.LazyRow {
+                                        itemsIndexed((0 until 8).toList()) { c, _ ->
+                                            Box(Modifier.size(130.dp, 230.dp).testTag("r${r}c$c").focusable())
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        fun press(from: String, key: Key, to: String) {
+            compose.onNodeWithTag(from).performKeyInput { pressKey(key) }
+            compose.waitForIdle()
+            compose.onNodeWithTag(to).assertIsFocused()
+        }
+        compose.onNodeWithTag("menu").requestFocus()
+        compose.waitForIdle()
+        press("menu", Key.DirectionDown, "play")
+        press("play", Key.DirectionDown, "r0c0")
+        press("r0c0", Key.DirectionDown, "r1c0")
+        press("r1c0", Key.DirectionDown, "r2c0")
+        press("r2c0", Key.DirectionUp, "r1c0")
+        press("r1c0", Key.DirectionUp, "r0c0")
+        press("r0c0", Key.DirectionUp, "play")
+        press("play", Key.DirectionUp, "menu")
     }
 }

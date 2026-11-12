@@ -151,6 +151,13 @@ fun HomeContent(
         if (r.second is app.falak.player.data.Ramadan.Phase.Eid) null else app.falak.player.data.Ramadan.titles(index, r.first, locked)
     }
     LaunchedEffect(hero, continueWatching) { vm.loadHeroArt(hero + continueWatching) }
+    // The Cinema look: the row is "Up next", bigger, with the live channel watched last in it.
+    val cinema = isCinema()
+    val lastLiveId = state.lastLive[me]
+    val upNext = remember(cinema, continueWatching, lastLiveId, index, locked) {
+        val live = if (cinema) lastLiveId?.let { index.byId[it] }?.takeIf { it.kind == Kind.LIVE && ok(it) } else null
+        if (live == null) continueWatching else continueWatching.take(2) + live + continueWatching.drop(2)
+    }
 
     val openItem: (List<Channel>, Channel) -> Unit = { row, ch ->
         when {
@@ -190,15 +197,19 @@ fun HomeContent(
         // The rows in the order chosen (Settings → Appearance → Home rows), without those switched off.
         for (row in rows) {
             when (row) {
-                "continue" -> if (continueWatching.isNotEmpty()) {
+                "continue" -> if (upNext.isNotEmpty()) {
                     item(key = "continue") {
                         // (TV: right under the spotlight.)
                         Box(Modifier.padding(top = if (tvHome) 10.dp else 16.dp)) {
                             ContinueRow(
-                                continueWatching, vm.heroArt, state.progress, me,
-                                title = "Continue watching",
-                                width = if (tvHome) 220.dp else 180.dp,
-                            ) { ch -> onPlay(listOf(ch), ch) }
+                                upNext, vm.heroArt, state.progress, me,
+                                title = if (cinema) UP_NEXT else "Continue watching",
+                                width = upNextWidth(cinema, tvHome),
+                            ) { ch ->
+                                // A channel: with its group, so the next and previous channel work.
+                                val row = if (ch.kind == Kind.LIVE) index.groupsOf(Kind.LIVE)[ch.group]?.takeIf { l -> l.any { it.id == ch.id } } else null
+                                onPlay(row ?: listOf(ch), ch)
+                            }
                         }
                     }
                 }
@@ -268,7 +279,7 @@ fun HomeContent(
             }
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
-        val empty = hero.isEmpty() && !hasDownloads && !hasRecordings && forThisHour.isEmpty() && recentLive.isEmpty() && continueWatching.isEmpty() &&
+        val empty = hero.isEmpty() && !hasDownloads && !hasRecordings && forThisHour.isEmpty() && recentLive.isEmpty() && upNext.isEmpty() &&
             top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
         if (empty) {
             item(key = "empty") {

@@ -62,8 +62,8 @@ import app.falak.player.record.RecState
  * it, so the menu never goes away while you move between them.
  */
 
-/** Where the menu is: a rail on the left, a bar at the bottom, or none (full pages). */
-enum class ShellMode { NONE, RAIL, BAR }
+/** Where the menu is: a rail on the left, a bar at the bottom, words along the top (the Cinema look on a TV), or none (full pages). */
+enum class ShellMode { NONE, RAIL, BAR, TOP }
 
 /** The menu around the page on show; pages use it for Back (to More) and to leave out what the menu already has. */
 val LocalShell = staticCompositionLocalOf { ShellMode.NONE }
@@ -75,8 +75,9 @@ val BAR_HEIGHT = 64.dp
 val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES, Screen.ADDONS) + SETTINGS_SCREENS
 
 /** The menu for [screen]: none before a playlist is open, or on full-screen pages. */
-fun shellMode(hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp): ShellMode = when {
+fun shellMode(hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp, cinema: Boolean = false): ShellMode = when {
     !hasPlaylist || screen !in SHELL_SCREENS -> ShellMode.NONE
+    tv && cinema -> ShellMode.TOP
     tv || width >= 600.dp -> ShellMode.RAIL
     else -> ShellMode.BAR
 }
@@ -115,20 +116,23 @@ fun greeting(hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar
 fun AppShell(vm: LibraryViewModel, state: AppState, mode: ShellMode, content: @Composable () -> Unit) {
     val start = if (mode == ShellMode.RAIL) railWidth() else 0.dp
     val bottom = if (mode == ShellMode.BAR) BAR_HEIGHT else 0.dp
+    // The menu along the top: the lists draw their picture behind it (and leave its room themselves).
+    val top = if (mode == ShellMode.TOP && vm.screen != Screen.LIBRARY) TOP_MENU_HEIGHT else 0.dp
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().padding(start = start, bottom = bottom)) {
+        Box(Modifier.fillMaxSize().padding(start = start, top = top, bottom = bottom)) {
             CompositionLocalProvider(LocalShell provides mode) { content() }
         }
         when (mode) {
             ShellMode.RAIL -> ShellRail(vm, state, Modifier.align(Alignment.CenterStart).fillMaxHeight())
             ShellMode.BAR -> BottomBar(vm, state, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            ShellMode.TOP -> TopMenu(vm, state, Modifier.align(Alignment.TopCenter))
             ShellMode.NONE -> Unit
         }
     }
 }
 
 /** Opens a section of the lists (from Settings, Recordings… too). */
-private fun LibraryViewModel.openSection(s: Section) {
+internal fun LibraryViewModel.openSection(s: Section) {
     screen = Screen.LIBRARY
     section = s
     group = null

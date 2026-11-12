@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -85,8 +89,80 @@ fun SpotlightPanel(vm: LibraryViewModel, ch: Channel?, modifier: Modifier = Modi
     }
 }
 
+/** The Cinema look's panel under the menu (TV): always this tall, so the rows under it never move. */
+val CINEMA_PANEL = 190.dp
+
+/**
+ * The Cinema look, TV: what the spotlight says about [ch] (the card the remote is on, or the
+ * featured title before it is on one), in bigger letters over the full-screen picture, with
+ * buttons for it: press Up from a row to reach them. The card itself still opens with OK.
+ */
 @Composable
-private fun LiveSpot(ch: Channel, guide: List<Program>?, now: Long) {
+fun CinemaPanel(
+    vm: LibraryViewModel,
+    ch: Channel?,
+    /** Play (a film or a channel), or open a series' episodes. */
+    onPrimary: (Channel) -> Unit,
+    /** The remote is on the panel's buttons. */
+    onFocus: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val epg by vm.epg.collectAsStateWithLifecycle()
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    val tap = LocalCardTap.current
+    val back = LocalReturnFocus.current?.row == HERO_ROW
+    Column(modifier.fillMaxWidth().height(CINEMA_PANEL).onFocusChanged { onFocus(it.hasFocus) }) {
+        Box(Modifier.fillMaxWidth(0.58f).weight(1f).padding(start = 4.dp, top = 6.dp)) {
+            if (ch != null) {
+                AnimatedContent(
+                    targetState = ch,
+                    contentKey = { it.id },
+                    transitionSpec = { fadeIn(tween(160)).togetherWith(fadeOut(tween(90))) },
+                    label = "cinemaPanel",
+                ) { item ->
+                    if (item.kind == Kind.LIVE) {
+                        LiveSpot(item, epg[item.epgKey], now, big = true)
+                    } else {
+                        TitleSpot(item, vm.heroInfo[item.id], big = true)
+                    }
+                }
+            }
+        }
+        if (ch != null) {
+            // In the playlist (not something only remembered from Continue watching): it has a page and can go on a list.
+            val known = vm.index.byId.containsKey(ch.id)
+            Row(Modifier.padding(start = 4.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PaperButton(
+                    when {
+                        ch.kind == Kind.LIVE -> "Watch"
+                        ch.isSeriesFolder -> "Episodes"
+                        else -> "Play"
+                    },
+                    Icons.Filled.PlayArrow,
+                    Modifier.comeBackHere(HERO_ROW, ch.id, also = back),
+                ) {
+                    tap?.invoke(HERO_ROW, ch.id)
+                    onPrimary(ch)
+                }
+                if (known && ch.kind == Kind.MOVIE) {
+                    GhostButton("More info", Icons.Outlined.Info) {
+                        tap?.invoke(HERO_ROW, ch.id)
+                        vm.openDetails(ch)
+                    }
+                }
+                if (known) GhostButton("My list") { vm.listSheetFor = ch }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveSpot(ch: Channel, guide: List<Program>?, now: Long, big: Boolean = false) {
     val current = Epg.current(guide, now)
     val next = Epg.next(guide, now)
     val time = rememberTimeFormat()
@@ -101,7 +177,7 @@ private fun LiveSpot(ch: Channel, guide: List<Program>?, now: Long) {
             }
         }
         Spacer(Modifier.height(6.dp))
-        SpotTitle(current?.title?.takeIf { it.isNotBlank() } ?: ch.name)
+        SpotTitle(current?.title?.takeIf { it.isNotBlank() } ?: ch.name, big)
         Spacer(Modifier.height(4.dp))
         SpotLine(
             if (current != null) {
@@ -130,7 +206,7 @@ private fun LiveSpot(ch: Channel, guide: List<Program>?, now: Long) {
 }
 
 @Composable
-private fun TitleSpot(ch: Channel, details: VodInfo?) {
+private fun TitleSpot(ch: Channel, details: VodInfo?, big: Boolean = false) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Kicker(
@@ -147,7 +223,7 @@ private fun TitleSpot(ch: Channel, details: VodInfo?) {
             }
         }
         Spacer(Modifier.height(6.dp))
-        SpotTitle(ch.name)
+        SpotTitle(ch.name, big)
         val meta = listOfNotNull(
             ratingLabel(details?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
             details?.year?.takeIf { it.isNotBlank() }?.take(4),
@@ -165,13 +241,13 @@ private fun TitleSpot(ch: Channel, details: VodInfo?) {
 }
 
 @Composable
-private fun SpotTitle(text: String) {
+private fun SpotTitle(text: String, big: Boolean = false) {
     Text(
         text,
         fontFamily = Serif,
         fontWeight = FontWeight.Bold,
-        fontSize = 30.sp,
-        lineHeight = 36.sp,
+        fontSize = if (big) 36.sp else 30.sp,
+        lineHeight = if (big) 42.sp else 36.sp,
         color = Paper,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

@@ -408,6 +408,12 @@ data class Settings(
     val startLastChannel: Boolean = true,
     /** The page a playlist opens on: "home" or "live" (Live TV, for people who mostly watch channels). This device's. */
     val startOn: String = "home",
+    /**
+     * The look of the menu and of Home, Films and Series: "spotlight" or "cinema" (8.18: the menu as
+     * words along the top of a TV, a full-screen picture, a big "Up next" row). This device's.
+     * (Not [look]: older versions still sync that one.)
+     */
+    val appLook: String = "spotlight",
     /** Kids mode: only [kidsGroups] are shown; Settings and group pages need the PIN. */
     val kidsMode: Boolean = false,
     /** playlistId -> the groups kids mode shows. */

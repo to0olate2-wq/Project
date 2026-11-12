@@ -178,7 +178,7 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
         place + " · " + OfflineCenter.sizeLabel(RecordCenter.freeSpace()) + " free",
         if (saved.isNotEmpty()) "${saved.count { it.state == RecState.DONE }} saved use ${OfflineCenter.sizeLabel(RecordCenter.usedSpace())}" else null,
     ).joinToString("  ·  ")
-    Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL && tv) 28.dp else pageMargin())) {
+    Column(Modifier.fillMaxSize().padding(horizontal = if ((shell == ShellMode.RAIL || shell == ShellMode.TOP) && tv) 28.dp else pageMargin())) {
         if (tv) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

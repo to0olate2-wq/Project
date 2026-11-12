@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
             val dark = rememberDarkTheme(s.themeMode)
-            FalakTheme(dark, s.layout) {
+            FalakTheme(dark, s.layout, cinema = s.appLook == "cinema") {
                 // Status-bar icons follow the theme (dark icons on the light theme).
                 LaunchedEffect(dark) {
                     val transparent = android.graphics.Color.TRANSPARENT
@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
                         val picking = vm.choosingProfile && vm.profilesWanted(state)
                         // Sidebar look: the menu stays beside the lists and the pages opened from them
                         // (a rail on the left, or a bar along the bottom of a phone held upright).
-                        val shell = if (picking) ShellMode.NONE else shellMode(vm.playlist != null, vm.screen, tv, maxWidth)
+                        val shell = if (picking) ShellMode.NONE else shellMode(vm.playlist != null, vm.screen, tv, maxWidth, isCinema())
                         // Kids mode on: who's watching, each time the app opens (nothing else on screen meanwhile).
                         if (picking) {
                             ProfilePicker(vm, state, onBack = { vm.confirmExit = true })
