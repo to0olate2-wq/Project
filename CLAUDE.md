@@ -66,6 +66,20 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   separate look):** TV list view = three columns (`GroupColumn` | `ChannelList` | `LivePreviewPane`; grid view and
   phones keep the chips); Settings → Playlists → "Open on" Home / Live TV (`Settings.startOn`, this device's);
   phones upright get `ResumeBar` under the Live list (`state.lastLive`, hidden while the mini player is up).
+  **Live TV for a big playlist (8.20; the owner saw three sketches and said "mix"), `ui/GroupsUi.kt`:**
+  (1) Folders: `data/GroupFolders.kt` folds groups whose names start the same way before a mark ("UK | Sports",
+  "AR: Kids", "[FR] Cinema"; never at & + . , or a dash without spaces) into a folder named as the provider wrote
+  it (nothing guessed); only when that gives two folders or more; the groups' real names stay the keys
+  everywhere. Off: Settings → Playlists → Group folders (`Settings.groupFolders`). TV: `GroupColumn` opens folders
+  in place. (2) Find a group: `GroupFinderDialog` (`groupFinderOpen` / `groupFinderTyped`, any words of the name;
+  nothing typed: the groups watched lately, then all, folders opening in place). With folders or more than
+  `MANY_GROUPS` (12) groups the TV column gets "Find a group" and the chips row becomes `GroupBar` (Find a group,
+  All, Favorites, the open group, the ones watched lately). (3) Your channels first: "All channels" in list view
+  starts with `YourChannels` tiles (favorites, then `Habits.forNow`), the list's header item: `ChannelList(header)`,
+  so `focusLoop(offset = 1)` and the scroll back to a channel count it. The heading names a group with its folder
+  ("UK · Sports"). Films and Series keep their chips. Tests: `GroupFoldersTest` (runs on the sandbox with
+  Gradle's Kotlin compiler), `LiveScreens.kt` (`groupPrefixes` gives the sample playlist such group names).
+  The sketches are a Design artifact ("The Player: Live TV ideas for big playlists").
   **A film's page and a series' page in the same style (8.19, `ui/TitlePage.kt`, both looks):** `TitleStage` draws
   the same picture as Home (`MarqueeBackdrop`: TV full screen and fixed, phone upright the poster edge to edge fading
   as the page scrolls, otherwise wide art or the poster standing on the right) with Back over the page; `TitleHead`

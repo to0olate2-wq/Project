@@ -924,6 +924,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 s.mergeDuplicates,
             ) { vm.updateSettings { it.copy(mergeDuplicates = !it.mergeDuplicates) } }
         }
+        item {
+            SwitchRow(
+                "Group folders",
+                "Live TV: groups whose names start the same way (“UK | Sports”, “UK | News”) are kept in one folder (“UK”). " +
+                    "Turn off to see every group in one list.",
+                s.groupFolders,
+            ) { vm.updateSettings { it.copy(groupFolders = !it.groupFolders) } }
+        }
 
         item { SectionTitle("Your playlists") }
         if (p != null) {

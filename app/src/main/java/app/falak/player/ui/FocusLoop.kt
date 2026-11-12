@@ -40,7 +40,7 @@ fun rememberFocusLoop(): FocusLoop = remember { FocusLoop() }
 
 /** On a list: down on the last item goes to the first; with [up], up on the first goes to the last. */
 @Composable
-fun Modifier.focusLoop(loop: FocusLoop, state: LazyListState, count: Int, up: Boolean = false): Modifier {
+fun Modifier.focusLoop(loop: FocusLoop, state: LazyListState, count: Int, up: Boolean = false, /** Items of the list before the first one that counts (a header). */ offset: Int = 0): Modifier {
     val scope = rememberCoroutineScope()
     return onPreviewKeyEvent { e ->
         if (e.type != KeyEventType.KeyDown || count < 2) return@onPreviewKeyEvent false
@@ -50,7 +50,7 @@ fun Modifier.focusLoop(loop: FocusLoop, state: LazyListState, count: Int, up: Bo
             else -> return@onPreviewKeyEvent false
         }
         loop.target = to
-        scope.launch { state.scrollToItem(to) }
+        scope.launch { state.scrollToItem(to + offset) }
         true
     }
 }

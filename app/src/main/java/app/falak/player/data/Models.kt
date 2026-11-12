@@ -414,6 +414,8 @@ data class Settings(
      * (Not [look]: older versions still sync that one.)
      */
     val appLook: String = "spotlight",
+    /** Live TV: groups whose names start the same way ("UK | Sports", "UK | News") fold into folders (8.20). */
+    val groupFolders: Boolean = true,
     /** Kids mode: only [kidsGroups] are shown; Settings and group pages need the PIN. */
     val kidsMode: Boolean = false,
     /** playlistId -> the groups kids mode shows. */
