@@ -1,5 +1,10 @@
 package app.falak.player.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -143,13 +148,19 @@ fun SidebarFrame(
     val index = vm.index
     val hasGuide = index.live.isNotEmpty()
     val shell = LocalShell.current
+    // The Cinema look on a TV: the menu along the top has the sections and the tools, so this
+    // page's own bar is only drawn for searching (opened from the menu's Search).
+    val topMenu = shell == ShellMode.TOP
+    val searching = topMenu && (cinemaSearchOpen || vm.query.isNotEmpty())
+    BackHandler(enabled = topMenu && cinemaSearchOpen && vm.query.isEmpty()) { cinemaSearchOpen = false }
     // TV: the page's name (a greeting on Home) at the top left; the search is a box beside it.
     val title = if (!tv) null else when {
+        topMenu -> "Search"
         vm.query.isNotEmpty() -> "Search"
         section == Section.HOME -> greeting()
         else -> navLabel(section)
     }
-    val subtitle = if (!tv || vm.query.isNotEmpty()) null else when (val g = vm.group) {
+    val subtitle = if (!tv || topMenu || vm.query.isNotEmpty()) null else when (val g = vm.group) {
         null, ALL_FILTER -> null
         FAV_FILTER -> "Favorites"
         else -> g
@@ -157,14 +168,14 @@ fun SidebarFrame(
     CompositionLocalProvider(LocalCardDetails provides true) {
         // The Films and Series pages' picture goes behind the top bar too.
         MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp)) {
-                SidebarTopBar(
+            Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp).padding(top = if (topMenu) TOP_MENU_HEIGHT else 0.dp)) {
+                if (!topMenu || searching) SidebarTopBar(
                     query = vm.query,
                     scope = section.label,
                     onQuery = { vm.query = it },
                     onMenu = null,
                     // The rail has the guide; the bottom bar hasn't.
-                    hasGuide = hasGuide && shell != ShellMode.RAIL,
+                    hasGuide = hasGuide && shell != ShellMode.RAIL && !topMenu,
                     loading = vm.loading,
                     onGuide = { vm.screen = Screen.GUIDE },
                     onRefresh = { vm.open(p, refresh = true) },
@@ -184,6 +195,9 @@ fun SidebarFrame(
                     title = title,
                     subtitle = subtitle,
                     brand = shell == ShellMode.BAR,
+                    tools = !topMenu,
+                    // Opened from the menu: the box takes the remote, ready to type in.
+                    focusSearch = topMenu && cinemaSearchOpen,
                 )
                 body(Modifier.fillMaxSize())
             }
@@ -451,9 +465,20 @@ fun SidebarTopBar(
     subtitle: String? = null,
     /** Phones with the bottom bar: the app's mark at the left. */
     brand: Boolean = false,
+    /** The buttons at the right (off where the menu along the top has them: the Cinema look on a TV). */
+    tools: Boolean = true,
+    /** The search box takes the focus when this turns true. */
+    focusSearch: Boolean = false,
 ) {
     val tv = isTv()
-    Row(Modifier.fillMaxWidth().padding(top = if (tv) 18.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val searchFocus = remember { FocusRequester() }
+    LaunchedEffect(focusSearch) {
+        if (focusSearch) {
+            delay(120)
+            runCatching { searchFocus.requestFocus() }
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(top = if (tv && tools) 18.dp else if (tv) 4.dp else 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         if (onMenu != null) {
             IconButton(onClick = onMenu, modifier = Modifier.padding(end = 4.dp)) {
                 Icon(Icons.Outlined.Menu, contentDescription = "Menu", tint = Paper)
@@ -497,7 +522,7 @@ fun SidebarTopBar(
                     singleLine = true,
                     textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 14.sp),
                     cursorBrush = SolidColor(Signal),
-                    modifier = Modifier.fillMaxWidth().onFocusChanged { onSearchFocus(it.isFocused) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(searchFocus).onFocusChanged { onSearchFocus(it.isFocused) },
                 )
             }
             if (query.isNotEmpty()) {
@@ -508,7 +533,7 @@ fun SidebarTopBar(
             // The microphone while the box is empty (typed text keeps the room).
             if (query.isEmpty()) LocalVoiceSearch.current?.let { speak -> VoiceButtons(voiceLang, speak, onVoiceLang) }
         }
-        Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (tools) Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))
             if (hasGuide) {
                 IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
@@ -751,8 +776,17 @@ private fun ContinueCard(ch: Channel, backdrop: String?, watched: Watch?, width:
             .background(Ink3)
             .clickable(onClick = { tap?.invoke(row, ch.id); onClick() }),
     ) {
+        val live = ch.kind == Kind.LIVE
         val picture = backdrop?.takeIf { it.isNotBlank() } ?: ch.logo.ifBlank { null }
-        if (picture != null) {
+        if (live) {
+            // A channel (the Cinema look's Up next): its logo whole on the tile, never cropped like a poster.
+            LogoOr(ch.logo, ch.name, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.46f)) {}
+            Row(Modifier.align(Alignment.TopStart).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                LiveDot(6.dp)
+                Spacer(Modifier.width(5.dp))
+                Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, letterSpacing = 1.2.sp, color = Paper)
+            }
+        } else if (picture != null) {
             AsyncImage(
                 model = picture,
                 contentDescription = null,
@@ -766,7 +800,7 @@ private fun ContinueCard(ch: Channel, backdrop: String?, watched: Watch?, width:
             Text(ch.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val left = watched?.takeIf { it.dur > 0 }?.let { ((it.dur - it.pos) / 60_000).coerceAtLeast(1) }
             Text(
-                listOfNotNull(ch.info.ifBlank { null }, left?.let { "$it min left" }).joinToString("  ·  ").ifBlank { ch.group },
+                if (live) "Live TV  ·  watched last" else listOfNotNull(ch.info.ifBlank { null }, left?.let { "$it min left" }).joinToString("  ·  ").ifBlank { ch.group },
                 fontFamily = Sans,
                 fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.75f),

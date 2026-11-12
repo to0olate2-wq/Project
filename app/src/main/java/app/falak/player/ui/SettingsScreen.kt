@@ -456,6 +456,30 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         item {
+            Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
+                Text("Look", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "Changes the menu and the Home, Films and Series pages on this device. Live TV, the player and everything else stay the same.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LookOption(
+                        "Spotlight",
+                        if (tvLayout) "The menu at the side. A panel shows what the remote is on." else "A featured title, then rows of what to watch.",
+                        s.appLook != "cinema", cinema = false, Modifier.weight(1f).then(focusAt("look")),
+                    ) { vm.updateSettings { it.copy(appLook = "spotlight") } }
+                    LookOption(
+                        "Cinema",
+                        if (tvLayout) "The menu along the top. A full-screen picture and a big Up next row." else "A bigger picture and a big Up next row.",
+                        s.appLook == "cinema", cinema = true, Modifier.weight(1f),
+                    ) { vm.updateSettings { it.copy(appLook = "cinema") } }
+                }
+            }
+        }
+
+        item {
             val context = androidx.compose.ui.platform.LocalContext.current
             val detected = remember(context) { detectTv(context) }
             Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
@@ -1364,7 +1388,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     val shell = LocalShell.current
     if (twoPane) {
         // TV: the list on the left, the page on the right.
-        Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL) 28.dp else pageMargin())) {
+        Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL || shell == ShellMode.TOP) 28.dp else pageMargin())) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Settings",

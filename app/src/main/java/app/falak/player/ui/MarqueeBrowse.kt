@@ -104,11 +104,12 @@ val LocalMarqueeStage = staticCompositionLocalOf<MarqueeStageInfo?> { null }
  * How much of the page the picture covers: most of a TV, a little more of a short screen. Home's
  * is shorter, so the row under it (Continue watching) is in view at once.
  */
-private fun marqueeFraction(height: Dp, section: Section? = null, portrait: Boolean = false, tv: Boolean = false): Float = when {
-    // A phone held upright: the picture takes the top of the page, the first row in view under it.
-    portrait -> 0.56f
-    // TV: behind the bar and the spotlight, fading out behind the first row.
-    tv -> 0.62f
+private fun marqueeFraction(height: Dp, section: Section? = null, portrait: Boolean = false, tv: Boolean = false, cinema: Boolean = false): Float = when {
+    // A phone held upright: the picture takes the top of the page, the first row in view under it
+    // (the Cinema look: more of the page, the Up next row still in view).
+    portrait -> if (cinema) 0.68f else 0.56f
+    // TV: behind the bar and the spotlight, fading out behind the first row (the Cinema look: the whole screen).
+    tv -> if (cinema) 1f else 0.62f
     height < 480.dp -> 0.84f
     section == Section.HOME -> 0.6f
     else -> 0.74f
@@ -155,17 +156,18 @@ fun MarqueeStage(
 ) {
     val top = remember { floatArrayOf(0f) }
     val tv = isTv()
+    val cinema = isCinema()
     BoxWithConstraints(modifier.onGloballyPositioned { top[0] = it.positionInRoot().y }) {
         val height = maxHeight
         // TV, tablets and phones on their side: a wide picture; a phone held upright: its poster, edge to edge.
         val wide = tv || maxWidth >= 640.dp
         // A phone held upright: never taller than the poster shown across the width can fill (very tall screens).
-        val portraitArt = minOf(height * marqueeFraction(height, portrait = true), maxWidth * 1.3f)
+        val portraitArt = minOf(height * marqueeFraction(height, portrait = true, cinema = cinema), maxWidth * (if (cinema) 1.55f else 1.3f))
         val info = remember(height, wide, portraitArt) { MarqueeStageInfo(height, wide, portraitArt) { top[0] } }
         if (landing != null) {
             MarqueeBackdropFor(
                 vm, landing, excluded, portrait = !wide,
-                modifier = Modifier.fillMaxWidth().height(if (wide) height * marqueeFraction(height, landing, tv = tv) else portraitArt),
+                modifier = Modifier.fillMaxWidth().height(if (wide) height * marqueeFraction(height, landing, tv = tv, cinema = cinema) else portraitArt),
             )
         }
         CompositionLocalProvider(LocalMarqueeStage provides info) { content() }
@@ -406,6 +408,7 @@ fun MarqueeBrowse(
     val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }
 
     val tv = isTv()
+    val cinema = isCinema()
     MarqueePage(vm, section, featured, onPlay) {
         item(key = "groups") {
             GroupPicker(
@@ -422,8 +425,8 @@ fun MarqueeBrowse(
                 Box(Modifier.padding(top = if (tv) 10.dp else 16.dp)) {
                     ContinueRow(
                         continueOfKind, vm.heroArt, state.progress, me,
-                        title = "Continue watching",
-                        width = if (tv) 220.dp else 180.dp,
+                        title = if (cinema) UP_NEXT else "Continue watching",
+                        width = upNextWidth(cinema, tv),
                     ) { ch -> onPlay(listOf(ch), ch) }
                 }
             }
@@ -471,6 +474,7 @@ fun MarqueePage(
     rows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
     val tv = isTv()
+    val cinema = isCinema()
     val listState = vm.marqueeStateFor(section)
     val scope = rememberCoroutineScope()
     val inheritedSpec = LocalBringIntoViewSpec.current
@@ -480,7 +484,14 @@ fun MarqueePage(
     var myTop by remember { mutableFloatStateOf(-1f) }
     // The remote is on the featured title: it stays put (pressing OK plays what you're reading).
     var heroFocused by remember { mutableStateOf(false) }
-    val onPrimary: (Channel) -> Unit = { ch -> if (ch.isSeriesFolder) vm.openSeries(ch) else onPlay(listOf(ch), ch) }
+    val onPrimary: (Channel) -> Unit = { ch ->
+        when {
+            ch.isSeriesFolder -> vm.openSeries(ch)
+            // A channel (the Cinema panel's Watch): with its group, so the next and previous channel work.
+            ch.kind == Kind.LIVE -> onPlay(vm.index.groupsOf(Kind.LIVE)[ch.group]?.takeIf { l -> l.any { it.id == ch.id } } ?: listOf(ch), ch)
+            else -> onPlay(listOf(ch), ch)
+        }
+    }
     // TV: back from a film, its details or episodes, the remote goes back to the card picked
     // (only just set: an old one belongs to another visit).
     val returning = vm.returnFocus?.takeIf { tv && System.currentTimeMillis() - it.at < 5_000 }
@@ -538,7 +549,11 @@ fun MarqueePage(
         ) {
             if (tv) {
                 Column(Modifier.fillMaxSize()) {
-                    SpotlightPanel(vm, spot ?: item)
+                    if (cinema) {
+                        CinemaPanel(vm, spot ?: item, onPrimary, onFocus = { heroFocused = it })
+                    } else {
+                        SpotlightPanel(vm, spot ?: item)
+                    }
                     LazyColumn(
                         Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { scroller?.viewport = it },
                         state = listState,
@@ -577,6 +592,7 @@ fun MarqueePage(
                                     onCurrent = { vm.marqueeIndex[section] = it },
                                     onPrimary = onPrimary,
                                     onDetails = { ch -> vm.openDetails(ch) },
+                                    onList = if (cinema) ({ ch -> vm.listSheetFor = ch }) else null,
                                 )
                             }
                         }
@@ -603,6 +619,8 @@ private fun PhoneHero(
     onCurrent: (Int) -> Unit,
     onPrimary: (Channel) -> Unit,
     onDetails: (Channel) -> Unit,
+    /** The Cinema look: a My list button too (the buttons then have no icons but Play's, to fit). */
+    onList: ((Channel) -> Unit)? = null,
 ) {
     val swipe = with(LocalDensity.current) { 56.dp.toPx() }
     val shown by rememberUpdatedState(current)
@@ -679,7 +697,12 @@ private fun PhoneHero(
             // The buttons stay put while the titles change; they act on the one shown.
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow, Modifier.weight(1f)) { onPrimary(item) }
-                if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
+                if (onList == null) {
+                    if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
+                } else {
+                    if (!item.isSeriesFolder) GhostButton("More info") { onDetails(item) }
+                    GhostButton("My list") { onList(item) }
+                }
             }
             if (count > 1) {
                 Spacer(Modifier.height(12.dp))
@@ -799,6 +822,17 @@ private fun MarqueeHero(
             }
         }
     }
+}
+
+/** The Cinema look's name for the Continue watching row. */
+const val UP_NEXT = "Up next"
+
+/** How wide the Continue watching cards are: bigger in the Cinema look ("Up next"). */
+fun upNextWidth(cinema: Boolean, tv: Boolean): Dp = when {
+    cinema && tv -> 280.dp
+    cinema -> 252.dp
+    tv -> 220.dp
+    else -> 180.dp
 }
 
 /** The group chips' row, and the "All" chip in it, for coming back to the one picked (see [ReturnFocus]). */

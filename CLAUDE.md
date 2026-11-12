@@ -66,9 +66,21 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   separate look):** TV list view = three columns (`GroupColumn` | `ChannelList` | `LivePreviewPane`; grid view and
   phones keep the chips); Settings → Playlists → "Open on" Home / Live TV (`Settings.startOn`, this device's);
   phones upright get `ResumeBar` under the Live list (`state.lastLive`, hidden while the mini player is up).
-  **Still to do (owner agreed):** a second look to choose in Appearance, Apple TV-like but under our own name
-  ("Cinema": menu as words along the top, full-screen picture, a big "Up next" row; only the menu and
-  Home/Films/Series differ, the rest is shared) — send the owner a sketch first; and the film/series detail pages.
+  **Still to do (owner agreed):** the film/series detail pages in the same style.
+- **A second look, Cinema (8.18; the owner asked for an Apple TV-like one under our own name and OK'd the sketch):**
+  Settings → Appearance → Look (`LookOption`), `Settings.appLook` "spotlight" / "cinema", this device's
+  (`DEVICE_SETTINGS`); `LocalCinema` / `isCinema()` (FalakTheme). Only the menu and Home/Films/Series differ
+  (`ui/Cinema.kt` has the list). **TV:** `ShellMode.TOP` = `TopMenu` over the page (no rail): sections as words,
+  tools as icons that show their name on focus (Search, TV guide, Recordings, Add-ons, Downloads, What's new, Update
+  playlist, Playlists, Settings, profile, clock). The lists leave `TOP_MENU_HEIGHT` themselves so the picture goes
+  behind the menu; other pages are padded by `AppShell`. The page's own top bar is drawn only while searching
+  (`cinemaSearchOpen`, or something typed). The picture fills the screen (`marqueeFraction` 1); `CinemaPanel`
+  (Spotlight.kt, fixed 190 dp so a poster row still fits under it on a 540 dp screen) shows the card the remote is on
+  with Play / Watch / Episodes, More info and My list (Up from the first row reaches them). **Everywhere:** Continue
+  watching is "Up next" with bigger cards (`UP_NEXT`, `upNextWidth`), on Home with the live channel watched last as
+  its third card. **Phone upright:** taller picture, a My list button; the bottom bar stays (thumb reach; the owner
+  saw that in the sketch). Tablets and phones on their side keep the rail. Tests: `CinemaScreens.kt`.
+  The sketch is a Design artifact ("The Player: Cinema look (sketch)").
 - **The menu stays (8.8), `ui/Shell.kt`:** with a playlist open, `AppShell` (in `MainActivity`, around the pages)
   draws the rail (TV, ≥600 dp; on a TV it opens to 212 dp with names while the remote is on it, over the page, see
   `SideRail`/`RailIcon`: keep the button's modifiers the same kinds so it keeps the focus) or a bottom bar (phones

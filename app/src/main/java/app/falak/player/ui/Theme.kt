@@ -164,7 +164,7 @@ private val Type = Typography().let { t ->
 }
 
 @Composable
-fun FalakTheme(dark: Boolean = true, layout: String = "auto", content: @Composable () -> Unit) {
+fun FalakTheme(dark: Boolean = true, layout: String = "auto", cinema: Boolean = false, content: @Composable () -> Unit) {
     val palette = if (dark) DarkPalette else LightPalette
     val scheme = remember(palette) { schemeFor(palette) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -173,7 +173,7 @@ fun FalakTheme(dark: Boolean = true, layout: String = "auto", content: @Composab
         "phone" -> false
         else -> remember(context) { detectTv(context) }
     }
-    CompositionLocalProvider(LocalPalette provides palette, LocalIsTv provides tv) {
+    CompositionLocalProvider(LocalPalette provides palette, LocalIsTv provides tv, LocalCinema provides cinema) {
         MaterialTheme(colorScheme = scheme, typography = Type) {
             // Text and icons without an explicit colour use the theme's text colour
             // (Compose's default is black, which disappeared on the dark themes).
@@ -212,6 +212,13 @@ val LocalIsTv = staticCompositionLocalOf { false }
 @Composable
 @ReadOnlyComposable
 fun isTv(): Boolean = LocalIsTv.current
+
+/** The Cinema look is chosen (Settings → Appearance → Look), rather than Spotlight; see Cinema.kt. */
+val LocalCinema = staticCompositionLocalOf { false }
+
+@Composable
+@ReadOnlyComposable
+fun isCinema(): Boolean = LocalCinema.current
 
 /**
  * Many Android TV boxes don't report themselves as televisions, so also look for the TV

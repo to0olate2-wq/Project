@@ -110,6 +110,8 @@ object SyncMerge {
         "livePreview",
         // 8.15: the page a playlist opens on (a TV may open on Live TV, the phone on Home).
         "startOn",
+        // 8.18: the look (a TV may be on Cinema, the phone on Spotlight).
+        "appLook",
     )
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
