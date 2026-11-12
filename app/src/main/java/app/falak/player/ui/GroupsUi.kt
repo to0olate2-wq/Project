@@ -2,6 +2,7 @@ package app.falak.player.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -284,12 +285,13 @@ internal fun GroupBar(
         item(key = "__find") {
             val shape = RoundedCornerShape(10.dp)
             Row(
-                Modifier.focusRing(shape).clip(shape).background(Paper).clickable(onClick = onFind).padding(horizontal = 12.dp, vertical = 8.dp),
+                // (An outline, not filled: filled is how the chip that is picked looks.)
+                Modifier.focusRing(shape).clip(shape).border(1.dp, Muted, shape).clickable(onClick = onFind).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Search, contentDescription = null, tint = Ink, modifier = Modifier.size(15.dp))
+                Icon(Icons.Outlined.Search, contentDescription = null, tint = Paper, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Find a group", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Ink, maxLines = 1)
+                Text("Find a group", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1)
             }
         }
         item(key = "__all") { CountChip("All", total, selected == null) { onSelect(null) } }
