@@ -167,7 +167,8 @@ fun SidebarFrame(
     }
     CompositionLocalProvider(LocalCardDetails provides true) {
         // The Films and Series pages' picture goes behind the top bar too.
-        MarqueeStage(vm, landing, excluded, Modifier.fillMaxSize()) {
+        // (While the Cinema look's search box is open the page has no picture: it would sit under the box.)
+        MarqueeStage(vm, if (searching) null else landing, excluded, Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp).padding(top = if (topMenu) TOP_MENU_HEIGHT else 0.dp)) {
                 if (!topMenu || searching) SidebarTopBar(
                     query = vm.query,
@@ -780,7 +781,8 @@ private fun ContinueCard(ch: Channel, backdrop: String?, watched: Watch?, width:
         val picture = backdrop?.takeIf { it.isNotBlank() } ?: ch.logo.ifBlank { null }
         if (live) {
             // A channel (the Cinema look's Up next): its logo whole on the tile, never cropped like a poster.
-            LogoOr(ch.logo, ch.name, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.46f)) {}
+            // (In the upper part: the name and "watched last" are along the bottom.)
+            LogoOr(ch.logo, ch.name, ContentScale.Fit, Modifier.align(Alignment.TopCenter).padding(top = 20.dp).fillMaxHeight(0.46f).fillMaxWidth(0.5f)) {}
             Row(Modifier.align(Alignment.TopStart).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 LiveDot(6.dp)
                 Spacer(Modifier.width(5.dp))

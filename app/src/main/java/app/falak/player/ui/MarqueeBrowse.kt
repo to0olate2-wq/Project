@@ -211,6 +211,7 @@ private fun MarqueeBackdropFor(vm: LibraryViewModel, section: Section, excluded:
         },
         // TV: the spotlight stays put, so its picture does too.
         scrolls = !tv,
+        full = tv && isCinema(),
         modifier = modifier,
     )
 }
@@ -228,6 +229,8 @@ private fun MarqueeBackdrop(
     list: androidx.compose.foundation.lazy.LazyListState,
     mode: ArtMode,
     scrolls: Boolean,
+    /** The Cinema look on a TV: the picture covers the whole screen, the rows over its lower part. */
+    full: Boolean = false,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -353,6 +356,8 @@ private fun MarqueeBackdrop(
                 // Dark on the left for the words, and at the top for the bars.
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.96f), 0.36f to Ink.copy(alpha = 0.78f), 0.66f to Color.Transparent)))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.6f), 0.22f to Color.Transparent)))
+                // Darker where the rows are, so their names and cards read well over any picture.
+                if (full) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 0.78f to Ink.copy(alpha = 0.9f))))
             }
         }
     }

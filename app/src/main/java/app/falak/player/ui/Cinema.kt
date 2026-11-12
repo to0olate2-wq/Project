@@ -137,7 +137,8 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
             MenuTool(painterResource(R.drawable.ic_nav_playlists), "Playlists") { vm.screen = Screen.PLAYLISTS }
             MenuTool(rememberVectorPainter(Icons.Outlined.Settings), "Settings", selected = screen in SETTINGS_SCREENS) { vm.screen = Screen.SETTINGS }
             if (vm.profilesWanted(state)) ProfileButton(state, kids) { vm.choosingProfile = true }
-            Clock(Modifier.padding(start = 8.dp))
+            // (Settings, Recordings and the like show the time in their own heading.)
+            if (screen == Screen.LIBRARY) Clock(Modifier.padding(start = 8.dp))
         }
     }
 }
