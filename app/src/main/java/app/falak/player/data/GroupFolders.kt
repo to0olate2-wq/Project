@@ -100,3 +100,35 @@ object GroupFolders {
         }
     }
 }
+
+/**
+ * A channel that is only a line in the provider's list, not something to watch
+ * ("##### UK SPORTS #####", "━━━━━━", "***** 4K *****"): its name starts with the same sign three
+ * times over, or has three signs or more and no letter or digit at all. (A flag before a name is
+ * two different signs, so "🇬🇧 BBC One" is a channel.) Live TV's rows leave these out; the full
+ * list of a group still has them, as the provider sent it.
+ */
+fun isDividerName(name: String): Boolean {
+    val s = name.trim()
+    if (s.isEmpty()) return false
+    val first = s.codePointAt(0)
+    if (Character.isLetterOrDigit(first)) return false
+    var i = 0
+    var same = 0
+    while (i < s.length && same < 3) {
+        val c = s.codePointAt(i)
+        if (c != first) break
+        same++
+        i += Character.charCount(c)
+    }
+    if (same >= 3) return true
+    var signs = 0
+    i = 0
+    while (i < s.length) {
+        val c = s.codePointAt(i)
+        if (Character.isLetterOrDigit(c)) return false
+        if (!Character.isWhitespace(c)) signs++
+        i += Character.charCount(c)
+    }
+    return signs >= 3
+}

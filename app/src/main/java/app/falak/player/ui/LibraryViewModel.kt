@@ -272,6 +272,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveProgress(progressKey(state.value.mine(p.id), ch.id), 0, 0)
     }
     var group by mutableStateOf<String?>(null)
+
+    /** Live TV's front page: the folder whose groups its rows show (null: every group). */
+    var liveFolder by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
 
     private val searchPrefs = app.getSharedPreferences("search", 0)
@@ -686,6 +689,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             lastCard = null
             returnFocus = null
             group = null
+            liveFolder = null
             query = ""
             // (Settings → Playlists → Open on. A playlist with no channels shows its first page instead.)
             section = if (state.value.settings.startOn == "live") Section.LIVE else Section.HOME
@@ -1624,7 +1628,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         cameBack(id)
         // If the user zapped into another group inside the player, follow them there.
         val ch = index.byId[id] ?: return
-        if (screen == Screen.LIBRARY && section.kind == ch.kind && ch.kind != Kind.SERIES && group != null && group != ch.group) {
+        // (Not from "All": every channel is in it.)
+        if (screen == Screen.LIBRARY && section.kind == ch.kind && ch.kind != Kind.SERIES && group != null && group != ALL_FILTER && group != ch.group) {
             group = ch.group
         }
     }

@@ -2,6 +2,7 @@ package app.falak.player.ui
 
 import androidx.compose.ui.platform.LocalContext
 import app.falak.player.data.GroupFolders
+import app.falak.player.data.isDividerName
 import app.falak.player.data.Habits
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -140,14 +141,17 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val q = vm.query.trim()
     val isVod = section == Section.MOVIES || section == Section.SERIES
     val sort = if (isVod) vm.sort else Sort.DEFAULT
-    // Films and Series: no group is their front page; "All" is every title as a grid.
+    // Films, Series and Live TV: no group is their front page (rows); "All" is every title as a
+    // grid, every channel as the list.
     val selectGroup: (String?) -> Unit = { g ->
         if (g != null && g in locked) {
             pinForGroup = g
         } else {
-            vm.group = g ?: if (isVod) ALL_FILTER else null
+            vm.group = g ?: if (isVod || section == Section.LIVE) ALL_FILTER else null
         }
     }
+    // Live TV's front page is open: a row for each group (LiveRows.kt).
+    val liveFront = section == Section.LIVE && group == null && q.isEmpty()
     // The group the chips and the group list show as picked ("All" for every title).
     val pickedGroup = group.takeUnless { it == ALL_FILTER }
     // Home, or the Films or Series front page, is open: its featured picture goes behind the bars too.
@@ -188,14 +192,15 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             runCatching { Habits.forNow(Habits.read(context.filesDir), me, System.currentTimeMillis()) }.getOrDefault(emptyList())
         }
     }
-    val mineFav = remember(favOfKind, excluded, section) {
-        if (section != Section.LIVE) emptyList() else favOfKind.filter { it.group !in excluded }.take(12)
+    val favLive = remember(favOfKind, excluded, section) {
+        if (section != Section.LIVE) emptyList() else favOfKind.filter { it.group !in excluded }
     }
+    val mineFav = remember(favLive) { favLive.take(12) }
     val mineOften = remember(oftenIds, index, excluded, mineFav) {
         val shown = mineFav.mapTo(HashSet()) { it.id }
         oftenIds.mapNotNull { index.byId[it] }.filter { it.kind == Kind.LIVE && it.group !in excluded && it.id !in shown }.take(6)
     }
-    val mineShown = section == Section.LIVE && !gridView && group == null && q.isEmpty() && (mineFav.isNotEmpty() || mineOften.isNotEmpty())
+    val mineShown = section == Section.LIVE && !gridView && group == ALL_FILTER && q.isEmpty() && (mineFav.isNotEmpty() || mineOften.isNotEmpty())
     // With a search: every match in the section (all of them from Home), best first (see
     // SearchIndex), and the best five for the row under the search box.
     val result by produceState<Pair<List<Channel>, List<Channel>>?>(null, base, group, q, sort, excluded, groupMap, favOfKind, section) {
@@ -260,8 +265,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     LaunchedEffect(Unit) { vm.onLibraryShown() }
     LaunchedEffect(focusId, visible) {
         val id = focusId ?: return@LaunchedEffect
-        // Home and the Films and Series front pages put the remote back themselves.
-        if (landing != null) {
+        // Home and the Films, Series and Live TV front pages put the remote back themselves.
+        if (landing != null || liveFront) {
             vm.focusId = null
             return@LaunchedEffect
         }
@@ -294,7 +299,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     DisposableEffect(Unit) { onDispose { vm.searchFocused = false } }
     val showRecent = !vm.kidsActive && (vm.searchFocused || assistFocused)
 
-    BackHandler(enabled = searchOn || group != null || (section != Section.HOME && Section.HOME in sections)) {
+    BackHandler(enabled = searchOn || group != null || (liveFront && vm.liveFolder != null) || (section != Section.HOME && Section.HOME in sections)) {
         when {
             // "See all" from Home's results: back to them, search kept.
             searchOn && vm.searchFromHome && section != Section.HOME -> {
@@ -305,8 +310,18 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             group != null -> {
                 // The Films or Series front page again, with the remote on the chip picked.
                 if (isVod) vm.returnFocus = ReturnFocus(GROUP_ROW, group.takeUnless { it == ALL_FILTER } ?: ALL_CHIP)
+                // Live TV's rows again, with the remote on the row that was opened.
+                if (section == Section.LIVE) {
+                    vm.returnFocus = when (group) {
+                        ALL_FILTER -> ReturnFocus(GROUP_ROW, ALL_CHIP)
+                        FAV_FILTER -> favLive.firstOrNull()?.let { ReturnFocus(LIVE_FAV_ROW, it.id) }
+                        else -> groupMap[group]?.firstOrNull { !isDividerName(it.name) }?.let { ReturnFocus(group, it.id) }
+                    }
+                }
                 vm.group = null
             }
+            // Live TV's rows with a folder picked: every group's rows again.
+            liveFront && vm.liveFolder != null -> vm.liveFolder = null
             else -> vm.section = Section.HOME
         }
     }
@@ -402,6 +417,27 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         HomeContent(vm, state, excluded, epg, now, onPlay)
                     } else if (shown == Section.HOME) {
                         SearchResults(vm, state, q, visible, excluded, epg, now, openFrom)
+                    } else if (noQuery && group == null && shown == Section.LIVE) {
+                        Column(Modifier.fillMaxSize()) {
+                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                                LiveRows(
+                                    vm, groupMap, liveTree, visibleTotal, favLive, mineOften, latelyGroups, locked,
+                                    // A TV names the channel watched last, then your favorites, until the remote is on a card.
+                                    featured = remember(lastWatched, mineFav) { (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5) },
+                                    epg = epg, now = now,
+                                    onPlay = openFrom,
+                                    onGroup = selectGroup,
+                                    onFind = if (manyGroups) ({ groupFinderOpen = true }) else null,
+                                    onLongPress = { ch -> vm.listSheetFor = ch },
+                                )
+                            }
+                            // Phones held upright: the channel watched last, one tap away under the rows.
+                            if (lastWatched != null && miniOpen == null && LocalShell.current == ShellMode.BAR) {
+                                ResumeBar(lastWatched, Epg.current(epg[lastWatched.epgKey], now)) {
+                                    onPlay(index.groupsOf(Kind.LIVE)[lastWatched.group]?.takeIf { l -> l.any { it.id == lastWatched.id } } ?: listOf(lastWatched), lastWatched)
+                                }
+                            }
+                        }
                     } else if (noQuery && group == null && (shown == Section.MOVIES || shown == Section.SERIES)) {
                         MarqueeBrowse(
                             vm, state, shown, groupMap, excluded, locked,

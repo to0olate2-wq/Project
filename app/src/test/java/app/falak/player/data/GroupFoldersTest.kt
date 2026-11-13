@@ -71,4 +71,16 @@ class GroupFoldersTest {
         assertEquals(emptyList<String>(), GroupFolders.find(names, "   "))
         assertEquals(emptyList<String>(), GroupFolders.find(names, "cinema"))
     }
+
+    @Test
+    fun tellsDividersFromChannels() {
+        // Lines the provider puts between channels.
+        for (n in listOf("##### 4K UHD #####", "#####", "  ===== UK SPORTS =====", "***** RELAX *****", "━━━━━━", "▃ ▅ ▆ ▇", "---- NEWS ----", "●●● KIDS ●●●")) {
+            assertTrue(n, isDividerName(n))
+        }
+        // Channels, whatever is written round their names.
+        for (n in listOf("BBC One", "4K| RELAX ᵁᴴᴰ ³⁸⁴⁰ᴾ ☼", "#1 Sports", "## Music", "[HD] Sky News", "🇬🇧 BBC One", "+18 Cinema", "★ VIP 1", "24/7 Cartoons", "", "  ", "-")) {
+            assertFalse(n, isDividerName(n))
+        }
+    }
 }

@@ -426,6 +426,11 @@ abstract class ScreenshotBase {
             val group = shownGroup(plain)
             val id = slug(name)
             val url = "http://127.0.0.1:1/live/$id.m3u8"
+            // A big playlist's groups start with a line of signs: Live TV's rows leave it out.
+            if (groupPrefixes && name == names.first()) {
+                val line = "http://127.0.0.1:1/live/line-${slug(plain)}.m3u8"
+                out += Channel(id = stableId("line|$line"), name = "##### ${plain.uppercase()} #####", group = group, url = line)
+            }
             out += Channel(
                 id = stableId("$name|$url"), name = name, group = group, url = url,
                 logo = "file://" + File(dir, "logo-$id.png").path, tvgId = id,

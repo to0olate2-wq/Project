@@ -476,6 +476,8 @@ fun MarqueePage(
     section: Section,
     featured: List<Channel>,
     onPlay: (List<Channel>, Channel) -> Unit,
+    /** Off for Live TV: no picture and no featured title on the page (a TV still names it at the top). */
+    hero: Boolean = true,
     rows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
     val tv = isTv()
@@ -573,7 +575,7 @@ fun MarqueePage(
                     state = listState,
                     contentPadding = PaddingValues(bottom = 40.dp),
                 ) {
-                    if (item != null) {
+                    if (item != null && hero) {
                         item(key = "hero") {
                             if (wide) {
                                 MarqueeHero(

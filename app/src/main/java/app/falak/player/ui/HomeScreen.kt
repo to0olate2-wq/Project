@@ -168,7 +168,7 @@ fun HomeContent(
     }
     val seeAll: (Section, String?, Sort) -> Unit = { section, group, sort ->
         vm.section = section
-        // Films and Series: every title as a grid, not their front page.
+        // Films and Series: every title as a grid, not their front page. Live TV: its rows.
         vm.group = group ?: if (section == Section.MOVIES || section == Section.SERIES) ALL_FILTER else null
         vm.sort = sort
     }
