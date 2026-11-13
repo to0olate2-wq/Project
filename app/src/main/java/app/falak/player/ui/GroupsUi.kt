@@ -282,18 +282,7 @@ internal fun GroupBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 2.dp),
     ) {
-        item(key = "__find") {
-            val shape = RoundedCornerShape(10.dp)
-            Row(
-                // (An outline, not filled: filled is how the chip that is picked looks.)
-                Modifier.focusRing(shape).clip(shape).border(1.dp, Muted, shape).clickable(onClick = onFind).padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Outlined.Search, contentDescription = null, tint = Paper, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Find a group", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1)
-            }
-        }
+        item(key = "__find") { FindChip(RoundedCornerShape(10.dp), onFind) }
         item(key = "__all") { CountChip("All", total, selected == null) { onSelect(null) } }
         if (favorites > 0) {
             item(key = "__fav") { CountChip("★ Favorites", favorites, selected == FAV_FILTER) { onSelect(FAV_FILTER) } }
@@ -307,6 +296,19 @@ internal fun GroupBar(
             ) { onSelect(g) }
         }
         item(key = "__manage") { CountChip("Edit groups", null, false, onClick = onManage) }
+    }
+}
+
+/** "Find a group": an outline, not filled (filled is how the chip that is picked looks). */
+@Composable
+internal fun FindChip(shape: androidx.compose.ui.graphics.Shape, onFind: () -> Unit) {
+    Row(
+        Modifier.focusRing(shape).clip(shape).border(1.dp, Muted, shape).clickable(onClick = onFind).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Search, contentDescription = null, tint = Paper, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Find a group", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper, maxLines = 1)
     }
 }
 

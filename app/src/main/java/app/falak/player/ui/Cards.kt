@@ -202,6 +202,8 @@ fun ChannelCard(
     onClick: () -> Unit,
     width: Dp? = 200.dp,
     onLongClick: (() -> Unit)? = null,
+    /** In a row of its own group (Live TV's rows): no LIVE mark, no group name under it. */
+    plain: Boolean = false,
 ) {
     val shape = RoundedCornerShape(8.dp)
     val row = LocalRow.current
@@ -231,10 +233,12 @@ fun ChannelCard(
                     modifier = Modifier.align(Alignment.Center).padding(12.dp),
                 )
             }
-            Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                LiveDot(6.dp)
-                Spacer(Modifier.width(5.dp))
-                Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.2.sp, color = Paper)
+            if (!plain) {
+                Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LiveDot(6.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.2.sp, color = Paper)
+                }
             }
             ch.tidyQuality?.let { CardBadge(it, Amber, Modifier.align(Alignment.TopEnd).padding(7.dp)) }
             if (current != null) {
@@ -245,7 +249,8 @@ fun ChannelCard(
         Spacer(Modifier.height(6.dp))
         Text(ch.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            current?.let { p -> "${p.title}  ·  ${minutesLeft(p, now)}" } ?: ch.group,
+            // (A plain card is narrow: what's on, without the time left, which its line under the logo shows.)
+            current?.let { p -> if (plain) p.title else "${p.title}  ·  ${minutesLeft(p, now)}" } ?: if (plain) "" else ch.group,
             style = MaterialTheme.typography.labelSmall,
             color = Muted,
             maxLines = 1,
@@ -262,17 +267,24 @@ fun minutesLeft(p: Program, now: Long): String {
 /** A titled horizontal shelf. */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun Shelf(title: String, onSeeAll: (() -> Unit)? = null, content: LazyListScope.() -> Unit) {
+fun Shelf(
+    title: String,
+    onSeeAll: (() -> Unit)? = null,
+    /** What the row is known by (its place, coming back to a card) when its title isn't that. */
+    key: String = title,
+    count: String? = null,
+    content: LazyListScope.() -> Unit,
+) {
     val scroller = LocalHomeScroller.current
     // On Home, Films and Series the row keeps its place while the page is away.
-    val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
+    val rowState = LocalRowStates.current?.invoke(key) ?: androidx.compose.foundation.lazy.rememberLazyListState()
     Column(Modifier.fillMaxWidth().pinToTop().padding(top = 22.dp)) {
-        SectionHeader(title, onSeeAll)
+        SectionHeader(title, onSeeAll, count)
         // The page itself scrolls whole rows into place (see HomeScroller); the row keeps the
         // normal sideways behaviour.
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides (scroller?.inner ?: LocalBringIntoViewSpec.current),
-            LocalRow provides title,
+            LocalRow provides key,
         ) {
             LazyRow(
                 state = rowState,

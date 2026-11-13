@@ -290,18 +290,25 @@ fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, 
 
 /** Serif section title with an optional count and "See all". */
 @Composable
-fun SectionHeader(title: String, onSeeAll: (() -> Unit)? = null) {
+fun SectionHeader(title: String, onSeeAll: (() -> Unit)? = null, count: String? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        // Always one line: a long provider group name ("TOP MOVIES 4K 3840P DOLBY AUDIO") is cut
-        // short instead of squeezing "See all" into a tall column that left a gap under the row.
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            color = Paper,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            // Always one line: a long provider group name ("TOP MOVIES 4K 3840P DOLBY AUDIO") is cut
+            // short instead of squeezing "See all" into a tall column that left a gap under the row.
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                color = Paper,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            // How many are in it (Live TV's rows), right after the name.
+            if (count != null) {
+                Spacer(Modifier.width(10.dp))
+                Text(count, color = Muted, fontFamily = Sans, fontSize = 13.sp, maxLines = 1, softWrap = false)
+            }
+        }
         if (onSeeAll != null) {
             Spacer(Modifier.width(12.dp))
             Text(
