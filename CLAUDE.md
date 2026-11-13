@@ -80,6 +80,19 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   ("UK · Sports"). Films and Series keep their chips. Tests: `GroupFoldersTest` (runs on the sandbox with
   Gradle's Kotlin compiler), `LiveScreens.kt` (`groupPrefixes` gives the sample playlist such group names).
   The sketches are a Design artifact ("The Player: Live TV ideas for big playlists").
+  **Live TV's front page is rows (8.21; the owner showed another app's page and asked for Live TV "matching movie
+  and series way of showing content"), `ui/LiveRows.kt`:** Live now works like Films and Series: `vm.group == null`
+  (nothing searched) = the front page, `ALL_FILTER` = "All channels" as the list (`selectGroup(null)` gives
+  `ALL_FILTER`; Back from a group or the list returns to the rows; `liveFront` in LibraryScreen). The page is
+  `MarqueePage(hero = false)`: chips ("All channels · N", "Find a group" when there are many, then the folders:
+  one picked, `vm.liveFolder`, shows only its groups' rows, Back clears it), rows "Favorites" and "Often on at this
+  time", then a row per group (the ones watched lately first; `Shelf(key, count)`, 24 channels, then a "See all N"
+  tile; locked and adult groups show one tile, no logos). "See all" opens the group as the 8.20 list (three columns
+  on a TV). `isDividerName` (GroupFolders.kt) keeps the provider's divider lines ("##### UK #####": the same sign
+  three times at the start, or no letter or digit) out of the rows; the lists still have them. TV: the spotlight
+  panel names the channel watched last, then favorites, until the remote is on a card. `YourChannels` tiles are
+  now the header of the "All channels" list only. Tests: `LiveScreens.kt` (the sample groups start with a divider
+  line when `groupPrefixes`), `GroupFoldersTest.tellsDividersFromChannels`.
   **A film's page and a series' page in the same style (8.19, `ui/TitlePage.kt`, both looks):** `TitleStage` draws
   the same picture as Home (`MarqueeBackdrop`: TV full screen and fixed, phone upright the poster edge to edge fading
   as the page scrolls, otherwise wide art or the poster standing on the right) with Back over the page; `TitleHead`

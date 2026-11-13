@@ -249,7 +249,8 @@ fun ChannelCard(
         Spacer(Modifier.height(6.dp))
         Text(ch.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            current?.let { p -> "${p.title}  ·  ${minutesLeft(p, now)}" } ?: if (plain) "" else ch.group,
+            // (A plain card is narrow: what's on, without the time left, which its line under the logo shows.)
+            current?.let { p -> if (plain) p.title else "${p.title}  ·  ${minutesLeft(p, now)}" } ?: if (plain) "" else ch.group,
             style = MaterialTheme.typography.labelSmall,
             color = Muted,
             maxLines = 1,

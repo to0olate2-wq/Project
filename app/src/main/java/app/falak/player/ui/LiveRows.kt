@@ -82,7 +82,8 @@ internal fun LiveRows(
         }
     }
     val favShown = remember(favorites) { favorites.take(ROW_MAX) }
-    val width = if (tv) 168.dp else 132.dp
+    // (A phone held upright shows three channels of a row and the edge of the fourth.)
+    val width = if (tv) 168.dp else 118.dp
     val card: @Composable (Channel, List<Channel>) -> Unit = { ch, row ->
         ChannelCard(
             ch, Epg.current(epg[ch.epgKey], now), now,
