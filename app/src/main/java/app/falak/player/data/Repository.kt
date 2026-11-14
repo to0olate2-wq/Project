@@ -362,6 +362,13 @@ class Repository(private val context: Context) {
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
+    /** The player, on a film or episode of an add-on: how far it is (the portal's Continue watching). */
+    fun noteAddonProgress(videoId: String, pos: Long, dur: Long, finished: Boolean) {
+        val had = state.value.settings.addonWatch
+        val next = Addons.noteProgress(had, videoId, pos, dur, finished, System.currentTimeMillis())
+        if (next !== had) updateSettings { it.copy(addonWatch = next) }
+    }
+
     // ---- What's new ----
 
     /** Records what a refresh added to [p] and returns the entry. */

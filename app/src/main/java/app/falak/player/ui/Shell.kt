@@ -72,7 +72,8 @@ val LocalShell = staticCompositionLocalOf { ShellMode.NONE }
 val BAR_HEIGHT = 64.dp
 
 /** The pages drawn inside the menu: the lists, More, and the pages opened from them. */
-val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES, Screen.ADDONS) + SETTINGS_SCREENS
+// (Not Add-ons since 8.23: it is a portal of its own, with its own Home, Films, Series and My list.)
+val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECORDINGS, Screen.DOWNLOADS, Screen.NOTICES) + SETTINGS_SCREENS
 
 /** The menu for [screen]: none before a playlist is open, or on full-screen pages. */
 fun shellMode(hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp, cinema: Boolean = false): ShellMode = when {
@@ -205,7 +206,7 @@ private fun BottomBar(vm: LibraryViewModel, state: AppState, modifier: Modifier)
 }
 
 @Composable
-private fun BarTab(
+internal fun BarTab(
     icon: @Composable (Color) -> Unit,
     label: String,
     selected: Boolean,

@@ -8,6 +8,7 @@ import app.falak.player.data.AddonResource
 import app.falak.player.data.AddonStream
 import app.falak.player.data.AddonStreams
 import app.falak.player.data.AddonVideo
+import app.falak.player.data.AddonWatch
 import app.falak.player.data.Addons
 import app.falak.player.ui.AddonsModel
 import app.falak.player.ui.LibraryViewModel
@@ -80,7 +81,17 @@ abstract class AddonShots : ScreenshotBase() {
     )
 
     protected fun LibraryViewModel.showAddons() {
-        updateSettings { it.copy(addons = listOf(base)) }
+        updateSettings {
+            it.copy(
+                addons = listOf(base),
+                // The portal's own list, and what was being watched.
+                addonSaved = listOf(films[3], shows[0]),
+                addonWatch = listOf(
+                    AddonWatch("series", show.id, show.name, "", "${show.id}:1:2", "S1 E2 · Episode title 2", pos = 900_000, dur = 2_700_000),
+                    AddonWatch("movie", film.id, film.name, "", film.id, pos = 3_000_000, dur = 6_780_000),
+                ),
+            )
+        }
         addons.showForTest(listOf(addon), rows)
         screen = Screen.ADDONS
     }
@@ -93,6 +104,8 @@ abstract class AddonShots : ScreenshotBase() {
         description = "Series from the fifties",
         types = listOf("series", "tv"),
         catalogs = emptyList(),
+        // Lists only (no links): it feeds the portals and can only be removed.
+        resources = listOf(AddonResource("catalog", null, null), AddonResource("meta", null, null)),
     )
 
     protected fun LibraryViewModel.showTwoAddons() {
@@ -116,6 +129,12 @@ class PhoneAddonScreens : AddonShots() {
             vm.addons.showDiscoverForTest(AddonsModel.Row(addon, addon.catalogs[0]), "Mystery", films)
             shoot("phone-91b-addon-list")
             vm.addons.closeDiscover()
+            // The portal's other pages: the series lists, and My list.
+            vm.addons.tab = AddonsModel.Tab.SERIES
+            shoot("phone-91c-addon-series-page")
+            vm.addons.tab = AddonsModel.Tab.MINE
+            shoot("phone-91d-addon-my-list")
+            vm.addons.tab = AddonsModel.Tab.HOME
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("phone-92-addon-film")
             vm.addons.showForTest(listOf(addon), rows, open = show, meta = showMeta)
@@ -158,6 +177,12 @@ class TvAddonScreens : AddonShots() {
             vm.addons.showDiscoverForTest(AddonsModel.Row(addon, addon.catalogs[1]), "1968", films)
             shoot("tv-91b-addon-list")
             vm.addons.closeDiscover()
+            // An add-on's own portal, on its Films page.
+            vm.addons.only = base
+            vm.addons.tab = AddonsModel.Tab.FILMS
+            shoot("tv-91c-addon-films-page")
+            vm.addons.only = null
+            vm.addons.tab = AddonsModel.Tab.HOME
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("tv-92-addon-film")
             // Added with the playlists: listed under them.

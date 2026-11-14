@@ -74,16 +74,43 @@ data class Addon(
     }
 }
 
-/** A film or series in an add-on's list. */
+/** A film or series in an add-on's list (kept as it is in My list, see Settings.addonSaved). */
+@kotlinx.serialization.Serializable
 data class AddonItem(
     val addonUrl: String,
     val id: String,
     val type: String,
     val name: String,
-    val poster: String,
-    val year: String,
-    val rating: String,
+    val poster: String = "",
+    val year: String = "",
+    val rating: String = "",
 )
+
+/**
+ * A film or series of an add-on that was started (8.23): the portal's "Continue watching". One per
+ * title, the film or episode watched last. Its link isn't kept (add-ons' links change): carrying
+ * on means picking a link again, and the player then starts where it was left.
+ */
+@kotlinx.serialization.Serializable
+data class AddonWatch(
+    val type: String,
+    /** The title (a series, not its episode). */
+    val id: String,
+    val name: String,
+    val poster: String = "",
+    /** What was played: the film's id, or the episode's ("tt…:1:2"). */
+    val videoId: String,
+    /** The episode ("S1 E2 · Its name"); empty for a film. */
+    val label: String = "",
+    val pos: Long = 0,
+    val dur: Long = 0,
+    val at: Long = 0,
+    /** The episode was watched to its end (the series stays in the row, to pick the next one). */
+    val done: Boolean = false,
+) {
+    /** The season of the episode ("tt…:1:2" → 1), to open the series on it. */
+    val season: Int? get() = if (type == "series") videoId.split(':').let { it.getOrNull(it.size - 2)?.toIntOrNull() } else null
+}
 
 data class AddonVideo(
     /** What to ask streams for (usually "tt…:season:episode"). */
@@ -174,6 +201,37 @@ object Addons {
     }
 
     fun manifestUrl(base: String) = "$base/manifest.json"
+
+    // ---------- Continue watching (Settings.addonWatch, newest first) ----------
+
+    private const val MAX_WATCH = 40
+
+    /** Something starts playing: its title goes first (where it was left is kept if it is the same film or episode). */
+    fun noteStart(list: List<AddonWatch>, e: AddonWatch, now: Long): List<AddonWatch> {
+        val before = list.firstOrNull { it.type == e.type && it.id == e.id }
+        val same = before?.takeIf { it.videoId == e.videoId && !it.done }
+        val entry = e.copy(pos = same?.pos ?: 0, dur = same?.dur ?: 0, at = now, done = false)
+        return (listOf(entry) + list.filterNot { it.type == e.type && it.id == e.id }).take(MAX_WATCH)
+    }
+
+    /**
+     * The player says how far it is. Watched to the end: a film leaves the row, a series stays
+     * (its next episode is picked on its page). Closed in the first half minute without having
+     * been watched before: it was only looked at, and leaves too.
+     */
+    fun noteProgress(list: List<AddonWatch>, videoId: String, pos: Long, dur: Long, finished: Boolean, now: Long): List<AddonWatch> {
+        val e = list.firstOrNull { it.videoId == videoId } ?: return list
+        val next = when {
+            finished -> if (e.type == "series") e.copy(pos = 0, dur = dur, at = now, done = true) else null
+            pos < 30_000 -> if (e.pos == 0L && !e.done) null else return list
+            else -> e.copy(pos = pos, dur = dur, at = now, done = false)
+        }
+        val rest = list.filterNot { it.videoId == videoId }
+        return if (next == null) rest else listOf(next) + rest
+    }
+
+    /** Which add-ons find links (Torrentio and the like), and which only bring lists and details (Cinemeta). */
+    fun hasLinks(a: Addon): Boolean = a.resources.any { it.name == "stream" }
 
     /**
      * "catalog/movie/top.json", or with a pick, a search or a later page:

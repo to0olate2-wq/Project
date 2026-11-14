@@ -1331,7 +1331,12 @@ class PlayerActivity : ComponentActivity() {
         if (dual != null) updateDualLabels()
         hideMessage()
         // Resume movies/episodes where they were left (this session first, then saved progress).
-        val saved = repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.pos }
+        val saved = if (ch.id.startsWith("addon:")) {
+            val video = ch.id.removePrefix("addon:")
+            repo.state.value.settings.addonWatch.firstOrNull { it.videoId == video }?.pos?.takeIf { it > 0 }
+        } else {
+            repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.pos }
+        }
         val resume = when {
             ch.kind == Kind.LIVE -> C.TIME_UNSET
             resumePositionMs > 0 -> resumePositionMs
@@ -2153,8 +2158,17 @@ class PlayerActivity : ComponentActivity() {
     private fun saveProgress() {
         val p = player ?: return
         val ch = queue.getOrNull(index) ?: return
-        // (Add-on links are one-offs: their links can change, nothing to come back to.)
-        if (ch.kind == Kind.LIVE || ch.id.startsWith("cu:") || ch.id.startsWith("addon:")) return
+        // An add-on's film or episode (8.23): where it was left, for the portal's Continue watching.
+        // (Not with the playlist's: its link can change, so carrying on starts from its page.)
+        if (ch.id.startsWith("addon:")) {
+            val length = p.duration
+            if (length > 0) {
+                val at = p.currentPosition
+                repo.noteAddonProgress(ch.id.removePrefix("addon:"), at, length, p.playbackState == Player.STATE_ENDED || at > length - 120_000)
+            }
+            return
+        }
+        if (ch.kind == Kind.LIVE || ch.id.startsWith("cu:")) return
         val pl = repo.currentPlaylist ?: return
         val dur = p.duration
         if (dur <= 0) return

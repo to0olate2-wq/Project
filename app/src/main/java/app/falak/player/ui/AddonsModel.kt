@@ -30,6 +30,32 @@ import kotlinx.coroutines.launch
  * Kept while the page is away, like the lists.
  */
 class AddonsModel(private val client: AddonClient, private val scope: CoroutineScope) {
+    /** The portal's pages (8.23): what a playlist has, without Live, and your own list. */
+    enum class Tab(val label: String) { HOME("Home"), FILMS("Films"), SERIES("Series"), MINE("My list") }
+
+    var tab by mutableStateOf(Tab.HOME)
+
+    /**
+     * The add-on whose portal is open (it was clicked on the Playlists page): links come from it
+     * alone. Null: every add-on's links (the portal opened from the menu).
+     */
+    var only by mutableStateOf<String?>(null)
+
+    /** The add-ons asked for links. */
+    private fun linkAddons(): List<Addon> = addons.filter { it.url == only }.ifEmpty { addons }
+
+    /** What the portal is called: the add-on's name, or "Add-ons" for all of them. */
+    fun portalName(): String = only?.let { known[it]?.name } ?: "Add-ons"
+
+    /** The lists of this page: films on Films, series on Series, everything on Home. */
+    fun rowsFor(tab: Tab): List<Row> = rowsToShow().filter {
+        when (tab) {
+            Tab.FILMS -> it.catalog.type == "movie"
+            Tab.SERIES -> it.catalog.type == "series"
+            else -> true
+        }
+    }
+
     /** One list of one add-on. */
     class Row(val addon: Addon, val catalog: AddonCatalog) {
         val key: String get() = addon.url + "|" + catalog.type + "|" + catalog.id
@@ -304,7 +330,8 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         }
     }
 
-    fun openItem(item: AddonItem) {
+    /** Opens a title's page; a series on [onSeason] if it has it (the one left off in), else on its first. */
+    fun openItem(item: AddonItem, onSeason: Int? = null) {
         open = item
         meta = null
         season = null
@@ -318,7 +345,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
             meta = m
             metaLoading = false
             val seasons = m?.videos?.map { it.season }?.distinct().orEmpty()
-            if (seasons.isNotEmpty()) season = seasons.firstOrNull { it > 0 } ?: seasons.first()
+            if (seasons.isNotEmpty()) season = onSeason?.takeIf { it in seasons } ?: seasons.firstOrNull { it > 0 } ?: seasons.first()
         }
         // A film: its links at once (a series: once an episode is picked).
         if (item.type != "series") loadStreams(item.type, item.id, item.name)
@@ -384,11 +411,27 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         streamsTitle = title
         streams = null
         streamJob = scope.launch {
-            streams = client.streams(addons, type, id)
+            streams = client.streams(linkAddons(), type, id)
         }
     }
 
-    /** What the player plays: a one-off (not in Recent, no resume), with the add-on's headers. */
+    /** What is about to play, for the portal's Continue watching (see Addons.noteStart). */
+    fun watchEntry(): app.falak.player.data.AddonWatch? {
+        val item = open ?: return null
+        val video = streamsFor ?: item.id
+        val name = meta?.name?.ifBlank { null } ?: item.name
+        return app.falak.player.data.AddonWatch(
+            type = item.type,
+            id = item.id,
+            name = name,
+            poster = meta?.poster?.ifBlank { null } ?: item.poster,
+            videoId = video,
+            // ("Bonanza · S1 E2 · Its name" without the series' own name.)
+            label = if (item.type == "series") streamsTitle.removePrefix(item.name).trim(' ', '·') else "",
+        )
+    }
+
+    /** What the player plays: its id says which film or episode it is (the place it is left at is kept by it), with the add-on's headers. */
     fun channelFor(s: AddonStream): Channel {
         val item = open
         val id = streamsFor ?: item?.id.orEmpty()
