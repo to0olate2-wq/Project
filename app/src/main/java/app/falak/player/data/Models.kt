@@ -471,6 +471,10 @@ data class Settings(
      * synced with Wi-Fi linking like other settings, so one added on the phone reaches the TV.
      */
     val addons: List<String> = emptyList(),
+    /** The add-ons' portal (8.23): My list, newest first. Synced like other settings. */
+    val addonSaved: List<AddonItem> = emptyList(),
+    /** The add-ons' portal: Continue watching, newest first (see Addons.noteStart / noteProgress). */
+    val addonWatch: List<AddonWatch> = emptyList(),
 )
 
 /** A channel renamed or given another logo by hand (long-press → Rename or change logo). */

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
@@ -60,6 +62,8 @@ import app.falak.player.data.AddonItem
 import app.falak.player.data.AddonStream
 import app.falak.player.data.AddonStreams
 import app.falak.player.data.AddonVideo
+import app.falak.player.data.AddonWatch
+import app.falak.player.data.Watch
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
@@ -90,8 +94,13 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val leave = {
         val back = m.returnTo
         m.returnTo = null
+        // (The next time, the portal opens on its Home, for whichever add-on is clicked then.)
+        m.only = null
+        m.tab = AddonsModel.Tab.HOME
         if (back != null) vm.screen = back else vm.closePage()
     }
+    val saved = state.settings.addonSaved
+    val watch = state.settings.addonWatch
     val open = m.open
     BackHandler {
         when {
@@ -107,6 +116,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             m.prepareTorrent(context, s)
         } else {
             val ch = m.channelFor(s)
+            vm.noteAddonPlay(m)
             onPlay(listOf(ch), ch)
         }
     }
@@ -121,6 +131,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             onReady = { url ->
                 m.torrentStarted()
                 val ch = m.channelFor(s.copy(url = url))
+                vm.noteAddonPlay(m)
                 onPlay(listOf(ch), ch)
             },
             onCancel = { m.stopTorrent() },
@@ -128,48 +139,73 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     }
     val whole = m.discover
     if (open != null) {
-        AddonDetails(m, open, onBack = { m.closeItem() }, onPlay = play)
+        AddonDetails(
+            m, open,
+            saved = saved.any { it.type == open.type && it.id == open.id },
+            left = watch.firstOrNull { it.type == open.type && it.id == open.id },
+            onList = { vm.toggleAddonSaved(open.copy(name = m.meta?.name?.ifBlank { null } ?: open.name, poster = m.meta?.poster?.ifBlank { null } ?: open.poster)) },
+            onBack = { m.closeItem() },
+            onPlay = play,
+        )
     } else if (whole != null) {
         AddonDiscover(m, whole)
     } else {
-        Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-            PageHeader(
-                "Add-ons",
-                onBack = leave,
-                subtitle = when {
-                    links.isEmpty() -> null
-                    m.loading -> "Reading your add-ons…"
-                    else -> m.addons.joinToString(" · ") { it.name }.ifBlank { null }
-                },
-            )
-            // Adding and removing add-ons is with the playlists (the Playlists page, Settings → Playlists).
-            if (links.isEmpty()) {
-                AddonsIntro { adding = true }
-            } else {
-                ChipFlow(Modifier.padding(bottom = 8.dp)) {
-                    TagChip("Reload", false) { m.load(links, force = true) }
-                }
-                // Add-ons that only find links (Torrentio and the like) need lists to pick films from:
-                // the standard ones are a tap away (still the owner's choice: nothing is added by itself).
-                val scope = androidx.compose.runtime.rememberCoroutineScope()
-                var listsNote by remember { mutableStateOf<String?>(null) }
-                AddonsBrowse(
-                    m,
-                    listsNote = listsNote,
-                    onAddLists = {
-                        listsNote = "Adding…"
-                        scope.launch {
-                            m.check(Addons.STANDARD_LISTS).fold(
-                                onSuccess = { a ->
-                                    listsNote = null
-                                    vm.addAddon(a)
-                                },
-                                onFailure = { e -> listsNote = "Couldn't add them: ${e.message ?: "no answer"}" },
-                            )
-                        }
+        // The portal (8.23; the owner: an add-on opens "in portal same as provider portal but of course no
+        // live"): its own Home, Films, Series and My list, with its own menu, a bar under the page on a
+        // phone held upright, words over it otherwise. The app's menu (the playlist's) is not drawn here.
+        val wide = isTv() || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
+        Column(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = pageMargin())) {
+                PageHeader(
+                    m.portalName(),
+                    onBack = leave,
+                    subtitle = when {
+                        links.isEmpty() -> null
+                        m.loading && m.addons.isEmpty() -> "Reading your add-ons…"
+                        // An add-on's own portal: where its lists come from.
+                        m.only != null -> m.rowsToShow().map { it.addon }.distinctBy { it.url }.filter { it.url != m.only }
+                            .joinToString(" · ") { it.name }.ifBlank { null }?.let { "Lists from $it" }
+                        else -> m.addons.joinToString(" · ") { it.name }.ifBlank { null }
                     },
                 )
+                // Adding and removing add-ons is with the playlists (the Playlists page, Settings → Playlists).
+                if (links.isEmpty()) {
+                    AddonsIntro { adding = true }
+                } else {
+                    if (wide) PortalTabs(m.tab) { m.tab = it }
+                    if (m.tab == AddonsModel.Tab.MINE) {
+                        PortalMine(saved) { m.openItem(it) }
+                    } else {
+                        // Add-ons that only find links (Torrentio and the like) need lists to pick films from:
+                        // the standard ones are a tap away (still the owner's choice: nothing is added by itself).
+                        val scope = androidx.compose.runtime.rememberCoroutineScope()
+                        var listsNote by remember { mutableStateOf<String?>(null) }
+                        AddonsBrowse(
+                            m,
+                            tab = m.tab,
+                            saved = saved,
+                            watch = watch,
+                            onList = { vm.toggleAddonSaved(it) },
+                            onForget = { vm.forgetAddonWatch(it) },
+                            onReload = { m.load(links, force = true) },
+                            listsNote = listsNote,
+                            onAddLists = {
+                                listsNote = "Adding…"
+                                scope.launch {
+                                    m.check(Addons.STANDARD_LISTS).fold(
+                                        onSuccess = { a ->
+                                            listsNote = null
+                                            vm.addAddon(a)
+                                        },
+                                        onFailure = { e -> listsNote = "Couldn't add them: ${e.message ?: "no answer"}" },
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
             }
+            if (!wide && links.isNotEmpty()) PortalBar(m.tab) { m.tab = it }
         }
     }
     if (adding) {
@@ -189,6 +225,23 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
 internal fun LibraryViewModel.addAddon(a: Addon) {
     addons.known[a.url] = a
     updateSettings { s -> if (a.url in s.addons) s else s.copy(addons = s.addons + a.url) }
+}
+
+/** My list of the add-ons' portal: in, or out again. */
+internal fun LibraryViewModel.toggleAddonSaved(item: AddonItem) = updateSettings { s ->
+    val rest = s.addonSaved.filterNot { it.type == item.type && it.id == item.id }
+    s.copy(addonSaved = if (rest.size < s.addonSaved.size) rest else listOf(item) + rest)
+}
+
+/** Out of the portal's Continue watching (a long press on its card). */
+internal fun LibraryViewModel.forgetAddonWatch(w: AddonWatch) = updateSettings { s ->
+    s.copy(addonWatch = s.addonWatch.filterNot { it.type == w.type && it.id == w.id })
+}
+
+/** A film or episode of an add-on starts playing: it goes first in Continue watching. */
+internal fun LibraryViewModel.noteAddonPlay(m: AddonsModel) {
+    val entry = m.watchEntry() ?: return
+    updateSettings { it.copy(addonWatch = Addons.noteStart(it.addonWatch, entry, System.currentTimeMillis())) }
 }
 
 internal fun LibraryViewModel.removeAddon(link: String) {
@@ -243,7 +296,17 @@ private fun AddonsIntro(onAdd: () -> Unit) {
 
 /** The add-ons' lists, and a search across those that can search. */
 @Composable
-private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: () -> Unit = {}) {
+private fun AddonsBrowse(
+    m: AddonsModel,
+    tab: AddonsModel.Tab,
+    saved: List<AddonItem>,
+    watch: List<AddonWatch>,
+    onList: (AddonItem) -> Unit,
+    onForget: (AddonWatch) -> Unit,
+    onReload: () -> Unit,
+    listsNote: String? = null,
+    onAddLists: () -> Unit = {},
+) {
     var text by rememberSaveable { mutableStateOf(m.query) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
         if (m.canSearch) {
@@ -287,7 +350,45 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
                 }
             }
         }
-        val rows = m.rowsToShow()
+        val rows = m.rowsFor(tab)
+        if (results == null && !m.searching) {
+            // The page's first title, large; then what you were watching and your own list.
+            val lead = rows.firstNotNullOfOrNull { m.rows[it.key]?.firstOrNull() }
+            if (lead != null) {
+                item(key = "hero") {
+                    PortalHero(lead, saved.any { it.type == lead.type && it.id == lead.id }, onOpen = { m.openItem(lead) }, onList = { onList(lead) })
+                }
+            }
+            val going = watch.filter {
+                when (tab) {
+                    AddonsModel.Tab.FILMS -> it.type == "movie"
+                    AddonsModel.Tab.SERIES -> it.type == "series"
+                    else -> true
+                }
+            }
+            if (going.isNotEmpty()) {
+                item(key = "continue") {
+                    Shelf("Continue watching", key = "__continue") {
+                        items(going, key = { "w:" + it.type + "|" + it.id }) { w ->
+                            ContinueCard(
+                                w,
+                                // Its page again, a series on the season it was left in: a link is picked there
+                                // (links change), and the player starts where it was left.
+                                onOpen = { m.openItem(AddonItem(addonUrl = "", id = w.id, type = w.type, name = w.name, poster = w.poster), w.season) },
+                                onForget = { onForget(w) },
+                            )
+                        }
+                    }
+                }
+            }
+            if (tab == AddonsModel.Tab.HOME && saved.isNotEmpty()) {
+                item(key = "mine") {
+                    Shelf("My list", onSeeAll = { m.tab = AddonsModel.Tab.MINE }, key = "__mine") {
+                        items(saved.take(20), key = { "m:" + it.type + "|" + it.id }) { item -> AddonPoster(item) { m.openItem(item) } }
+                    }
+                }
+            }
+        }
         // (Whose list it is, when there are several add-ons with lists.)
         val several = rows.distinctBy { it.addon.url }.size > 1
         for (r in rows) {
@@ -305,7 +406,13 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
                 }
             }
         }
-        if (!m.loading && m.addons.isNotEmpty() && rows.isEmpty()) {
+        if (!m.loading && rows.isEmpty() && m.rowsToShow().isNotEmpty()) {
+            item(key = "nokind") { Note("Your add-ons have no lists of ${if (tab == AddonsModel.Tab.SERIES) "series" else "films"}.") }
+        }
+        if (tab == AddonsModel.Tab.HOME && rows.isNotEmpty()) {
+            item(key = "reload") { TextButton(onClick = onReload) { Text("Reload the lists") } }
+        }
+        if (!m.loading && m.addons.isNotEmpty() && m.rowsToShow().isEmpty()) {
             item(key = "norows") {
                 if (m.canSearch) {
                     Note("Your add-ons have no lists to show: search them above.")
@@ -337,6 +444,127 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
 @Composable
 private fun AddonPoster(item: AddonItem, wide: Boolean = false, onClick: () -> Unit) {
     PosterCard(item.asChannel(), null, onClick = onClick, width = if (wide) null else if (isTv()) 132.dp else 112.dp)
+}
+
+/** The portal's first title, large: its poster, what it is, and the way into it and into My list. */
+@Composable
+private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onList: () -> Unit) {
+    val tv = isTv()
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).height(if (tv) 210.dp else 196.dp).clip(shape).background(Ink2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Kicker(if (item.type == "series") "Series" else "Film")
+            Spacer(Modifier.size(6.dp))
+            Text(
+                item.name,
+                fontFamily = Serif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (tv) 28.sp else 23.sp,
+                lineHeight = if (tv) 33.sp else 28.sp,
+                color = Paper,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val about = listOfNotNull(item.year.ifBlank { null }, item.rating.ifBlank { null }?.let { "★ $it" }).joinToString("  ·  ")
+            if (about.isNotEmpty()) Text(about, fontFamily = Sans, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.size(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PaperButton("Open", Icons.Filled.PlayArrow, onClick = onOpen)
+                Spacer(Modifier.size(10.dp))
+                GhostButton(if (saved) "In My list" else "My list", if (saved) Icons.Filled.Check else Icons.Filled.Add, onClick = onList)
+            }
+        }
+        Box(Modifier.height(if (tv) 210.dp else 196.dp).aspectRatio(2f / 3f).background(Ink3), contentAlignment = Alignment.Center) {
+            LogoOr(item.poster, null, ContentScale.Crop, Modifier.fillMaxSize()) { Initials(item.name, 22.sp) }
+        }
+    }
+}
+
+/** A title of Continue watching: its poster with how far it is, and the episode under it. A long press takes it out. */
+@Composable
+private fun ContinueCard(w: AddonWatch, onOpen: () -> Unit, onForget: () -> Unit) {
+    val width = if (isTv()) 132.dp else 112.dp
+    Column(Modifier.width(width)) {
+        PosterCard(
+            Channel(id = "addon:${w.type}:${w.id}", name = w.name, group = "", url = "", logo = w.poster, kind = if (w.type == "series") Kind.SERIES else Kind.MOVIE),
+            if (w.pos > 0 && w.dur > 0) Watch(w.pos, w.dur) else null,
+            onClick = onOpen,
+            width = width,
+            onLongClick = onForget,
+        )
+        val line = when {
+            w.done -> "Watched ${w.label}".trim()
+            w.label.isNotEmpty() -> w.label
+            else -> ""
+        }
+        if (line.isNotEmpty()) {
+            Text(line, fontFamily = Sans, fontSize = 11.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+/** My list: the titles added from their pages (or from the large one on a page), as a grid. */
+@Composable
+private fun PortalMine(saved: List<AddonItem>, onOpen: (AddonItem) -> Unit) {
+    if (saved.isEmpty()) {
+        Note("Nothing in your list yet. Open a film or series and choose My list.")
+        return
+    }
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (isTv()) 132.dp else 104.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 32.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        items(saved.size, key = { saved[it].type + "|" + saved[it].id }) { i ->
+            val item = saved[i]
+            AddonPoster(item, wide = true) { onOpen(item) }
+        }
+    }
+}
+
+/** The portal's pages as words over the page (a TV, a tablet, a phone on its side). */
+@Composable
+private fun PortalTabs(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AddonsModel.Tab.entries.forEach { t -> TagChip(t.label, t == tab) { onTab(t) } }
+    }
+}
+
+/** The portal's pages as a bar under the page (a phone held upright): where a playlist has Home, Live, Films, Series. */
+@Composable
+private fun PortalBar(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Ink2)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
+        Row(Modifier.fillMaxWidth().height(BAR_HEIGHT - 1.dp), verticalAlignment = Alignment.CenterVertically) {
+            AddonsModel.Tab.entries.forEach { t ->
+                val picture = navIcon(
+                    when (t) {
+                        AddonsModel.Tab.HOME -> Section.HOME
+                        AddonsModel.Tab.FILMS -> Section.MOVIES
+                        AddonsModel.Tab.SERIES -> Section.SERIES
+                        AddonsModel.Tab.MINE -> Section.FAVORITES
+                    },
+                )
+                BarTab(
+                    icon = { tint -> Icon(picture, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp)) },
+                    label = t.label,
+                    selected = t == tab,
+                    modifier = Modifier.weight(1f),
+                ) { onTab(t) }
+            }
+        }
+    }
+}
+
+/** "1:02:45", "42:10". */
+private fun clock(ms: Long): String {
+    val s = ms / 1000
+    return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s % 3600 / 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
 }
 
 /**
@@ -440,7 +668,17 @@ internal fun hostOf(link: String) = link.substringAfter("://").substringBefore('
 
 /** A film or series: about it, its seasons and episodes, and its links. */
 @Composable
-private fun AddonDetails(m: AddonsModel, item: AddonItem, onBack: () -> Unit, onPlay: (AddonStream) -> Unit) {
+private fun AddonDetails(
+    m: AddonsModel,
+    item: AddonItem,
+    /** It is in My list. */
+    saved: Boolean,
+    /** Where it was left (Continue watching), if it was started. */
+    left: AddonWatch?,
+    onList: () -> Unit,
+    onBack: () -> Unit,
+    onPlay: (AddonStream) -> Unit,
+) {
     val meta = m.meta
     val tv = isTv()
     val series = item.type == "series"
@@ -476,10 +714,24 @@ private fun AddonDetails(m: AddonsModel, item: AddonItem, onBack: () -> Unit, on
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         color = Muted,
-                        maxLines = if (tv) 7 else 9,
+                        maxLines = if (tv) 5 else 7,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Spacer(Modifier.size(10.dp))
+                    GhostButton(if (saved) "In My list" else "My list", if (saved) Icons.Filled.Check else Icons.Filled.Add, onClick = onList)
                 }
+            }
+        }
+        if (left != null && (left.pos > 0 || left.done)) {
+            item(key = "left") {
+                val what = left.label.ifBlank { null }
+                Note(
+                    if (left.done) {
+                        "You watched ${what ?: "it"} to the end."
+                    } else {
+                        "Left at ${clock(left.pos)}${what?.let { " of $it" } ?: ""}. Pick a link${if (series) " of that episode" else ""} and it carries on from there."
+                    },
+                )
             }
         }
         if (series) {

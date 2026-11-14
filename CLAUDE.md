@@ -150,7 +150,7 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   details, a series' episode links in a dialog; `returnTo` = page to go Back to). Added and removed with the playlists
   (owner, 8.13): "Add-on" choice in the Add playlist window (`SourceKinds`, `AddAddonDialog`), "Your add-ons" on the
   Playlists page, an Add-ons part in Settings → Playlists. Browsing: More (phones), rail, Playlists page rows; hidden
-  in Kids. Playing: `Channel` id `addon:…` = one-off (no Recent, no resume, no Watch Next).
+  in Kids. Playing: `Channel` id `addon:<video id>`: not in the playlist's Recent or Watch Next (resume is the portal's own, below).
   **Like Stremio's Board and Discover (8.22; the owner: lists "stuck on same content", "make it like we are in
   the Stremio app"):** the lists were read once for as long as the app stayed open; now `load` reads them again
   when the page is opened or the app comes back and they are older than `FRESH_MS` (20 min), keeping what is
@@ -158,7 +158,19 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   extras; years for Cinemeta's "New"): a list that needs a pick is a row with its first one ("New · Films · 2026");
   rows are named "Popular · Films" (`Row.name`). "See all" on a row = `AddonDiscover`: the picks as chips, a grid
   that asks for the next page (`skip` = titles so far) as its end comes near (`discover*` in the model).
-  Not done: Stremio's Continue watching and Library for add-on titles (they are still one-offs).
+  **A portal of its own (8.23; the owner: an add-on opens "in portal same as provider portal but of course no
+  live"; only add-ons with links are clickable, the ones that only bring lists "only to be removed"):**
+  `Screen.ADDONS` left `SHELL_SCREENS`: the page draws its own menu (`AddonsModel.Tab` Home / Films / Series /
+  My list: `PortalBar` under the page on a phone upright, `PortalTabs` over it otherwise). Home = the first title
+  large (`PortalHero`), Continue watching, My list, then the lists; Films and Series = the lists of that type.
+  On the Playlists page an add-on with a "stream" resource (`Addons.hasLinks`) opens its portal (`m.only` = its
+  link: links are asked from it alone; the menu's Add-ons entry opens all of them together); a lists-only add-on
+  (Cinemeta) is a "LISTS" row that can't be clicked, only removed, and feeds every portal. **My list**
+  (`Settings.addonSaved`) and **Continue watching** (`Settings.addonWatch`, one `AddonWatch` per title; both sync
+  like any setting): `vm.noteAddonPlay` when a link starts, the player's `saveProgress` → `repo.noteAddonProgress`
+  (`Addons.noteStart` / `noteProgress`: a finished film leaves, a series stays as "Watched S1 E2"), and the player
+  resumes by the `addon:<video id>` id. The link itself is never kept (links change): a card opens the title's
+  page (a series on its season) and a link is picked again. A long press on a card takes it out.
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
   name carries a year before last year is out; a day that stamped 15% of the library (200+) is no date; without a

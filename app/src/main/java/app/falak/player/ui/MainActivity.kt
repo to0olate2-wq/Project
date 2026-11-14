@@ -750,13 +750,19 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                 items(addonLinks, key = { "addon|$it" }) { link ->
                     val a = vm.addons.known[link]
                     val shape = RoundedCornerShape(8.dp)
+                    // An add-on that finds links (Torrentio and the like) opens its portal. One that only
+                    // brings lists and details (Cinemeta) feeds the portals and can only be removed
+                    // (8.23, the owner). (Not read yet: it opens, as before.)
+                    val opens = a == null || Addons.hasLinks(a)
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .animateItem()
                             .focusRing(shape)
                             .clip(shape)
-                            .clickable {
+                            .clickable(enabled = opens) {
+                                vm.addons.only = link
+                                vm.addons.tab = AddonsModel.Tab.HOME
                                 vm.addons.returnTo = Screen.PLAYLISTS
                                 vm.screen = Screen.ADDONS
                             }
@@ -764,16 +770,16 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "ADD-ON",
+                            if (opens) "ADD-ON" else "LISTS",
                             style = Tabular.copy(fontSize = 11.sp, letterSpacing = 1.2.sp),
                             color = Faint,
                             maxLines = 1,
                             modifier = Modifier.width(84.dp),
                         )
                         Column(Modifier.weight(1f)) {
-                            Text(a?.name ?: hostOf(link), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper, maxLines = 1)
+                            Text(a?.name ?: hostOf(link), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = if (opens) Paper else Muted, maxLines = 1)
                             Text(
-                                addonLine(a, link),
+                                if (opens) addonLine(a, link) else "Lists only: its films and series show inside your add-ons' portals",
                                 fontFamily = Sans,
                                 fontSize = 12.sp,
                                 color = Muted,

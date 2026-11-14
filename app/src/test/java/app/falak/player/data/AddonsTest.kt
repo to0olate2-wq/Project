@@ -93,6 +93,46 @@ class AddonsTest {
     }
 
     @Test
+    fun continueWatching() {
+        val film = AddonWatch("movie", "tt1", "A Film", videoId = "tt1")
+        val ep2 = AddonWatch("series", "tt2", "A Show", videoId = "tt2:1:2", label = "S1 E2")
+        // Started: first in the row. Closed at once: it was only looked at.
+        var list = Addons.noteStart(emptyList(), film, now = 10)
+        assertEquals(listOf("tt1"), list.map { it.videoId })
+        assertTrue(Addons.noteProgress(list, "tt1", pos = 5_000, dur = 6_000_000, finished = false, now = 11).isEmpty())
+        // Watched a while: where it was left is kept, and is still there when it is started again.
+        list = Addons.noteProgress(list, "tt1", pos = 1_200_000, dur = 6_000_000, finished = false, now = 12)
+        assertEquals(1_200_000, list.single().pos)
+        list = Addons.noteStart(list, film, now = 13)
+        assertEquals(1_200_000, list.single().pos)
+        // (Starting again and closing at once doesn't lose the place.)
+        assertEquals(1_200_000, Addons.noteProgress(list, "tt1", pos = 2_000, dur = 6_000_000, finished = false, now = 14).single().pos)
+        // An episode goes first; the series is one card, whichever episode is on.
+        list = Addons.noteStart(list, ep2, now = 20)
+        list = Addons.noteProgress(list, "tt2:1:2", pos = 600_000, dur = 2_700_000, finished = false, now = 21)
+        assertEquals(listOf("tt2:1:2", "tt1"), list.map { it.videoId })
+        assertEquals(1, list.first().season)
+        list = Addons.noteStart(list, ep2.copy(videoId = "tt2:1:3", label = "S1 E3"), now = 22)
+        assertEquals(listOf("tt2:1:3", "tt1"), list.map { it.videoId })
+        assertEquals(0, list.first().pos)
+        // Watched to the end: the film leaves the row, the series stays to pick the next episode.
+        list = Addons.noteProgress(list, "tt2:1:3", pos = 2_690_000, dur = 2_700_000, finished = true, now = 23)
+        assertTrue(list.first().done)
+        list = Addons.noteProgress(list, "tt1", pos = 5_990_000, dur = 6_000_000, finished = true, now = 24)
+        assertEquals(listOf("tt2:1:3"), list.map { it.videoId })
+        // Something the row doesn't know: nothing changes.
+        assertTrue(Addons.noteProgress(list, "tt9", 1, 2, false, 25) === list)
+        assertNull(film.season)
+    }
+
+    @Test
+    fun whichAddonsFindLinks() {
+        val both = Addons.parseManifest("https://x.com", manifest)
+        assertTrue(Addons.hasLinks(both))
+        assertFalse(Addons.hasLinks(Addons.parseManifest("https://x.com", lists)))
+    }
+
+    @Test
     fun rowNames() {
         val a = Addons.parseManifest("https://x.com", lists)
         val names = a.catalogs.filter { !it.needsExtra }.map { app.falak.player.ui.AddonsModel.Row(a, it).title }
