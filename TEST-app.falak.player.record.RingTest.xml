@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.record.RingTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:48:25" hostname="ip-10-0-139-187" time="0.08">
+  <properties/>
+  <testcase name="findsKeyFramesInPiecesOfAnyLength" classname="app.falak.player.record.RingTest" time="0.015"/>
+  <testcase name="startingPointsByTimeAndDroppingTheOldest" classname="app.falak.player.record.RingTest" time="0.011"/>
+  <testcase name="keepsWhatArrivesAcrossFilesAndReadsItBack" classname="app.falak.player.record.RingTest" time="0.052"/>
+  <testcase name="findsThePacketsAfterJunkAtTheStart" classname="app.falak.player.record.RingTest" time="0.001"/>
+  <testcase name="copiesFromAPointUpToNow" classname="app.falak.player.record.RingTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

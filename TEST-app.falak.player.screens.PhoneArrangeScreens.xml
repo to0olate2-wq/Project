@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.PhoneArrangeScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:48:54" hostname="ip-10-0-139-187" time="13.825">
+  <properties/>
+  <testcase name="phoneArrangeAndCombine" classname="app.falak.player.screens.PhoneArrangeScreens" time="13.825"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.torrent.TorrentEngineTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T16:06:35" hostname="ip-10-0-139-187" time="18.078">
+  <properties/>
+  <testcase name="fetchesAFilmFromALinkAndFeedsThePlayer" classname="app.falak.player.torrent.TorrentEngineTest" time="18.078"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

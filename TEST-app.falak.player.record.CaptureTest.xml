@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.record.CaptureTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:48:22" hostname="ip-10-0-139-187" time="1.599">
+  <properties/>
+  <testcase name="liveStreamThroughTheBufferAndIntoARecording" classname="app.falak.player.record.CaptureTest" time="0.546"/>
+  <testcase name="aRefusedChannelFailsAtOnceForThePlayer" classname="app.falak.player.record.CaptureTest" time="0.022"/>
+  <testcase name="aRecordingStillBeingMadeIsReadAsItGrows" classname="app.falak.player.record.CaptureTest" time="1.007"/>
+  <testcase name="replayFromHlsPartsEncryptedOrNot" classname="app.falak.player.record.CaptureTest" time="0.024"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

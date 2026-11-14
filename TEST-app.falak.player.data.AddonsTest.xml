@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.AddonsTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:47:53" hostname="ip-10-0-139-187" time="0.147">
+  <properties/>
+  <testcase name="whichAddonsFindLinks" classname="app.falak.player.data.AddonsTest" time="0.047"/>
+  <testcase name="onlyLinksThePlayerCanOpen" classname="app.falak.player.data.AddonsTest" time="0.003"/>
+  <testcase name="listsWithPicksAndPages" classname="app.falak.player.data.AddonsTest" time="0.01"/>
+  <testcase name="catalogPaths" classname="app.falak.player.data.AddonsTest" time="0.002"/>
+  <testcase name="subtitleFilesBecomeReadableText" classname="app.falak.player.data.AddonsTest" time="0.052"/>
+  <testcase name="continueWatching" classname="app.falak.player.data.AddonsTest" time="0.001"/>
+  <testcase name="oneTapPicksTheKindChosenLast" classname="app.falak.player.data.AddonsTest" time="0.005"/>
+  <testcase name="subtitlesFromAddOns" classname="app.falak.player.data.AddonsTest" time="0.017"/>
+  <testcase name="linksAsPeoplePasteThem" classname="app.falak.player.data.AddonsTest" time="0.001"/>
+  <testcase name="catalogAndMeta" classname="app.falak.player.data.AddonsTest" time="0.004"/>
+  <testcase name="rowNames" classname="app.falak.player.data.AddonsTest" time="0.002"/>
+  <testcase name="manifest" classname="app.falak.player.data.AddonsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

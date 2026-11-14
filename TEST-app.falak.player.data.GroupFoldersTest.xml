@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.GroupFoldersTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:48:02" hostname="ip-10-0-139-187" time="0.038">
+  <properties/>
+  <testcase name="staysFlatWhenFoldingDoesNotHelp" classname="app.falak.player.data.GroupFoldersTest" time="0.028"/>
+  <testcase name="foldsGroupsThatStartTheSame" classname="app.falak.player.data.GroupFoldersTest" time="0.007"/>
+  <testcase name="tellsDividersFromChannels" classname="app.falak.player.data.GroupFoldersTest" time="0.001"/>
+  <testcase name="splitsAtTheMarksProvidersUse" classname="app.falak.player.data.GroupFoldersTest" time="0.001"/>
+  <testcase name="findsGroupsByAnyWordsTyped" classname="app.falak.player.data.GroupFoldersTest" time="0.0"/>
+  <testcase name="leavesOrdinaryNamesAlone" classname="app.falak.player.data.GroupFoldersTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

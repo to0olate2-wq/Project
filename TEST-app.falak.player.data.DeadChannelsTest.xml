@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.DeadChannelsTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:48:02" hostname="ip-10-0-139-187" time="0.025">
+  <properties/>
+  <testcase name="notWhenNothingElsePlaysInTime" classname="app.falak.player.data.DeadChannelsTest" time="0.007"/>
+  <testcase name="aChannelThatJustWorkedOnlyHiccupped" classname="app.falak.player.data.DeadChannelsTest" time="0.0"/>
+  <testcase name="hiddenForAWeekThenTriedAgain" classname="app.falak.player.data.DeadChannelsTest" time="0.015"/>
+  <testcase name="manyFailingAtOnceIsTheProvider" classname="app.falak.player.data.DeadChannelsTest" time="0.003"/>
+  <testcase name="aFailureWaitsForAnotherChannelToPlay" classname="app.falak.player.data.DeadChannelsTest" time="0.0"/>
+  <testcase name="theSameChannelPlayingAgainProvesNothing" classname="app.falak.player.data.DeadChannelsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
