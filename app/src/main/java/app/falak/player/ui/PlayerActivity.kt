@@ -3284,6 +3284,11 @@ class PlayerActivity : ComponentActivity() {
 
     /** An add-on's film or episode: the looked-up part playing now, else its show's learned intro. */
     private fun addonSkipTick(p: Player, ch: Channel) {
+        // (Not over the loading page, or a picture that has stopped to load more.)
+        if (p.playbackState != Player.STATE_READY) {
+            skipIntroShown = false
+            return
+        }
         val dur = p.duration.coerceAtLeast(0)
         val pos = p.currentPosition
         val known = if (skipsFor == ch.id) skips else emptyList()
