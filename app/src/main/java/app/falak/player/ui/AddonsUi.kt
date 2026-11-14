@@ -455,7 +455,7 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
         Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).height(if (tv) 210.dp else 196.dp).clip(shape).background(Ink2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f).padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Column(Modifier.weight(1f).padding(horizontal = if (tv) 18.dp else 14.dp, vertical = 14.dp)) {
             Kicker(if (item.type == "series") "Series" else "Film")
             Spacer(Modifier.size(6.dp))
             Text(
@@ -473,8 +473,13 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
             Spacer(Modifier.size(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PaperButton("Open", Icons.Filled.PlayArrow, onClick = onOpen)
-                Spacer(Modifier.size(10.dp))
-                GhostButton(if (saved) "In My list" else "My list", if (saved) Icons.Filled.Check else Icons.Filled.Add, onClick = onList)
+                Spacer(Modifier.size(if (tv) 10.dp else 8.dp))
+                // (Beside the poster a phone has room for a short word: the tick or the plus says the rest.)
+                GhostButton(
+                    if (tv) (if (saved) "In My list" else "My list") else if (saved) "Saved" else "List",
+                    if (saved) Icons.Filled.Check else Icons.Filled.Add,
+                    onClick = onList,
+                )
             }
         }
         Box(Modifier.height(if (tv) 210.dp else 196.dp).aspectRatio(2f / 3f).background(Ink3), contentAlignment = Alignment.Center) {

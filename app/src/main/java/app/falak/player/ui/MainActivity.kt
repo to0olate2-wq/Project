@@ -779,7 +779,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                         Column(Modifier.weight(1f)) {
                             Text(a?.name ?: hostOf(link), fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = if (opens) Paper else Muted, maxLines = 1)
                             Text(
-                                if (opens) addonLine(a, link) else "Lists only: its films and series show inside your add-ons' portals",
+                                if (opens) addonLine(a, link) else "Lists only · used inside the portals",
                                 fontFamily = Sans,
                                 fontSize = 12.sp,
                                 color = Muted,
