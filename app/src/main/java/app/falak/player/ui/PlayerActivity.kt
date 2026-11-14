@@ -1458,6 +1458,9 @@ class PlayerActivity : ComponentActivity() {
             serviceFailed(ch)
             // Nothing more is tried: the message says so, without the dots going on behind it.
             hideLoading()
+            // A channel that can't be opened while the internet is there: hidden from the lists once
+            // another channel plays (see DeadChannels).
+            if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && online()) repo.noteLiveFailed(ch)
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
             val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
@@ -1472,6 +1475,7 @@ class PlayerActivity : ComponentActivity() {
             if (playbackState == Player.STATE_READY) {
                 retried = false
                 hideLoading()
+                queue.getOrNull(index)?.takeIf { it.kind == Kind.LIVE && !it.id.startsWith("cu:") }?.let { repo.noteLivePlayed(it) }
                 hideMessage()
                 wasReady = true
                 failedUrl = null
@@ -1505,6 +1509,12 @@ class PlayerActivity : ComponentActivity() {
                     return
                 }
                 val ch = queue.getOrNull(index)
+                // An add-on's film or episode has no queue behind it (its links are picked one at a
+                // time): back to its page, where the next episode is one tap (8.24).
+                if (ch != null && ch.id.startsWith("addon:") && queue.size == 1) {
+                    handler.post { finish() }
+                    return
+                }
                 // Episodes: on to the next one (unless "Keep watching" was chosen).
                 if (ch != null && nextEpisode() != null && upNextDismissed != ch.id) {
                     if (repo.state.value.settings.autoNextEpisode) playUpNext() else seriesTick()
@@ -2592,6 +2602,11 @@ class PlayerActivity : ComponentActivity() {
         // Movies and episodes can also fetch subtitles online.
         val vod = queue.getOrNull(index)?.kind?.let { it != Kind.LIVE } == true
         if (type == C.TRACK_TYPE_TEXT && vod) {
+            // An add-on's film or episode: the subtitles the add-ons have for it (8.24).
+            val fromAddons = addonSubtitles()
+            if (fromAddons.isNotEmpty()) {
+                options += TrackOption("🧩  Subtitles from your add-ons (${fromAddons.size})…", false) { pickAddonSubtitle(fromAddons) }
+            }
             options += TrackOption("🔎  Find subtitles online…", false) { searchOnlineSubtitles() }
             // Some films carry subtitles only VLC can read: VLC takes over from here and turns them on.
             if (exo != null) {
@@ -2683,8 +2698,56 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** The subtitles the add-ons offer for what is playing, your language first. */
+    private fun addonSubtitles(): List<app.falak.player.data.AddonSub> {
+        val ch = queue.getOrNull(index) ?: return emptyList()
+        if (!ch.id.startsWith("addon:")) return emptyList()
+        val known = repo.addonSubs?.takeIf { it.first == ch.id.removePrefix("addon:") }?.second ?: return emptyList()
+        return app.falak.player.data.Addons.sortSubs(known, repo.state.value.settings.subtitleLang.ifEmpty { "en" })
+    }
+
+    private fun pickAddonSubtitle(subs: List<app.falak.player.data.AddonSub>) {
+        val shown = subs.take(60)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Subtitles from your add-ons")
+            .setItems(shown.map { "${app.falak.player.data.Addons.langName(it.lang)}  ·  ${it.addonName}" }.toTypedArray()) { _, which ->
+                downloadAddonSubtitle(shown[which])
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Fetches the file, makes it UTF-8 (old Arabic, Russian… files aren't), and shows it. */
+    private fun downloadAddonSubtitle(sub: app.falak.player.data.AddonSub) {
+        toast("Getting the subtitles…")
+        lifecycleScope.launch {
+            val lang = app.falak.player.data.Addons.langCode(sub.lang).ifEmpty { "und" }
+            val got = try {
+                withContext(Dispatchers.IO) {
+                    val request = okhttp3.Request.Builder().url(sub.url).header("User-Agent", app.falak.player.data.Repository.DEFAULT_UA).build()
+                    val bytes = repo.http.newCall(request).execute().use { r ->
+                        if (!r.isSuccessful) throw java.io.IOException("The add-on answered ${r.code}")
+                        val body = r.body ?: throw java.io.IOException("Empty answer")
+                        if (body.contentLength() > 4_000_000) throw java.io.IOException("Too big to be subtitles")
+                        body.bytes()
+                    }
+                    val text = app.falak.player.data.Addons.subtitleText(bytes, sub.lang)
+                    val vtt = text.trimStart().startsWith("WEBVTT")
+                    val dir = java.io.File(cacheDir, "subs").apply { mkdirs() }
+                    val file = java.io.File(dir, "addon-${sub.url.hashCode().toUInt()}.${if (vtt) "vtt" else "srt"}")
+                    file.writeText(text, Charsets.UTF_8)
+                    file to vtt
+                }
+            } catch (e: Exception) {
+                toast(e.message ?: "Couldn't get the subtitles")
+                return@launch
+            }
+            attachSubtitle(got.first, lang, if (got.second) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP, "Add-on (${lang.uppercase()})")
+        }
+    }
+
     /** Re-prepares the current video with the downloaded subtitle, keeping the position. */
-    private fun attachSubtitle(file: java.io.File, lang: String) {
+    private fun attachSubtitle(file: java.io.File, lang: String, mime: String = MimeTypes.APPLICATION_SUBRIP, label: String = "Online (${lang.uppercase()})") {
         vlc?.let {
             it.addSubtitleFile(file)
             toast("Subtitles added")
@@ -2694,9 +2757,9 @@ class PlayerActivity : ComponentActivity() {
         val item = currentItem ?: return
         val dataSource = currentDataSource ?: return
         val sub = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
-            .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+            .setMimeType(mime)
             .setLanguage(lang)
-            .setLabel("Online (${lang.uppercase()})")
+            .setLabel(label)
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .build()
         val withSub = item.buildUpon().setSubtitleConfigurations(listOf(sub)).build()
@@ -3789,6 +3852,15 @@ class PlayerActivity : ComponentActivity() {
             page,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+    }
+
+    /** The device has a working internet connection (not known: taken as yes). */
+    private fun online(): Boolean = try {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        caps == null && cm == null || caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    } catch (e: Exception) {
+        true
     }
 
     private fun showLoading(ch: Channel) {

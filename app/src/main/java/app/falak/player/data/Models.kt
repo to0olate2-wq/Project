@@ -471,6 +471,10 @@ data class Settings(
      * synced with Wi-Fi linking like other settings, so one added on the phone reaches the TV.
      */
     val addons: List<String> = emptyList(),
+    /** Live TV: channels that didn't work are left out of the rows and lists for a week (see DeadChannels). */
+    val hideDead: Boolean = true,
+    /** The kind of add-on link picked last ("Torrentio|1080p|t"): what one-tap Play looks for (Addons.pickLink). */
+    val addonPick: String = "",
     /** The add-ons' portal (8.23): My list, newest first. Synced like other settings. */
     val addonSaved: List<AddonItem> = emptyList(),
     /** The add-ons' portal: Continue watching, newest first (see Addons.noteStart / noteProgress). */
@@ -516,6 +520,8 @@ data class AppState(
     val lastLive: Map<String, String> = emptyMap(),
     /** Automatic sync with linked devices. */
     val sync: SyncMeta = SyncMeta(),
+    /** Channels that didn't work, per playlist: channel id → when (see DeadChannels). This device's. */
+    val dead: Map<String, Map<String, Long>> = emptyMap(),
     /** Where each show's intro starts and ends ("playlistId|show"), learned when you skip it. */
     val intros: Map<String, Intro> = emptyMap(),
     /** Series you follow, per playlist: told when new episodes appear. */

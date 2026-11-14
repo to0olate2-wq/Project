@@ -271,6 +271,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val p = playlist ?: return
         repo.saveProgress(progressKey(state.value.mine(p.id), ch.id), 0, 0)
     }
+    /** The add-ons' portal starts a film or episode: the subtitles its add-ons have for it, for the player's list. */
+    fun addonSubtitles(videoId: String, subs: List<app.falak.player.data.AddonSub>) {
+        repo.addonSubs = videoId to subs
+    }
+
+    /** Settings: the channels hidden because they didn't work are all shown again. */
+    fun forgetDeadChannels() = repo.forgetDead()
+
     var group by mutableStateOf<String?>(null)
 
     /** Live TV's front page: the folder whose groups its rows show (null: every group). */

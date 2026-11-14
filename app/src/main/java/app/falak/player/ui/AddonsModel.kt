@@ -354,6 +354,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
     fun closeItem() {
         metaJob?.cancel()
         streamJob?.cancel()
+        playWhenReady = false
         open = null
         meta = null
         streams = null
@@ -391,6 +392,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
     /** The episode's links closed. */
     fun closeLinks() {
         streamJob?.cancel()
+        playWhenReady = false
         streamsFor = null
         streams = null
         stopTorrent()
@@ -407,12 +409,58 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
 
     private fun loadStreams(type: String, id: String, title: String) {
         streamJob?.cancel()
+        subsJob?.cancel()
         streamsFor = id
         streamsTitle = title
         streams = null
+        subs = emptyList()
         streamJob = scope.launch {
             streams = client.streams(linkAddons(), type, id)
         }
+        // The subtitles every add-on has for it (8.24), for the player's subtitles list.
+        subsJob = scope.launch {
+            val got = client.subtitles(addons, type, id)
+            if (streamsFor == id) subs = got
+        }
+    }
+
+    private var subsJob: Job? = null
+
+    /** The subtitles the add-ons have for the film or episode whose links are shown. */
+    var subs: List<app.falak.player.data.AddonSub> = emptyList()
+        private set
+
+    /** One-tap Play (8.24): the best link plays as soon as the links are here (see Addons.pickLink). */
+    var playWhenReady by mutableStateOf(false)
+
+    /** The links one tap chooses from, as the page lists them. */
+    fun links(): List<AddonStream> {
+        val st = streams ?: return emptyList()
+        return st.playable + if (Torrents.available) st.torrentLinks else emptyList()
+    }
+
+    /**
+     * What a series' big button plays: the episode left unfinished ("Resume"), the one after the
+     * episode watched last ("Next episode"), or its first ("Play"). Null: no episodes, or the last
+     * one has been watched.
+     */
+    fun upNext(left: app.falak.player.data.AddonWatch?): Pair<String, AddonVideo>? {
+        val all = meta?.videos?.filter { it.season > 0 }?.sortedWith(compareBy({ it.season }, { it.episode })).orEmpty()
+        if (all.isEmpty()) return null
+        val at = if (left == null) -1 else all.indexOfFirst { it.id == left.videoId }
+        return when {
+            left == null || at < 0 -> "Play" to all.first()
+            !left.done -> "Resume" to all[at]
+            at + 1 < all.size -> "Next episode" to all[at + 1]
+            else -> null
+        }
+    }
+
+    /** The big button of a series: that episode's links are asked for, and the best one plays. */
+    fun playEpisode(v: AddonVideo) {
+        season = v.season
+        playWhenReady = true
+        pickEpisode(v)
     }
 
     /** What is about to play, for the portal's Continue watching (see Addons.noteStart). */

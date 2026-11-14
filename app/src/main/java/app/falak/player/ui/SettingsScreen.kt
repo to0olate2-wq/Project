@@ -932,6 +932,18 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 s.groupFolders,
             ) { vm.updateSettings { it.copy(groupFolders = !it.groupFolders) } }
         }
+        item {
+            val hiddenNow = remember(state.dead) { state.dead.values.sumOf { app.falak.player.data.DeadChannels.hidden(it, System.currentTimeMillis()).size } }
+            SwitchRow(
+                "Hide channels that don't work",
+                "Live TV: a channel that can't be opened is left out of the rows and lists for a week, then shown again to be tried. " +
+                    "Favorites and the search still have it." + if (hiddenNow > 0) " Hidden now: $hiddenNow." else "",
+                s.hideDead,
+            ) { vm.updateSettings { it.copy(hideDead = !it.hideDead) } }
+            if (hiddenNow > 0) {
+                TextButton(onClick = { vm.forgetDeadChannels() }) { Text("Show them all again") }
+            }
+        }
 
         item { SectionTitle("Your playlists") }
         if (p != null) {

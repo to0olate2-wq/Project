@@ -62,6 +62,8 @@ internal fun LiveRows(
     /** The groups watched lately: their rows come first. */
     lately: List<String>,
     locked: Set<String>,
+    /** Channels that didn't work lately (see DeadChannels): not in the groups' rows. */
+    dead: Set<String>,
     /** TV: the channels the top of the page tells about until the remote is on a card. */
     featured: List<Channel>,
     epg: Map<String, List<Program>>,
@@ -87,7 +89,8 @@ internal fun LiveRows(
     val card: @Composable (Channel, List<Channel>) -> Unit = { ch, row ->
         ChannelCard(
             ch, Epg.current(epg[ch.epgKey], now), now,
-            onClick = { onPlay(row, ch) },
+            // (Zapping from it skips the ones that don't work, too.)
+            onClick = { onPlay(if (dead.isEmpty()) row else row.filter { it.id !in dead || it.id == ch.id }, ch) },
             width = width,
             onLongClick = { onLongPress(ch) },
             plain = true,
@@ -121,6 +124,7 @@ internal fun LiveRows(
                 locked = isLocked,
                 // (Adult groups show no logos on the page, as on Films and Series.)
                 closed = isLocked || ADULT_GROUP.containsMatchIn(name),
+                dead = dead,
                 width = width,
                 onGroup = onGroup,
                 card = card,
@@ -171,12 +175,13 @@ private fun GroupRow(
     all: List<Channel>,
     locked: Boolean,
     closed: Boolean,
+    dead: Set<String>,
     width: Dp,
     onGroup: (String?) -> Unit,
     card: @Composable (Channel, List<Channel>) -> Unit,
 ) {
-    val shown = remember(all, closed) {
-        if (closed) emptyList() else all.asSequence().filterNot { isDividerName(it.name) }.take(ROW_MAX).toList()
+    val shown = remember(all, closed, dead) {
+        if (closed) emptyList() else all.asSequence().filterNot { isDividerName(it.name) || it.id in dead }.take(ROW_MAX).toList()
     }
     Shelf(
         if (locked) "🔒 $title" else title,

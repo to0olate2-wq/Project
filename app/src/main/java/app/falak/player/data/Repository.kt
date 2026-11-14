@@ -362,6 +362,33 @@ class Repository(private val context: Context) {
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
+    /** The subtitles the add-ons have for what is playing: its video id → them (set by the portal as it starts). */
+    @Volatile var addonSubs: Pair<String, List<AddonSub>>? = null
+
+    private val deadTracker = DeadChannels.Tracker()
+
+    /** The player couldn't open a live channel, with the internet there (see DeadChannels). */
+    fun noteLiveFailed(ch: Channel) = markDead(deadTracker.failed(ch.id, System.currentTimeMillis()))
+
+    /** A live channel plays: it isn't dead, and the ones that failed just before it are. */
+    fun noteLivePlayed(ch: Channel) {
+        val pl = currentPlaylist ?: return
+        val at = System.currentTimeMillis()
+        markDead(deadTracker.played(ch.id, at))
+        if (state.value.dead[pl.id]?.containsKey(ch.id) == true) {
+            update(stamp = false) { s -> s.copy(dead = s.dead + (pl.id to (s.dead[pl.id].orEmpty() - ch.id))) }
+        }
+    }
+
+    private fun markDead(ids: List<String>) {
+        val pl = currentPlaylist ?: return
+        if (ids.isEmpty()) return
+        update(stamp = false) { s -> s.copy(dead = s.dead + (pl.id to DeadChannels.mark(s.dead[pl.id].orEmpty(), ids, System.currentTimeMillis()))) }
+    }
+
+    /** "Show them all again" in Settings. */
+    fun forgetDead() = update(stamp = false) { it.copy(dead = emptyMap()) }
+
     /** The player, on a film or episode of an add-on: how far it is (the portal's Continue watching). */
     fun noteAddonProgress(videoId: String, pos: Long, dur: Long, finished: Boolean) {
         val had = state.value.settings.addonWatch

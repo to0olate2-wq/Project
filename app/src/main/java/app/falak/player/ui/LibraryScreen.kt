@@ -203,7 +203,21 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val mineShown = section == Section.LIVE && !gridView && group == ALL_FILTER && q.isEmpty() && (mineFav.isNotEmpty() || mineOften.isNotEmpty())
     // With a search: every match in the section (all of them from Home), best first (see
     // SearchIndex), and the best five for the row under the search box.
-    val result by produceState<Pair<List<Channel>, List<Channel>>?>(null, base, group, q, sort, excluded, groupMap, favOfKind, section) {
+    // Channels that didn't work lately are left out of Live TV's rows and lists (8.24, see DeadChannels);
+    // "Show" under a list's heading brings that list's back while it is open.
+    var showDead by rememberSaveable(section, group) { mutableStateOf(false) }
+    val deadMarks = state.dead[p.id]
+    val deadIds = remember(deadMarks, state.settings.hideDead, now / 3_600_000) {
+        if (!state.settings.hideDead) emptySet() else app.falak.player.data.DeadChannels.hidden(deadMarks, now)
+    }
+    val deadHere = remember(deadIds, group, groupMap, base, section) {
+        if (section != Section.LIVE || deadIds.isEmpty() || group == null || group == FAV_FILTER) {
+            0
+        } else {
+            (if (group == ALL_FILTER) base else groupMap[group].orEmpty()).count { it.id in deadIds }
+        }
+    }
+    val result by produceState<Pair<List<Channel>, List<Channel>>?>(null, base, group, q, sort, excluded, groupMap, favOfKind, section, deadIds, showDead) {
         if (q.isNotEmpty()) delay(160)
         value = withContext(Dispatchers.Default) {
             val allowed: (Channel) -> Boolean = { ch -> excluded.isEmpty() || ch.group !in excluded }
@@ -217,7 +231,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         FAV_FILTER -> favOfKind
                         else -> groupMap[group].orEmpty()
                     }
-                    if (excluded.isEmpty()) src else src.filter(allowed)
+                    val inGroup = if (excluded.isEmpty()) src else src.filter(allowed)
+                    // (Favorites keep theirs: you chose them.)
+                    if (section == Section.LIVE && group != FAV_FILTER && deadIds.isNotEmpty() && !showDead) inGroup.filter { it.id !in deadIds } else inGroup
                 }
             }
             val top = if (q.isEmpty()) emptyList() else out.take(5)
@@ -421,7 +437,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         Column(Modifier.fillMaxSize()) {
                             Box(Modifier.weight(1f).fillMaxWidth()) {
                                 LiveRows(
-                                    vm, groupMap, liveTree, visibleTotal, favLive, mineOften, latelyGroups, locked,
+                                    vm, groupMap, liveTree, visibleTotal, favLive, mineOften, latelyGroups, locked, deadIds,
                                     // A TV names the channel watched last, then your favorites, until the remote is on a card.
                                     featured = remember(lastWatched, mineFav) { (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5) },
                                     epg = epg, now = now,
@@ -558,6 +574,16 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                     grid = if (shown.kind != null) (shown.name in state.settings.gridSections) else null,
                                     onGrid = { vm.setGridView(shown, it) },
                                 )
+                                if (shown == Section.LIVE && noQuery && deadHere > 0) {
+                                    androidx.compose.material3.TextButton(onClick = { showDead = !showDead }) {
+                                        Text(
+                                            if (showDead) "Hide the $deadHere that didn't work" else "$deadHere that didn't work ${if (deadHere == 1) "is" else "are"} hidden · Show",
+                                            fontFamily = Sans,
+                                            fontSize = 13.sp,
+                                            color = Muted,
+                                        )
+                                    }
+                                }
                                 val groupsWanted = groupsVisible || (showGroups && q.isEmpty() && favOfKind.isNotEmpty())
                                 // TV, Live TV as a list: three columns (groups, channels, what's on), so the
                                 // groups are a column beside the channels rather than chips above them.

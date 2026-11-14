@@ -110,14 +110,32 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
         }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // What the player needs to know as a link starts: the title goes first in Continue watching, and
+    // the subtitles the add-ons have for it (the link's own first) are there for its subtitles list.
+    val starting = { s: AddonStream ->
+        vm.noteAddonPlay(m)
+        vm.addonSubtitles(m.streamsFor ?: m.open?.id.orEmpty(), (s.subs + m.subs).distinctBy { it.url })
+    }
     val play = { s: AddonStream ->
+        // The kind of link chosen (add-on, quality, torrent or not): what one-tap Play looks for next time.
+        val kind = Addons.linkKind(s)
+        if (state.settings.addonPick != kind) vm.updateSettings { it.copy(addonPick = kind) }
         if (s.torrent != null && s.url.isEmpty()) {
             // A torrent link: got ready first (its window says how it is going), then played like any link.
             m.prepareTorrent(context, s)
         } else {
             val ch = m.channelFor(s)
-            vm.noteAddonPlay(m)
+            starting(s)
             onPlay(listOf(ch), ch)
+        }
+    }
+    // One-tap Play of an episode (Resume, Next episode): its links were asked for, the best one plays
+    // as soon as they are here. (None that plays: its links window stays, saying so.)
+    val asked = m.streams
+    androidx.compose.runtime.LaunchedEffect(asked, m.playWhenReady) {
+        if (m.playWhenReady && asked != null) {
+            m.playWhenReady = false
+            Addons.pickLink(m.links(), state.settings.addonPick)?.let { play(it) }
         }
     }
     // Leaving the Add-ons page for another one: a torrent still arriving is ended (not when the
@@ -131,7 +149,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             onReady = { url ->
                 m.torrentStarted()
                 val ch = m.channelFor(s.copy(url = url))
-                vm.noteAddonPlay(m)
+                starting(s)
                 onPlay(listOf(ch), ch)
             },
             onCancel = { m.stopTorrent() },
@@ -143,6 +161,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             m, open,
             saved = saved.any { it.type == open.type && it.id == open.id },
             left = watch.firstOrNull { it.type == open.type && it.id == open.id },
+            pick = state.settings.addonPick,
             onList = { vm.toggleAddonSaved(open.copy(name = m.meta?.name?.ifBlank { null } ?: open.name, poster = m.meta?.poster?.ifBlank { null } ?: open.poster)) },
             onBack = { m.closeItem() },
             onPlay = play,
@@ -680,6 +699,8 @@ private fun AddonDetails(
     saved: Boolean,
     /** Where it was left (Continue watching), if it was started. */
     left: AddonWatch?,
+    /** The kind of link picked last (Settings.addonPick): what the Play button looks for. */
+    pick: String,
     onList: () -> Unit,
     onBack: () -> Unit,
     onPlay: (AddonStream) -> Unit,
@@ -734,12 +755,22 @@ private fun AddonDetails(
                     if (left.done) {
                         "You watched ${what ?: "it"} to the end."
                     } else {
-                        "Left at ${clock(left.pos)}${what?.let { " of $it" } ?: ""}. Pick a link${if (series) " of that episode" else ""} and it carries on from there."
+                        "Left at ${clock(left.pos)}${what?.let { " of $it" } ?: ""}. Resume carries on from there."
                     },
                 )
             }
         }
         if (series) {
+            // One tap: the episode left unfinished, the one after the episode watched last, or the first.
+            val next = if (m.metaLoading) null else m.upNext(left)
+            if (next != null) {
+                item(key = "upnext") {
+                    val v = next.second
+                    Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+                        PaperButton("${next.first} · S${v.season} E${v.episode}", Icons.Filled.PlayArrow, onClick = { m.playEpisode(v) })
+                    }
+                }
+            }
             val seasons = m.seasons()
             when {
                 m.metaLoading -> item(key = "seasons-wait") { Note("Reading the seasons…") }
@@ -754,6 +785,7 @@ private fun AddonDetails(
                 }
             }
         } else {
+            playItem(m, pick, if (left != null && left.pos > 0 && !left.done) "Resume" else "Play", onPlay)
             item(key = "links-head") { SectionHeader("Links") }
             linkItems(m.streams, onPlay)
         }
@@ -766,6 +798,7 @@ private fun AddonDetails(
                     item(key = "title") {
                         Text(m.streamsTitle, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Paper, modifier = Modifier.padding(bottom = 8.dp))
                     }
+                    playItem(m, pick, "Play", onPlay)
                     linkItems(m.streams, onPlay)
                     item(key = "close") {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -774,6 +807,20 @@ private fun AddonDetails(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * One-tap Play (8.24): the link most like the kind you picked last (see Addons.pickLink), as one
+ * button over the list of links. The list stays for choosing another.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.playItem(m: AddonsModel, pick: String, word: String, onPlay: (AddonStream) -> Unit) {
+    val best = Addons.pickLink(m.links(), pick) ?: return
+    item(key = "play") {
+        val what = listOfNotNull(Addons.quality(best).ifEmpty { null }, best.addonName.ifBlank { null }).joinToString(" · ")
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+            PaperButton(if (what.isEmpty()) word else "$word · $what", Icons.Filled.PlayArrow, onClick = { onPlay(best) })
         }
     }
 }

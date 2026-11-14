@@ -148,7 +148,12 @@ data class AddonStream(
     val referrer: String,
     /** A torrent link (8.16): [url] is empty until it has been got ready to play (see Torrents). */
     val torrent: TorrentSource? = null,
+    /** Subtitles that come with this link itself. */
+    val subs: List<AddonSub> = emptyList(),
 )
+
+/** A subtitle file an add-on offers for a film or episode (8.24). [lang] as the add-on writes it ("ara", "en", "Arabic"). */
+data class AddonSub(val addonName: String, val lang: String, val url: String)
 
 data class AddonStreams(
     val playable: List<AddonStream>,
@@ -387,6 +392,7 @@ object Addons {
                             userAgent = "",
                             referrer = "",
                             torrent = source,
+                            subs = subsIn(addonName, s),
                         )
                     }
                 }
@@ -400,12 +406,134 @@ object Addons {
                         description = s.str("description").ifEmpty { s.str("title") },
                         userAgent = headers?.headerValue("User-Agent").orEmpty(),
                         referrer = (headers?.headerValue("Referer") ?: headers?.headerValue("Referrer")).orEmpty(),
+                        subs = subsIn(addonName, s),
                     )
                 }
                 else -> others++
             }
         }
         return AddonStreams(playable, torrentLinks.size, others, emptyList(), torrentLinks)
+    }
+
+    // ---------- subtitles (8.24) ----------
+
+    fun subtitlesPath(type: String, id: String) = "subtitles/${enc(type)}/${enc(id)}.json"
+
+    /** {"subtitles":[{"id":…,"url":"https://…","lang":"ara"}]}: the ones with a link. */
+    fun parseSubtitles(addonName: String, text: String): List<AddonSub> {
+        val o = json.parseToJsonElement(text) as? JsonObject ?: return emptyList()
+        return subsIn(addonName, o)
+    }
+
+    private fun subsIn(addonName: String, o: JsonObject): List<AddonSub> =
+        (o["subtitles"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val s = e as? JsonObject ?: return@mapNotNull null
+            val url = s.str("url")
+            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return@mapNotNull null
+            AddonSub(addonName, s.str("lang").ifEmpty { s.str("language") }, url)
+        }
+
+    // (Codes add-ons use that Java names differently.)
+    private val OTHER_CODES = mapOf(
+        "fre" to "fra", "ger" to "deu", "chi" to "zho", "dut" to "nld", "gre" to "ell", "cze" to "ces", "rum" to "ron",
+        "per" to "fas", "slo" to "slk", "alb" to "sqi", "arm" to "hye", "baq" to "eus", "bur" to "mya", "geo" to "kat",
+        "ice" to "isl", "mac" to "mkd", "may" to "msa", "wel" to "cym", "pob" to "por", "pb" to "pt", "ze" to "zh",
+    )
+
+    /** "ara", "ar", "Arabic" → "ar" (two letters where there are two); what isn't known stays as written, lower case. */
+    fun langCode(lang: String): String {
+        val l = lang.trim().lowercase(java.util.Locale.ROOT)
+        if (l.isEmpty()) return ""
+        val code = OTHER_CODES[l] ?: l
+        if (code.length == 2) return code
+        if (code.length == 3) {
+            java.util.Locale.getISOLanguages().firstOrNull { runCatching { java.util.Locale(it).isO3Language }.getOrNull() == code }?.let { return it }
+            return code
+        }
+        // A name: "Arabic", "Brazilian Portuguese".
+        return java.util.Locale.getISOLanguages().firstOrNull { java.util.Locale(it).getDisplayLanguage(java.util.Locale.ENGLISH).equals(lang.trim(), ignoreCase = true) } ?: l
+    }
+
+    /** "ara" → "Arabic"; what isn't known as it is written. */
+    fun langName(lang: String): String {
+        val code = langCode(lang)
+        if (code.isEmpty()) return "Unknown"
+        val name = java.util.Locale(code).getDisplayLanguage(java.util.Locale.ENGLISH)
+        return if (name.isBlank() || name.equals(code, ignoreCase = true)) lang.trim() else name
+    }
+
+    /** The subtitles in your language first ([want]: "ar"), then English, then the rest by language. */
+    fun sortSubs(subs: List<AddonSub>, want: String): List<AddonSub> {
+        val w = langCode(want)
+        return subs.sortedWith(
+            compareBy<AddonSub> { s -> val c = langCode(s.lang); if (c == w) 0 else if (c == "en") 1 else 2 }.thenBy { langName(it.lang) },
+        )
+    }
+
+    /**
+     * A subtitle file as text. Most are UTF-8 (or say what they are with a mark at the start);
+     * the rest are old Windows files in the writing of their language: read as that, so Arabic
+     * (or Russian, Greek, Turkish, Hebrew…) doesn't come out as rows of odd letters.
+     */
+    fun subtitleText(bytes: ByteArray, lang: String): String {
+        fun starts(vararg b: Int) = bytes.size >= b.size && b.indices.all { bytes[it] == b[it].toByte() }
+        if (starts(0xEF, 0xBB, 0xBF)) return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        if (starts(0xFF, 0xFE) || starts(0xFE, 0xFF)) return String(bytes, Charsets.UTF_16).removePrefix("\uFEFF")
+        val utf8 = try {
+            Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            null
+        }
+        if (utf8 != null) return utf8
+        val page = when (langCode(lang)) {
+            "ar", "fa", "ur" -> "windows-1256"
+            "ru", "uk", "bg", "sr", "mk", "be" -> "windows-1251"
+            "el" -> "windows-1253"
+            "tr" -> "windows-1254"
+            "he" -> "windows-1255"
+            "pl", "cs", "sk", "hu", "ro", "hr", "sl" -> "windows-1250"
+            "lt", "lv", "et" -> "windows-1257"
+            "vi" -> "windows-1258"
+            "th" -> "windows-874"
+            else -> "windows-1252"
+        }
+        val set = try {
+            java.nio.charset.Charset.forName(page)
+        } catch (e: Exception) {
+            Charsets.ISO_8859_1
+        }
+        return String(bytes, set)
+    }
+
+    // ---------- one-tap Play (8.24) ----------
+
+    /** "2160p", "1080p", "720p", "480p" from what the add-on wrote about a link; "" when it doesn't say. */
+    fun quality(s: AddonStream): String {
+        val text = (s.name + " " + s.description).lowercase(java.util.Locale.ROOT)
+        return when {
+            Regex("\\b(2160p|4k|uhd)\\b").containsMatchIn(text) -> "2160p"
+            Regex("\\b(1080p|fhd)\\b").containsMatchIn(text) -> "1080p"
+            Regex("\\b720p\\b").containsMatchIn(text) -> "720p"
+            Regex("\\b(480p|sd)\\b").containsMatchIn(text) -> "480p"
+            else -> ""
+        }
+    }
+
+    /** What kind of link it is, kept when you pick one (Settings.addonPick): "Torrentio|1080p|t". */
+    fun linkKind(s: AddonStream): String = listOf(s.addonName, quality(s), if (s.torrent != null) "t" else "h").joinToString("|")
+
+    /**
+     * The link one tap plays: the one most like the kind picked last (the same quality counts most,
+     * then the same add-on, then torrent or not), the earliest of those (add-ons put their best
+     * first). Nothing picked before: the first link.
+     */
+    fun pickLink(links: List<AddonStream>, last: String): AddonStream? {
+        if (links.isEmpty()) return null
+        val want = last.split('|')
+        if (want.size != 3) return links.first()
+        return links.maxByOrNull { s ->
+            (if (quality(s) == want[1]) 4 else 0) + (if (s.addonName == want[0]) 2 else 0) + (if ((s.torrent != null) == (want[2] == "t")) 1 else 0)
+        }
     }
 
     private fun JsonObject.str(key: String): String = when (val v = this[key]) {
@@ -478,6 +606,21 @@ class AddonClient(private val http: OkHttpClient) {
             torrentLinks = answers.flatMap { it.torrentLinks }
                 .distinctBy { Torrents.keyOf(it.torrent!!) },
         )
+    }
+
+    /** The subtitles the add-ons have for a film or episode (the ones that don't answer are left out). */
+    suspend fun subtitles(addons: List<Addon>, type: String, id: String): List<AddonSub> = coroutineScope {
+        addons.filter { it.supports("subtitles", type, id) }.map { a ->
+            async {
+                try {
+                    Addons.parseSubtitles(a.name, get("${a.url}/${Addons.subtitlesPath(type, id)}"))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+        }.awaitAll().flatten().distinctBy { it.url }
     }
 
     companion object {
