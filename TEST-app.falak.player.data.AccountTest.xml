@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.AccountTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:25:49" hostname="ip-10-0-132-219" time="0.034">
+  <properties/>
+  <testcase name="calendarDaysInTheLocalZone" classname="app.falak.player.data.AccountTest" time="0.008"/>
+  <testcase name="readsXtreamUserInfo" classname="app.falak.player.data.AccountTest" time="0.011"/>
+  <testcase name="explainsARefusedChannel" classname="app.falak.player.data.AccountTest" time="0.004"/>
+  <testcase name="summaryForSettings" classname="app.falak.player.data.AccountTest" time="0.009"/>
+  <testcase name="remindsOnlyInTheLastWeek" classname="app.falak.player.data.AccountTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

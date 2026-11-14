@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.TvTitlePageScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:43:59" hostname="ip-10-0-132-219" time="13.044">
+  <properties/>
+  <testcase name="tvTitlePages" classname="app.falak.player.screens.TvTitlePageScreens" time="13.044"/>
+  <system-out><![CDATA[FocusRelatedWarning: 
+   FocusRequester is not initialized. Here are some possible fixes:
+
+   1. Remember the FocusRequester: val focusRequester = remember { FocusRequester() }
+   2. Did you forget to add a Modifier.focusRequester() ?
+   3. Are you attempting to request focus during composition? Focus requests should be made in
+   response to some event. Eg Modifier.clickable { focusRequester.requestFocus() }
+
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

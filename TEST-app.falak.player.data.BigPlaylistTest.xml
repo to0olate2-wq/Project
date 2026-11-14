@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.BigPlaylistTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:25:53" hostname="ip-10-0-132-219" time="4.134">
+  <properties/>
+  <testcase name="plainWordsForNetworkFailures" classname="app.falak.player.data.BigPlaylistTest" time="3.582"/>
+  <testcase name="aDeadServerSaysSoInPlainWords" classname="app.falak.player.data.BigPlaylistTest" time="0.109"/>
+  <testcase name="retriesPassingProblemsOnly" classname="app.falak.player.data.BigPlaylistTest" time="0.103"/>
+  <testcase name="xtreamListFailingPartWayIsReadAgainFromTheStart" classname="app.falak.player.data.BigPlaylistTest" time="0.173"/>
+  <testcase name="m3uLinkFailingPartWayIsDownloadedAgain" classname="app.falak.player.data.BigPlaylistTest" time="0.163"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

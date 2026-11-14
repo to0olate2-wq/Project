@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.ui.PlayerRestoreTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:45:15" hostname="ip-10-0-132-219" time="3.43">
+  <properties/>
+  <testcase name="savesAndReadsBack" classname="app.falak.player.ui.PlayerRestoreTest" time="3.352"/>
+  <testcase name="nothingSavedIsNothing" classname="app.falak.player.ui.PlayerRestoreTest" time="0.045"/>
+  <testcase name="keepsTheChannelsAroundTheOnePlaying" classname="app.falak.player.ui.PlayerRestoreTest" time="0.033"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

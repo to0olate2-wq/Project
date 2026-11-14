@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.SafeFileTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:26:07" hostname="ip-10-0-132-219" time="0.038">
+  <properties/>
+  <testcase name="nothingReadableKeepsTheFileForLater" classname="app.falak.player.data.SafeFileTest" time="0.03"/>
+  <testcase name="firstStartHasNothing" classname="app.falak.player.data.SafeFileTest" time="0.001"/>
+  <testcase name="savesAndKeepsTheCopyBefore" classname="app.falak.player.data.SafeFileTest" time="0.001"/>
+  <testcase name="damagedFileFallsBackToLastGoodCopyAndIsKeptAside" classname="app.falak.player.data.SafeFileTest" time="0.001"/>
+  <testcase name="halfWrittenSideFileIsSkipped" classname="app.falak.player.data.SafeFileTest" time="0.001"/>
+  <testcase name="finishedSideFileIsNewest" classname="app.falak.player.data.SafeFileTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.CombinedTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:25:58" hostname="ip-10-0-132-219" time="0.073">
+  <properties/>
+  <testcase name="episodesCarryTheMarkToo" classname="app.falak.player.data.CombinedTest" time="0.029"/>
+  <testcase name="removedPlaylistsAndCombinedOnesAreLeftOut" classname="app.falak.player.data.CombinedTest" time="0.01"/>
+  <testcase name="combinedPlaylistsSyncWithTheirPlaylistsMapped" classname="app.falak.player.data.CombinedTest" time="0.025"/>
+  <testcase name="putsThemTogetherEachMarkedWithItsPlaylist" classname="app.falak.player.data.CombinedTest" time="0.006"/>
+  <testcase name="theMarkIsTheSameOnEveryDevice" classname="app.falak.player.data.CombinedTest" time="0.0"/>
+  <testcase name="findsWhereAnItemCameFrom" classname="app.falak.player.data.CombinedTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

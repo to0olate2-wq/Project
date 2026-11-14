@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.SkipSegmentsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:26:10" hostname="ip-10-0-132-219" time="0.06">
+  <properties/>
+  <testcase name="readsTheAnswer" classname="app.falak.player.data.SkipSegmentsTest" time="0.05"/>
+  <testcase name="theButtonShowsWhileThePartPlays" classname="app.falak.player.data.SkipSegmentsTest" time="0.0"/>
+  <testcase name="linksForEpisodesAndFilms" classname="app.falak.player.data.SkipSegmentsTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.PhoneSettingsAddonScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:32:14" hostname="ip-10-0-132-219" time="8.786">
+  <properties/>
+  <testcase name="phoneSettingsAddons" classname="app.falak.player.screens.PhoneSettingsAddonScreens" time="8.786"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

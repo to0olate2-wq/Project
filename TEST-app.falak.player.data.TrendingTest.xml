@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.TrendingTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T15:26:11" hostname="ip-10-0-132-219" time="0.069">
+  <properties/>
+  <testcase name="whatIsNewComesBeforeTheProvidersLists" classname="app.falak.player.data.TrendingTest" time="0.052"/>
+  <testcase name="trendingGroupNames" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <testcase name="filmsAndSeriesTakeTurns" classname="app.falak.player.data.TrendingTest" time="0.002"/>
+  <testcase name="anOldFilmIsNotNew_wheneverItWasAdded" classname="app.falak.player.data.TrendingTest" time="0.004"/>
+  <testcase name="episodesAreNotPicked" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <testcase name="withoutDates_theYearInTheNameDecides" classname="app.falak.player.data.TrendingTest" time="0.001"/>
+  <testcase name="aPopularListCountsALittleMore" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <testcase name="ratings" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <testcase name="newCountsForMoreThanWellRated" classname="app.falak.player.data.TrendingTest" time="0.001"/>
+  <testcase name="aDayThatStampedTheWholeLibraryIsNotNews" classname="app.falak.player.data.TrendingTest" time="0.006"/>
+  <testcase name="adultGroupsAndRepeatsLeftOut" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <testcase name="yearsInNames" classname="app.falak.player.data.TrendingTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
