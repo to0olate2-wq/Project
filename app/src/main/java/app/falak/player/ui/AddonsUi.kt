@@ -76,6 +76,16 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val m = vm.addons
     val links = state.settings.addons
     androidx.compose.runtime.LaunchedEffect(links) { m.load(links) }
+    // Back in the app with the page still up (the player, another app, the TV woken up): lists
+    // that have grown old are read again (load does nothing while they are fresh).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle, links) {
+        val watcher = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) m.load(links)
+        }
+        lifecycle.addObserver(watcher)
+        onDispose { lifecycle.removeObserver(watcher) }
+    }
     var adding by remember { mutableStateOf(false) }
     val leave = {
         val back = m.returnTo
@@ -84,7 +94,11 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     }
     val open = m.open
     BackHandler {
-        if (m.open != null) m.closeItem() else leave()
+        when {
+            m.open != null -> m.closeItem()
+            m.discover != null -> m.closeDiscover()
+            else -> leave()
+        }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val play = { s: AddonStream ->
@@ -112,8 +126,11 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             onCancel = { m.stopTorrent() },
         )
     }
+    val whole = m.discover
     if (open != null) {
         AddonDetails(m, open, onBack = { m.closeItem() }, onPlay = play)
+    } else if (whole != null) {
+        AddonDiscover(m, whole)
     } else {
         Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
             PageHeader(
@@ -271,6 +288,8 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
             }
         }
         val rows = m.rowsToShow()
+        // (Whose list it is, when there are several add-ons with lists.)
+        val several = rows.distinctBy { it.addon.url }.size > 1
         for (r in rows) {
             item(key = r.key) {
                 val list = m.rows[r.key]
@@ -279,7 +298,8 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
                     err != null -> RowNote(r.title, "Couldn't load it ($err).")
                     list == null -> RowNote(r.title, "Loading…")
                     list.isEmpty() -> RowNote(r.title, "Nothing here.")
-                    else -> Shelf(r.title) {
+                    // "See all": the whole list, page after page, with its genres (or years) to pick from.
+                    else -> Shelf(r.title, onSeeAll = { m.openDiscover(r) }, key = r.key, count = r.addon.name.takeIf { several }) {
                         items(list, key = { it.type + "|" + it.id }) { item -> AddonPoster(item) { m.openItem(item) } }
                     }
                 }
@@ -315,8 +335,74 @@ private fun AddonsBrowse(m: AddonsModel, listsNote: String? = null, onAddLists: 
 }
 
 @Composable
-private fun AddonPoster(item: AddonItem, onClick: () -> Unit) {
-    PosterCard(item.asChannel(), null, onClick = onClick, width = if (isTv()) 132.dp else 112.dp)
+private fun AddonPoster(item: AddonItem, wide: Boolean = false, onClick: () -> Unit) {
+    PosterCard(item.asChannel(), null, onClick = onClick, width = if (wide) null else if (isTv()) 132.dp else 112.dp)
+}
+
+/**
+ * One list opened whole (8.22; the owner: "like we are in the Stremio app"; this is its Discover):
+ * the picks the add-on offers for it (genres, or years for a "New" list) as chips, and the titles
+ * as a grid that asks for the next page as its end comes near.
+ */
+@Composable
+private fun AddonDiscover(m: AddonsModel, r: AddonsModel.Row) {
+    val titles = m.discoverItems
+    val grid = m.discoverGrid
+    // The end is near: the next page (again after each page, while the end is still on screen).
+    androidx.compose.runtime.LaunchedEffect(grid, r.key, m.discoverPick) {
+        androidx.compose.runtime.snapshotFlow {
+            val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            (last >= m.discoverItems.size - 9) to m.discoverItems.size
+        }.collect { (near, size) -> if (near && size > 0) m.loadMore() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
+        PageHeader(r.name, onBack = { m.closeDiscover() }, subtitle = r.addon.name)
+        val picks = r.catalog.genres
+        if (picks.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyRow(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+            ) {
+                if (!r.catalog.genreRequired) item(key = "__all") { TagChip("All", m.discoverPick == null) { m.pickGenre(null) } }
+                items(picks, key = { it }) { g -> TagChip(g, m.discoverPick == g) { m.pickGenre(g) } }
+            }
+        }
+        val err = m.discoverError
+        when {
+            titles.isEmpty() && m.discoverLoading -> Note("Loading…")
+            titles.isEmpty() && err != null -> {
+                Note("Couldn't load it ($err).", error = true)
+                TextButton(onClick = { m.retryMore() }) { Text("Try again") }
+            }
+            titles.isEmpty() -> Note("Nothing here.")
+            else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (isTv()) 132.dp else 104.dp),
+                state = grid,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(titles.size, key = { titles[it].type + "|" + titles[it].id }) { i ->
+                    val item = titles[i]
+                    AddonPoster(item, wide = true) { m.openItem(item) }
+                }
+                if (m.discoverLoading || err != null) {
+                    item(key = "__more", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        if (err != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Note("Couldn't load more ($err).", error = true)
+                                TextButton(onClick = { m.retryMore() }) { Text("Try again") }
+                            }
+                        } else {
+                            Note("Loading more…")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** How a film or series of an add-on is drawn by the usual poster card. */

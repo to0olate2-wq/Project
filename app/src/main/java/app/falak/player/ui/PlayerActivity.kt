@@ -235,6 +235,24 @@ class PlayerActivity : ComponentActivity() {
     private val aspectNames = arrayOf("Fit", "Fill", "Zoom")
 
     private val handler = Handler(Looper.getMainLooper())
+
+    // While a channel or film is opening (8.22; the owner: "something that the channel is loading,
+    // either channel logo or something else, instead of black"): its logo and name over the dark
+    // picture, with three dots taking turns, until the picture is there. See buildLoadingView.
+    private var loadingView: LinearLayout? = null
+    private lateinit var loadingLogo: android.widget.ImageView
+    private lateinit var loadingName: TextView
+    private var loadingDots: List<View> = emptyList()
+    private var loadingStep = 0
+    private var loadingLogoFor: String? = null
+    private var loadingLogoJob: coil.request.Disposable? = null
+    private val loadingTick = object : Runnable {
+        override fun run() {
+            val lit = loadingStep++ % (loadingDots.size + 1)
+            loadingDots.forEachIndexed { i, dot -> dot.alpha = if (i == lit) 1f else 0.28f }
+            handler.postDelayed(this, 320)
+        }
+    }
     private val hideBanner = Runnable { bannerView.visibility = View.GONE }
     private val timeFormat by lazy { android.text.format.DateFormat.getTimeFormat(this) }
 
@@ -423,6 +441,7 @@ class PlayerActivity : ComponentActivity() {
         aspect = repo.state.value.settings.aspect.coerceIn(0, 2)
         playerView.resizeMode = resizeModes[aspect]
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        buildLoadingView()
         // Auto captions take the very space of the stream's own: the same box as the picture
         // (letterboxed or pillarboxed with it), just above the stream's captions, under the controls.
         autoCapsView = androidx.media3.ui.SubtitleView(this)
@@ -907,6 +926,8 @@ class PlayerActivity : ComponentActivity() {
         Thread { app.falak.player.data.ServiceLogStore.save(dir) }.start()
         repo.playerOpen = false
         FreezeWatch.note("player closing")
+        // (The loading page's dots stop with the player; coming back starts the channel, and them, again.)
+        handler.removeCallbacks(loadingTick)
         if (::playerView.isInitialized) releasePlayer()
         // The picture has stopped (it starts again on coming back): downloads needn't wait meanwhile.
         app.falak.player.OfflineCenter.streaming(this, false)
@@ -1210,6 +1231,7 @@ class PlayerActivity : ComponentActivity() {
         releaseShift()
         // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
         deleteWatchedCopies(except = ch.id)
+        showLoading(ch)
         serviceStarting(ch)
         val wanted = desiredEngine(ch)
         // Auto captions chosen for this channel: the player is built hearing its sound.
@@ -1429,15 +1451,22 @@ class PlayerActivity : ComponentActivity() {
             // Same channel listed elsewhere in the playlist (another group or quality)?
             if (tryBackup(ch)) return
             serviceFailed(ch)
+            // Nothing more is tried: the message says so, without the dots going on behind it.
+            hideLoading()
             val what = if (ch.kind == Kind.LIVE) "channel" else "video"
             val hint = if (engine != Engine.VLC) "\nTry the ${engine.short} button below → VLC" else ""
             showMessage("Can't play this $what right now\n${error.errorCodeName}$hint")
             explainRefusal()
         }
 
+        override fun onRenderedFirstFrame() {
+            hideLoading()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY) {
                 retried = false
+                hideLoading()
                 hideMessage()
                 wasReady = true
                 failedUrl = null
@@ -3690,6 +3719,101 @@ class PlayerActivity : ComponentActivity() {
         if (tracks.isNotEmpty()) text.append("\n$tracks")
 
         bannerView.text = text
+    }
+
+    /**
+     * The page shown while a channel or film opens. It sits in the player view's own overlay: over
+     * the picture (ExoPlayer's and VLC's, which is drawn underneath) and the small loading ring,
+     * under the controls, the banner and the messages, which stay usable while it is up.
+     */
+    private fun buildLoadingView() {
+        val name = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_semibold)
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(28), dp(16), dp(28), 0)
+        }
+        val logo = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+        }
+        val dots = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        loadingDots = List(3) {
+            View(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0xFFFF4F2E.toInt())
+                }
+                alpha = 0.28f
+            }.also { dot -> dots.addView(dot, LinearLayout.LayoutParams(dp(7), dp(7)).apply { setMargins(dp(4), 0, dp(4), 0) }) }
+        }
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(0xFF0D0C0C.toInt())
+            visibility = View.GONE
+            addView(logo, LinearLayout.LayoutParams(dp(148), dp(96)))
+            addView(name, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+            // The small window (picture in picture, the mini player) has room for the logo only.
+            addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+                val small = bottom - top < dp(190)
+                val want = if (small && loadingLogo.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (name.visibility != want) v.post { name.visibility = want }
+            }
+        }
+        loadingLogo = logo
+        loadingName = name
+        loadingView = page
+        (playerView.overlayFrameLayout ?: root).addView(
+            page,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+    }
+
+    private fun showLoading(ch: Channel) {
+        val page = loadingView ?: return
+        loadingName.text = ch.name
+        page.contentDescription = "Loading ${ch.name}"
+        if (loadingLogoFor != ch.id) {
+            loadingLogoFor = ch.id
+            loadingLogoJob?.dispose()
+            loadingLogo.setImageDrawable(null)
+            loadingLogo.visibility = View.GONE
+            if (ch.logo.isNotBlank()) {
+                // (No logo, or its link fails: the name alone.)
+                loadingLogoJob = coil.Coil.imageLoader(this).enqueue(
+                    coil.request.ImageRequest.Builder(this)
+                        .data(ch.logo)
+                        .target(
+                            onSuccess = { picture ->
+                                loadingLogo.setImageDrawable(picture)
+                                loadingLogo.visibility = View.VISIBLE
+                            },
+                        )
+                        .build(),
+                )
+            }
+        }
+        page.animate().cancel()
+        page.alpha = 1f
+        page.visibility = View.VISIBLE
+        handler.removeCallbacks(loadingTick)
+        handler.post(loadingTick)
+    }
+
+    /** The picture is there (or nothing more is tried): the loading page fades away. */
+    private fun hideLoading() {
+        val page = loadingView ?: return
+        handler.removeCallbacks(loadingTick)
+        if (page.visibility != View.VISIBLE) return
+        page.animate().alpha(0f).setDuration(220).withEndAction { page.visibility = View.GONE }.start()
     }
 
     private fun showMessage(text: String) {

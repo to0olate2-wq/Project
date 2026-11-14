@@ -33,7 +33,24 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
     /** One list of one add-on. */
     class Row(val addon: Addon, val catalog: AddonCatalog) {
         val key: String get() = addon.url + "|" + catalog.type + "|" + catalog.id
-        val title: String get() = "${catalog.name} · ${addon.name}"
+
+        /** A list that needs a pick is shown with its first one (Cinemeta's "New": this year). */
+        val firstPick: String? get() = if (catalog.genreRequired) catalog.genres.firstOrNull() else null
+
+        /** "Popular · Films", "New · Series": an add-on names its film and series lists alike. */
+        val name: String
+            get() {
+                val (kind, said) = when (catalog.type) {
+                    "movie" -> "Films" to listOf("film", "movie")
+                    "series" -> "Series" to listOf("series", "show")
+                    else -> catalog.type.replaceFirstChar { it.uppercase() } to listOf(catalog.type)
+                }
+                // (Unless its name says so already: "Top movies".)
+                return if (said.any { catalog.name.contains(it, ignoreCase = true) }) catalog.name else "${catalog.name} · $kind"
+            }
+
+        /** The row's heading: with its pick when it has to have one ("New · Films · 2026"). */
+        val title: String get() = firstPick?.let { "$name · $it" } ?: name
     }
 
     var addons by mutableStateOf<List<Addon>>(emptyList())
@@ -103,6 +120,7 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         private set
 
     private var loadedLinks: List<String>? = null
+    private var loadedAt = 0L
     private var loadJob: Job? = null
     private var searchJob: Job? = null
     private var metaJob: Job? = null
@@ -112,12 +130,20 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
 
     val canSearch: Boolean get() = addons.any { a -> a.catalogs.any { it.searchable } }
 
-    /** Reads the add-ons (again when the links changed, or [force]), then their lists. */
-    fun load(links: List<String>, force: Boolean = false) {
-        if (!force && links == loadedLinks) return
+    /**
+     * Reads the add-ons, then their lists: when the links changed, when asked to ([force], the
+     * Reload chip) and, since 8.22, whenever the page is opened and the lists are older than
+     * [FRESH_MS]. (They used to be read once for as long as the app stayed open, days on a TV:
+     * the owner saw the same titles every time.) A refresh keeps what is shown until the new
+     * answer is here.
+     */
+    fun load(links: List<String>, force: Boolean = false, now: Long = System.currentTimeMillis()) {
+        val same = links == loadedLinks
+        if (!force && same && now - loadedAt < FRESH_MS) return
         loadedLinks = links
+        loadedAt = now
         loadJob?.cancel()
-        rows.clear()
+        if (!same) rows.clear()
         rowErrors.clear()
         if (links.isEmpty()) {
             addons = emptyList()
@@ -128,22 +154,116 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         loadJob = scope.launch {
             loading = true
             val got = links.map { l -> async { l to runCatching { client.manifest(l) } } }.awaitAll()
-            addons = got.mapNotNull { it.second.getOrNull() }
+            // (An add-on that doesn't answer a refresh stays as it was read before, with a line saying so.)
+            addons = got.mapNotNull { (l, r) -> r.getOrNull() ?: known[l].takeIf { same } }
             for (a in addons) known[a.url] = a
             broken = got.filter { it.second.isFailure }.associate { (l, r) -> l to reason(r.exceptionOrNull()) }
             loading = false
-            for (r in rowsToShow()) {
+            val show = rowsToShow()
+            // (Lists an add-on no longer has.)
+            val keys = show.mapTo(HashSet()) { it.key }
+            rows.keys.filter { it !in keys }.forEach { rows.remove(it) }
+            for (r in show) {
                 launch {
                     try {
-                        rows[r.key] = client.catalog(r.addon, r.catalog)
+                        rows[r.key] = client.catalog(r.addon, r.catalog, genre = r.firstPick)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        rowErrors[r.key] = reason(e)
+                        // (A refresh that fails leaves the list as it was.)
+                        if (rows[r.key] == null) rowErrors[r.key] = reason(e)
                     }
                 }
             }
         }
+    }
+
+    // ---------- one list opened whole ("See all"): its picks (genre, year) and page after page ----------
+
+    /** The list open whole (null: the rows). */
+    var discover by mutableStateOf<Row?>(null)
+        private set
+
+    /** What it is narrowed to (null: everything). */
+    var discoverPick by mutableStateOf<String?>(null)
+        private set
+    var discoverItems by mutableStateOf<List<AddonItem>>(emptyList())
+        private set
+    var discoverLoading by mutableStateOf(false)
+        private set
+
+    /** Nothing more to ask for. */
+    var discoverEnd by mutableStateOf(false)
+        private set
+    var discoverError by mutableStateOf<String?>(null)
+        private set
+
+    /** The grid's place, kept while a title of it is open. */
+    var discoverGrid = androidx.compose.foundation.lazy.grid.LazyGridState()
+        private set
+    private var discoverJob: Job? = null
+
+    fun openDiscover(r: Row) {
+        discover = r
+        // The row's titles are its first page already.
+        showPick(r.firstPick, first = rows[r.key].orEmpty())
+    }
+
+    fun pickGenre(genre: String?) {
+        val r = discover ?: return
+        if (genre == discoverPick) return
+        showPick(genre, first = if (genre == r.firstPick) rows[r.key].orEmpty() else emptyList())
+    }
+
+    private fun showPick(genre: String?, first: List<AddonItem>) {
+        discoverJob?.cancel()
+        discoverPick = genre
+        discoverItems = first
+        discoverLoading = false
+        discoverEnd = false
+        discoverError = null
+        discoverGrid = androidx.compose.foundation.lazy.grid.LazyGridState()
+        if (first.isEmpty()) loadMore()
+    }
+
+    /** The next page (asked for as the end of the grid comes near). */
+    fun loadMore() {
+        val r = discover ?: return
+        if (discoverLoading || discoverEnd) return
+        val pick = discoverPick
+        val have = discoverItems
+        discoverLoading = true
+        discoverJob = scope.launch {
+            try {
+                val got = client.catalog(r.addon, r.catalog, skip = have.size, genre = pick)
+                val known = have.mapTo(HashSet()) { it.type + "|" + it.id }
+                val fresh = got.filter { known.add(it.type + "|" + it.id) }
+                discoverItems = have + fresh
+                // (An add-on without pages answers the same list again: nothing new is the end.)
+                if (fresh.isEmpty() || !r.catalog.paged) discoverEnd = true
+                discoverError = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                discoverError = reason(e)
+                discoverEnd = true
+            }
+            discoverLoading = false
+        }
+    }
+
+    /** "Try again" after a page that failed. */
+    fun retryMore() {
+        discoverEnd = false
+        discoverError = null
+        loadMore()
+    }
+
+    fun closeDiscover() {
+        discoverJob?.cancel()
+        discover = null
+        discoverItems = emptyList()
+        discoverLoading = false
     }
 
     /** Checks a pasted link before it's added: the add-on, or why not. */
@@ -307,9 +427,24 @@ class AddonsModel(private val client: AddonClient, private val scope: CoroutineS
         this.streamsFor = streams?.let { open?.id }
         this.streamsTitle = streamsTitle
         loadedLinks = addons.map { it.url }
+        loadedAt = System.currentTimeMillis()
+    }
+
+    /** Screenshot tests: a list opened whole, as far as it goes (nothing is asked for). */
+    internal fun showDiscoverForTest(r: Row, pick: String?, items: List<AddonItem>) {
+        discoverJob?.cancel()
+        discover = r
+        discoverPick = pick
+        discoverItems = items
+        discoverLoading = false
+        discoverEnd = true
+        discoverError = null
     }
 
     companion object {
+        /** Lists older than this are read again when the page is opened. */
+        const val FRESH_MS = 20 * 60_000L
+
         fun episodeTitle(show: String, v: AddonVideo): String {
             val n = if (v.season > 0) "S${v.season} E${v.episode}" else "Extra ${v.episode}"
             return listOfNotNull(show, n, v.title.ifBlank { null }).joinToString(" · ")
