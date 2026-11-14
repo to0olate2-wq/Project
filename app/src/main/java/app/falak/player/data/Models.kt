@@ -471,6 +471,8 @@ data class Settings(
      * synced with Wi-Fi linking like other settings, so one added on the phone reaches the TV.
      */
     val addons: List<String> = emptyList(),
+    /** Add-on titles: ask introdb.app where the intro, recap and credits are, for the skip buttons (see SkipSegments). */
+    val skipLookup: Boolean = true,
     /** Live TV: channels that didn't work are left out of the rows and lists for a week (see DeadChannels). */
     val hideDead: Boolean = true,
     /** The kind of add-on link picked last ("Torrentio|1080p|t"): what one-tap Play looks for (Addons.pickLink). */
