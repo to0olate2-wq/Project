@@ -35,8 +35,17 @@ data class AddonCatalog(
     val name: String,
     /** It can be searched ("search" extra). */
     val searchable: Boolean,
-    /** Only with a search (or another required extra): not shown as a row. */
+    /** Only with a search (or another required extra that isn't a pick from [genres]): not shown as a row. */
     val needsExtra: Boolean,
+    /**
+     * What the list can be narrowed to (its "genre" extra's options): genres, or whatever the
+     * add-on calls so: Cinemeta's "New" lists are picked by year here.
+     */
+    val genres: List<String> = emptyList(),
+    /** One of [genres] has to be picked (Cinemeta's "New" needs its year): the first is shown as the row. */
+    val genreRequired: Boolean = false,
+    /** It has more pages (the "skip" extra). */
+    val paged: Boolean = false,
 )
 
 data class AddonResource(val name: String, val types: List<String>?, val idPrefixes: List<String>?)
@@ -166,9 +175,13 @@ object Addons {
 
     fun manifestUrl(base: String) = "$base/manifest.json"
 
-    /** "catalog/movie/top.json", or with a search / later page: "catalog/movie/top/search=the%20matrix&skip=100.json". */
-    fun catalogPath(c: AddonCatalog, search: String? = null, skip: Int = 0): String {
+    /**
+     * "catalog/movie/top.json", or with a pick, a search or a later page:
+     * "catalog/movie/top/genre=Action&skip=100.json", "catalog/movie/top/search=the%20matrix.json".
+     */
+    fun catalogPath(c: AddonCatalog, search: String? = null, skip: Int = 0, genre: String? = null): String {
         val extras = buildList {
+            if (!genre.isNullOrBlank()) add("genre=" + enc(genre))
             if (!search.isNullOrBlank()) add("search=" + enc(search.trim()))
             if (skip > 0) add("skip=$skip")
         }
@@ -205,12 +218,21 @@ object Addons {
                 val required = extras.filter { it.bool("isRequired") }.map { it.str("name") } +
                     cat.strings("extraRequired").orEmpty()
                 val supported = extras.map { it.str("name") } + cat.strings("extraSupported").orEmpty()
+                // The picks: the "genre" extra's options, or the older "genres" list beside it.
+                val genres = (extras.firstOrNull { it.str("name") == "genre" }?.strings("options")?.takeIf { it.isNotEmpty() }
+                    ?: cat.strings("genres").orEmpty()).filter { it.isNotBlank() }.distinct()
+                val genreRequired = "genre" in required
                 AddonCatalog(
                     type = cat.str("type"),
                     id = cat.str("id"),
                     name = cat.str("name").ifEmpty { cat.str("id") },
                     searchable = "search" in supported || "search" in required,
-                    needsExtra = required.isNotEmpty(),
+                    // A list that needs a pick is shown with its first one; one that needs a search
+                    // (or anything else) only answers when asked.
+                    needsExtra = required.any { it != "genre" } || (genreRequired && genres.isEmpty()),
+                    genres = genres,
+                    genreRequired = genreRequired,
+                    paged = "skip" in supported,
                 ).takeIf { it.type.isNotEmpty() && it.id.isNotEmpty() }
             }
         }
@@ -364,8 +386,8 @@ class AddonClient(private val http: OkHttpClient) {
 
     suspend fun manifest(base: String): Addon = Addons.parseManifest(base, get(Addons.manifestUrl(base)))
 
-    suspend fun catalog(a: Addon, c: AddonCatalog, search: String? = null, skip: Int = 0): List<AddonItem> =
-        Addons.parseCatalog(a.url, get("${a.url}/${Addons.catalogPath(c, search, skip)}"))
+    suspend fun catalog(a: Addon, c: AddonCatalog, search: String? = null, skip: Int = 0, genre: String? = null): List<AddonItem> =
+        Addons.parseCatalog(a.url, get("${a.url}/${Addons.catalogPath(c, search, skip, genre)}"))
 
     /** The details, from the add-on the item came from if it can, else the first one that can. */
     suspend fun meta(addons: List<Addon>, item: AddonItem): AddonMeta? {

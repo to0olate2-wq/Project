@@ -9,6 +9,7 @@ import app.falak.player.data.AddonStream
 import app.falak.player.data.AddonStreams
 import app.falak.player.data.AddonVideo
 import app.falak.player.data.Addons
+import app.falak.player.ui.AddonsModel
 import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.Screen
 import app.falak.player.ui.SettingsPage
@@ -36,7 +37,9 @@ abstract class AddonShots : ScreenshotBase() {
         logo = "",
         types = listOf("movie", "series"),
         catalogs = listOf(
-            AddonCatalog("movie", "classics", "Classics", searchable = true, needsExtra = false),
+            AddonCatalog("movie", "classics", "Classics", searchable = true, needsExtra = false, genres = listOf("Comedy", "Horror", "Mystery", "Silent"), paged = true),
+            // (A list that needs a pick, as Cinemeta's "New" needs its year: shown with the first.)
+            AddonCatalog("movie", "year", "New", searchable = false, needsExtra = false, genres = listOf("1968", "1963", "1940"), genreRequired = true, paged = true),
             AddonCatalog("series", "shows", "Shows", searchable = true, needsExtra = false),
         ),
         resources = listOf(AddonResource("catalog", null, null), AddonResource("meta", null, null), AddonResource("stream", null, null)),
@@ -49,6 +52,7 @@ abstract class AddonShots : ScreenshotBase() {
         .mapIndexed { i, n -> AddonItem(base, "s$i", "series", n, "", (1951 + i * 4).toString(), "") }
     protected val rows = mapOf(
         "$base|movie|classics" to films,
+        "$base|movie|year" to films.take(3),
         "$base|series|shows" to shows,
     )
     protected val film = films[2]
@@ -108,6 +112,10 @@ class PhoneAddonScreens : AddonShots() {
             shoot("phone-90-addons-none")
             vm.showAddons()
             shoot("phone-91-addons")
+            // "See all" of a list: its picks as chips, the titles as a grid.
+            vm.addons.showDiscoverForTest(AddonsModel.Row(addon, addon.catalogs[0]), "Mystery", films)
+            shoot("phone-91b-addon-list")
+            vm.addons.closeDiscover()
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("phone-92-addon-film")
             vm.addons.showForTest(listOf(addon), rows, open = show, meta = showMeta)
@@ -147,6 +155,9 @@ class TvAddonScreens : AddonShots() {
             vm.showAddons()
             shoot("tv-91-addons")
             check(vm.screen == Screen.ADDONS) { "Went back to ${vm.screen}" }
+            vm.addons.showDiscoverForTest(AddonsModel.Row(addon, addon.catalogs[1]), "1968", films)
+            shoot("tv-91b-addon-list")
+            vm.addons.closeDiscover()
             vm.addons.showForTest(listOf(addon), rows, open = film, meta = filmMeta, streams = filmLinks, streamsTitle = film.name)
             shoot("tv-92-addon-film")
             // Added with the playlists: listed under them.

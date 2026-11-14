@@ -47,6 +47,60 @@ class AddonsTest {
         assertFalse(a.configurationRequired)
     }
 
+    // As Cinemeta describes its lists: "Popular" can be narrowed to a genre, "New" has to be given its year.
+    private val lists = """
+        {"id":"com.example.lists","name":"Lists","types":["movie","series"],"resources":["catalog","meta"],
+         "catalogs":[
+           {"type":"movie","id":"top","name":"Popular","extra":[{"name":"genre","isRequired":false,"options":["Action","Comedy","Sci-Fi"],"optionsLimit":1},
+                                                                {"name":"search","isRequired":false,"options":[]},{"name":"skip","isRequired":false,"options":[]}]},
+           {"type":"movie","id":"year","name":"New","extra":[{"name":"genre","isRequired":true,"options":["2026","2025","2024"]},{"name":"skip"}]},
+           {"type":"series","id":"old","name":"Old way","genres":["Drama","Crime"],"extraSupported":["genre","skip"],"extraRequired":[]},
+           {"type":"series","id":"last-videos","name":"Last videos","extra":[{"name":"lastVideosIds","isRequired":true}]},
+           {"type":"movie","id":"pickless","name":"No picks","extra":[{"name":"genre","isRequired":true}]},
+           {"type":"movie","id":"plain","name":"Plain"}]}
+    """.trimIndent()
+
+    @Test
+    fun listsWithPicksAndPages() {
+        val c = Addons.parseManifest("https://x.com", lists).catalogs.associateBy { it.id }
+        val top = c.getValue("top")
+        assertEquals(listOf("Action", "Comedy", "Sci-Fi"), top.genres)
+        assertFalse(top.genreRequired)
+        assertFalse(top.needsExtra)
+        assertTrue(top.paged)
+        assertTrue(top.searchable)
+        // "New" needs its year: shown all the same, with the first one.
+        val new = c.getValue("year")
+        assertTrue(new.genreRequired)
+        assertFalse(new.needsExtra)
+        assertEquals("2026", new.genres.first())
+        // The older way of writing the same.
+        val old = c.getValue("old")
+        assertEquals(listOf("Drama", "Crime"), old.genres)
+        assertTrue(old.paged)
+        assertFalse(old.needsExtra)
+        // Lists that only answer something else, or need a pick they don't offer: not shown.
+        assertTrue(c.getValue("last-videos").needsExtra)
+        assertTrue(c.getValue("pickless").needsExtra)
+        val plain = c.getValue("plain")
+        assertFalse(plain.needsExtra)
+        assertFalse(plain.paged)
+        assertTrue(plain.genres.isEmpty())
+
+        assertEquals("catalog/movie/year/genre=2026.json", Addons.catalogPath(new, genre = "2026"))
+        assertEquals("catalog/movie/top/genre=Sci-Fi&skip=100.json", Addons.catalogPath(top, skip = 100, genre = "Sci-Fi"))
+        assertEquals("catalog/movie/top/genre=Science%20Fiction.json", Addons.catalogPath(top, genre = "Science Fiction"))
+    }
+
+    @Test
+    fun rowNames() {
+        val a = Addons.parseManifest("https://x.com", lists)
+        val names = a.catalogs.filter { !it.needsExtra }.map { app.falak.player.ui.AddonsModel.Row(a, it).title }
+        assertEquals(listOf("Popular · Films", "New · Films · 2026", "Old way · Series", "Plain · Films"), names)
+        val said = AddonCatalog("movie", "m", "Top movies", searchable = false, needsExtra = false)
+        assertEquals("Top movies", app.falak.player.ui.AddonsModel.Row(a, said).title)
+    }
+
     @Test
     fun catalogPaths() {
         val c = AddonCatalog("movie", "top", "Popular", searchable = true, needsExtra = false)

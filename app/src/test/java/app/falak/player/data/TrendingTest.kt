@@ -22,25 +22,81 @@ class TrendingTest {
     private fun groups(vararg items: Channel) = items.groupByTo(LinkedHashMap()) { it.group }
 
     @Test
-    fun providerTrendingGroupsComeFirst() {
+    fun whatIsNewComesBeforeTheProvidersLists() {
+        // (Until 8.22 the provider's list came first, in its order: the same row every day.)
         val movies = groups(
-            film("Fresh", "Action", 1, "9.0"),
             film("Pick One", "Trending Now", 400, ""),
             film("Pick Two", "Trending Now", 400, ""),
+            film("Fresh", "Action", 1, "7.0"),
         )
-        assertEquals(listOf("Pick One", "Pick Two", "Fresh"), Trending.pick(movies, emptyMap(), now).map { it.name })
+        assertEquals(listOf("Fresh", "Pick One", "Pick Two"), Trending.pick(movies, emptyMap(), now).map { it.name })
     }
 
     @Test
-    fun newAndWellRatedFirst_oldUnratedOrUndatedLeftOut() {
+    fun newCountsForMoreThanWellRated() {
         val movies = groups(
             film("Old Gem", "Drama", 100, "9.0"),
             film("New Good", "Drama", 2, "7.0"),
+            film("Last Month", "Drama", 30, "8.0"),
             film("Too Old", "Drama", 200, "9.9"),
             film("No Rating", "Drama", 1, ""),
             film("No Date", "Drama", -1, "9.5"),
         )
-        assertEquals(listOf("New Good", "Old Gem"), Trending.pick(movies, emptyMap(), now).map { it.name })
+        assertEquals(listOf("New Good", "No Rating", "Last Month", "Old Gem"), Trending.pick(movies, emptyMap(), now).map { it.name })
+    }
+
+    @Test
+    fun anOldFilmIsNotNew_wheneverItWasAdded() {
+        // (now is January 2027.)
+        val movies = groups(
+            film("The Godfather (1972)", "Classics", 1, "9.2"),
+            film("Heat 1995 4K", "Classics", 1, "8.3"),
+            film("This Winter (2026)", "Drama", 20, "6.5"),
+            film("Blade Runner 2049", "Sci-Fi", 3, "8.0"),
+        )
+        assertEquals(listOf("Blade Runner 2049", "This Winter (2026)"), Trending.pick(movies, emptyMap(), now).map { it.name })
+    }
+
+    @Test
+    fun aDayThatStampedTheWholeLibraryIsNotNews() {
+        // The provider moved its library two days ago: 300 films carry that day.
+        val moved = (1..300).map { film("Library $it", "All", 2, "9.0") }
+        val movies = groups(*(moved + film("Really New", "All", 5, "6.0") + film("Out Now (2027)", "All", 2, "7.0")).toTypedArray())
+        assertEquals(listOf("Really New", "Out Now (2027)"), Trending.pick(movies, emptyMap(), now).map { it.name })
+    }
+
+    @Test
+    fun withoutDates_theYearInTheNameDecides() {
+        // (An M3U playlist has no dates.)
+        val movies = groups(
+            film("Old One (2019)", "Films", -1, "9.0"),
+            film("Last Year (2026)", "Films", -1, "9.0"),
+            film("This Year (2027)", "Films", -1, "7.0"),
+            film("No Year", "Films", -1, "9.9"),
+        )
+        assertEquals(listOf("This Year (2027)", "Last Year (2026)"), Trending.pick(movies, emptyMap(), now).map { it.name })
+    }
+
+    @Test
+    fun aPopularListCountsALittleMore() {
+        val movies = groups(
+            film("Plain", "Drama", 3, "7.0"),
+            film("Listed", "Drama", 3, "7.0"),
+            film("Listed", "Most Watched", 3, "7.0"),
+        )
+        assertEquals(listOf("Listed", "Plain"), Trending.pick(movies, emptyMap(), now).map { it.name })
+    }
+
+    @Test
+    fun yearsInNames() {
+        assertEquals(1995, Trending.yearIn("Heat (1995)", 2027))
+        assertEquals(2024, Trending.yearIn("Dune Part Two 2024", 2027))
+        assertEquals(2025, Trending.yearIn("Sinners [2025] 4K", 2027))
+        assertEquals(2019, Trending.yearIn("1917 (2019)", 2027))
+        assertEquals(2017, Trending.yearIn("Blade Runner 2049 (2017)", 2027))
+        assertNull(Trending.yearIn("Blade Runner 2049", 2027))
+        assertNull(Trending.yearIn("Inception", 2027))
+        assertNull(Trending.yearIn("Channel 12019", 2027))
     }
 
     @Test

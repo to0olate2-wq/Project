@@ -151,6 +151,23 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (owner, 8.13): "Add-on" choice in the Add playlist window (`SourceKinds`, `AddAddonDialog`), "Your add-ons" on the
   Playlists page, an Add-ons part in Settings → Playlists. Browsing: More (phones), rail, Playlists page rows; hidden
   in Kids. Playing: `Channel` id `addon:…` = one-off (no Recent, no resume, no Watch Next).
+  **Like Stremio's Board and Discover (8.22; the owner: lists "stuck on same content", "make it like we are in
+  the Stremio app"):** the lists were read once for as long as the app stayed open; now `load` reads them again
+  when the page is opened or the app comes back and they are older than `FRESH_MS` (20 min), keeping what is
+  shown until the answer is here. `AddonCatalog.genres` / `genreRequired` / `paged` (the "genre" and "skip"
+  extras; years for Cinemeta's "New"): a list that needs a pick is a row with its first one ("New · Films · 2026");
+  rows are named "Popular · Films" (`Row.name`). "See all" on a row = `AddonDiscover`: the picks as chips, a grid
+  that asks for the next page (`skip` = titles so far) as its end comes near (`discover*` in the model).
+  Not done: Stremio's Continue watching and Library for add-on titles (they are still one-offs).
+- **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
+  changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
+  name carries a year before last year is out; a day that stamped 15% of the library (200+) is no date; without a
+  date the year in the name decides. The provider's "Trending/Popular/Top N" groups came first until then, in the
+  provider's order (the same every day): now their titles count ×1.25 and the groups only fill a short row.
+- **The loading page in the player (8.22):** `buildLoadingView` (PlayerActivity): the channel's logo and name and
+  three dots in `playerView.overlayFrameLayout` (over the picture of both engines, under the controls), shown by
+  `playCurrent`, hidden at `STATE_READY` / the first frame / the last failure. The dots move with a handler tick
+  (no endless animator: screen tests).
 - **Torrents (8.16), GitHub version only, `torrent/`:** the owner asked for it (Torrentio and the like must play;
   he will make the repo private later; before that the rule was "no torrent engine"). libtorrent4j 2.1.0-39 (MIT):
   `githubImplementation` + android-arm/arm64 natives, `playCompileOnly`, tests use the `-linux` native.
