@@ -171,6 +171,30 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (`Addons.noteStart` / `noteProgress`: a finished film leaves, a series stays as "Watched S1 E2"), and the player
   resumes by the `addon:<video id>` id. The link itself is never kept (links change): a card opens the title's
   page (a series on its season) and a link is picked again. A long press on a card takes it out.
+  **One tap, the next episode, subtitles (8.24, the owner picked them from a list of ideas):** `Addons.pickLink`
+  chooses the link most like the kind picked last (`Settings.addonPick` = "add-on|quality|t or h", written by
+  every pick): a "Play / Resume · 1080p · Torrentio" button over the links (`playItem`), and on a series' page
+  "Play / Resume / Next episode · S1 E3" (`m.upNext(left)` → `m.playEpisode`: `playWhenReady`, the links are asked
+  for and the best one plays). An add-on's film or episode that ends closes the player (its queue is one item),
+  back on its page with that button; there is no in-player "Up next" for add-ons (a torrent can't be got ready
+  ahead). Subtitles: the add-ons' "subtitles" resource (`AddonClient.subtitles`, asked with the links) and a
+  link's own `subtitles` → `repo.addonSubs` (video id → list) → the player's subtitles list gets "Subtitles from
+  your add-ons (N)…" (`pickAddonSubtitle`: your language first; the file is made UTF-8 by `Addons.subtitleText`,
+  old Arabic/Russian… Windows files included, then `attachSubtitle`). Picked by hand, like "Find subtitles online".
+- **Channels that don't work are hidden (8.24, the owner asked), `data/DeadChannels.kt`:** the player tells
+  `repo.noteLiveFailed` at its last failure (with the internet there) and `noteLivePlayed` at `STATE_READY`. A
+  failure counts once another channel plays within 10 min (or played in the 3 min before); more than five waiting
+  at once = the provider, none count; a channel that played in the last 30 min only hiccupped. `AppState.dead`
+  (playlist → channel → when; this device's, not synced): out of Live TV's rows (`LiveRows`) and lists
+  (LibraryScreen's `result`) for 7 days, then shown again to be tried; playing one clears it. Favorites, Home and
+  the search keep them. Under a list's heading "N that didn't work are hidden · Show" (`showDead`); Settings →
+  Playlists → "Hide channels that don't work" (`Settings.hideDead`, on) with "Show them all again".
+- **Skip intro (older than these notes):** learned, not looked up: a jump forward early in an episode (20 s to
+  4 min) is kept as the show's intro (`AppState.intros`, `showKey`: the playlist's series only) and offered as
+  "Skip intro" on its next episodes; "Up next" comes in the last stretch of an episode. Asked in 8.24 whether it
+  can be done "properly" (intro and outro, by themselves): the way would be a timestamps database by IMDb id
+  (introdb.app: free, no key, `GET /segments?imdb_id=…&season=…&episode=…`), which fits add-on titles (they have
+  IMDb ids); playlist series have none. Not built: waiting for the owner's word (it sends the title's id online).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
   name carries a year before last year is out; a day that stamped 15% of the library (200+) is no date; without a

@@ -125,6 +125,66 @@ class AddonsTest {
         assertNull(film.season)
     }
 
+    private fun link(addon: String, name: String, torrent: Boolean = false, about: String = "") = AddonStream(
+        addonName = addon, url = if (torrent) "" else "https://x.com/$name/${about.hashCode()}", name = name, description = about, userAgent = "", referrer = "",
+        torrent = if (torrent) app.falak.player.torrent.TorrentSource("0123456789abcdef0123456789abcdef01234567", null, emptyList(), "") else null,
+    )
+
+    @Test
+    fun oneTapPicksTheKindChosenLast() {
+        val links = listOf(
+            link("Torrentio", "Torrentio\n4k", torrent = true),
+            link("Torrentio", "Torrentio\n1080p", torrent = true),
+            link("Direct", "1080p"),
+            link("Direct", "720p", about = "Film.720p.WEB.mp4"),
+            link("Torrentio", "Torrentio\n720p", torrent = true),
+        )
+        assertEquals(listOf("2160p", "1080p", "1080p", "720p", "720p"), links.map { Addons.quality(it) })
+        // Nothing picked before: the first (add-ons put their best first).
+        assertTrue(Addons.pickLink(links, "") === links[0])
+        // The same quality from the same add-on, as a torrent.
+        assertTrue(Addons.pickLink(links, Addons.linkKind(links[4])) === links[4])
+        assertTrue(Addons.pickLink(links, "Direct|1080p|h") === links[2])
+        // That add-on has nothing in that quality here: the quality still counts most.
+        assertTrue(Addons.pickLink(links, "Other|720p|h") === links[3])
+        // A quality that isn't offered: the same add-on and kind, its first.
+        assertTrue(Addons.pickLink(links, "Direct|480p|h") === links[2])
+        assertNull(Addons.pickLink(emptyList(), "Direct|480p|h"))
+    }
+
+    @Test
+    fun subtitlesFromAddOns() {
+        val subs = Addons.parseSubtitles(
+            "Subs",
+            """{"subtitles":[{"id":"1","url":"https://s.example/1.srt","lang":"eng"},{"id":"2","url":"https://s.example/2.srt","lang":"ara"},
+               {"id":"3","url":"stremio://nope","lang":"fre"},{"id":"4","url":"https://s.example/4.vtt","lang":"fre"},{"id":"5","url":"https://s.example/5.srt","lang":"Klingon"}]}""",
+        )
+        assertEquals(4, subs.size)
+        assertEquals("subtitles/series/tt1:1:2.json", Addons.subtitlesPath("series", "tt1:1:2"))
+        assertEquals(listOf("en", "ar", "fr", "klingon"), subs.map { Addons.langCode(it.lang) })
+        assertEquals("Arabic", Addons.langName("ara"))
+        assertEquals("French", Addons.langName("fre"))
+        assertEquals("Klingon", Addons.langName("Klingon"))
+        assertEquals("ar", Addons.langCode("Arabic"))
+        // Your language first, then English, then the rest.
+        assertEquals(listOf("ara", "eng", "fre", "Klingon"), Addons.sortSubs(subs, "ar").map { it.lang })
+        // A link's own subtitles are read with it.
+        val st = Addons.parseStreams("X", """{"streams":[{"url":"https://v.example/a.mp4","name":"1080p","subtitles":[{"url":"https://s.example/a.srt","lang":"ara"}]}]}""")
+        assertEquals("https://s.example/a.srt", st.playable.single().subs.single().url)
+    }
+
+    @Test
+    fun subtitleFilesBecomeReadableText() {
+        val arabic = "مرحبا"
+        assertEquals(arabic, Addons.subtitleText(arabic.toByteArray(Charsets.UTF_8), "ara"))
+        assertEquals(arabic, Addons.subtitleText(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + arabic.toByteArray(Charsets.UTF_8), "ara"))
+        // An old Windows file in Arabic, in Russian: read as what its language is written in.
+        assertEquals(arabic, Addons.subtitleText(arabic.toByteArray(java.nio.charset.Charset.forName("windows-1256")), "ara"))
+        assertEquals("Привет", Addons.subtitleText("Привет".toByteArray(java.nio.charset.Charset.forName("windows-1251")), "rus"))
+        assertEquals("café", Addons.subtitleText("café".toByteArray(Charsets.ISO_8859_1), "fre"))
+        assertEquals("hi", Addons.subtitleText("hi".toByteArray(Charsets.UTF_16), "eng"))
+    }
+
     @Test
     fun whichAddonsFindLinks() {
         val both = Addons.parseManifest("https://x.com", manifest)

@@ -77,6 +77,12 @@ class PhoneLiveScreens : ScreenshotBase() {
                 shoot("phone-live-1-your-channels")
                 vm.group = "AR | Kids"
                 shoot("phone-live-2-group")
+                // A channel of the group that didn't work: out of the list, with a line to show it.
+                val gone = vm.index.live.first { it.group == "AR | Kids" && !it.name.startsWith("#") }
+                app.repo.update(stamp = false) { it.copy(dead = mapOf(vm.playlist!!.id to mapOf(gone.id to System.currentTimeMillis()))) }
+                shoot("phone-live-2b-one-hidden")
+                check(vm.index.live.any { it.id == gone.id }) { "The channel left the playlist" }
+                app.repo.forgetDead()
                 groupFinderOpen = true
                 shoot("phone-live-3-finder")
                 groupFinderTyped = "s"
