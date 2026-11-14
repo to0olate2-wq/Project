@@ -189,12 +189,20 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (LibraryScreen's `result`) for 7 days, then shown again to be tried; playing one clears it. Favorites, Home and
   the search keep them. Under a list's heading "N that didn't work are hidden · Show" (`showDead`); Settings →
   Playlists → "Hide channels that don't work" (`Settings.hideDead`, on) with "Show them all again".
-- **Skip intro (older than these notes):** learned, not looked up: a jump forward early in an episode (20 s to
-  4 min) is kept as the show's intro (`AppState.intros`, `showKey`: the playlist's series only) and offered as
-  "Skip intro" on its next episodes; "Up next" comes in the last stretch of an episode. Asked in 8.24 whether it
-  can be done "properly" (intro and outro, by themselves): the way would be a timestamps database by IMDb id
-  (introdb.app: free, no key, `GET /segments?imdb_id=…&season=…&episode=…`), which fits add-on titles (they have
-  IMDb ids); playlist series have none. Not built: waiting for the owner's word (it sends the title's id online).
+- **Skip buttons (8.25; the owner: "like Netflix, press to skip intro, press to skip outro, and if I didn't press
+  the show will continue"):** one button (`SkipIntroButton(label)`, UpNext.kt; OK on a TV, a tap on a phone),
+  never a skip by itself. **Add-on titles** (`data/SkipSegments.kt`): `loadSkips` asks introdb.app as the film or
+  episode starts (`GET https://api.introdb.app/segments?imdb_id=tt…&season=…&episode=…`, or `&is_movie=true`; free,
+  no key; answers `{"intro":{"start_ms","end_ms",…}|null,"recap":…,"outro":…}`; not reachable from the sandbox, the
+  format is from its docs) and `addonSkipTick` shows "Skip intro / recap / credits" while that part plays
+  (`offer`: from 1 s before to 4 s before its end; credits jump to the end, where the player closes and the
+  series' page has "Next episode"). Settings → Playback → "Skip intro and credits buttons" (`Settings.skipLookup`,
+  on; only the IMDb number, season and episode are sent). Not in the list: the learned intro, now for add-on
+  series too (`showKey` = "addon|tt…"). **The playlist's series** have no IMDb number: the intro is learned as
+  before (a jump forward early in an episode, 20 s to 4 min, `AppState.intros`), and so is where the credits
+  start (`learnOutro`: going on to the next episode yourself late in one, before the card; kept as the time left
+  under the show's key + `OUTRO_KEY` in `intros`): the Up next card then comes at that point, offering only; its
+  countdown (`autoNextEpisode`) still starts in the last 20 s. "Keep watching" on an early card forgets it.
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
   name carries a year before last year is out; a day that stamped 15% of the library (200+) is no date; without a

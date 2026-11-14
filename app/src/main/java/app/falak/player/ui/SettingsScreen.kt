@@ -619,6 +619,17 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 s.autoNextEpisode,
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
         }
+        if (Addons.enabled) {
+            item {
+                SwitchRow(
+                    "Skip intro and credits buttons",
+                    "Films and series from add-ons: a button shows while the intro, a recap or the end credits play; press it to skip, " +
+                        "or leave it and it plays on. The times come from introdb.app, a free list kept by its users: the app sends it the " +
+                        "title's IMDb number, season and episode, nothing about you. Not every title is in it.",
+                    s.skipLookup,
+                ) { vm.updateSettings { it.copy(skipLookup = !it.skipLookup) } }
+            }
+        }
         item {
             SwitchRow("Larger buffer", "Fewer pauses on slow connections; channels start a little slower", s.bigBuffer) {
                 vm.updateSettings { it.copy(bigBuffer = !it.bigBuffer) }

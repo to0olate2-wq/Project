@@ -121,9 +121,12 @@ fun BoxScope.UpNextCard(next: Channel?, label: String, seconds: Int?, onPlay: ()
     }
 }
 
-/** "Skip intro", bottom right while a learned intro plays. OK (TV) or a tap skips it. */
+/**
+ * "Skip intro" (or "Skip recap", "Skip credits"), bottom right while that part plays. OK (TV) or
+ * a tap skips it; left alone, the film or episode just carries on.
+ */
 @Composable
-fun BoxScope.SkipIntroButton(visible: Boolean, onSkip: () -> Unit) {
+fun BoxScope.SkipIntroButton(visible: Boolean, label: String = "Skip intro", onSkip: () -> Unit) {
     val tv = isTv()
     AnimatedVisibility(
         visible = visible,
@@ -141,7 +144,7 @@ fun BoxScope.SkipIntroButton(visible: Boolean, onSkip: () -> Unit) {
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Skip intro", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 16.sp else 15.sp, color = Color.White)
+            Text(label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (tv) 16.sp else 15.sp, color = Color.White)
             if (tv) KeyHint("OK", dark = false)
         }
     }

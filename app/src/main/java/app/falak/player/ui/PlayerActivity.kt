@@ -120,6 +120,9 @@ class PlayerActivity : ComponentActivity() {
         private const val ASPECT_ZOOM = 2
         /** The Up next card comes up this long before an episode ends. */
         private const val UP_NEXT_MS = 20_000L
+
+        /** Added to a show's key (see showKey) for where its credits start, kept with the intros. */
+        private const val OUTRO_KEY = "|outro"
         /** …and the next episode starts after this many seconds. */
         private const val COUNTDOWN_S = 10
         /** A forward jump that starts this early in an episode can be the intro being skipped. */
@@ -759,7 +762,7 @@ class PlayerActivity : ComponentActivity() {
                 val app by repo.state.collectAsState()
                 FalakTheme(dark = true, layout = app.settings.layout) {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
-                        SkipIntroButton(skipIntroShown && upNext == null) { skipIntro() }
+                        SkipIntroButton(skipIntroShown && upNext == null, skipLabel) { skipIntro() }
                         val offer = startOverOffer
                         StartOverButton(
                             visible = offer != null && dual == null,
@@ -1232,6 +1235,7 @@ class PlayerActivity : ComponentActivity() {
         // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
         deleteWatchedCopies(except = ch.id)
         showLoading(ch)
+        loadSkips(ch)
         serviceStarting(ch)
         val wanted = desiredEngine(ch)
         // Auto captions chosen for this channel: the player is built hearing its sound.
@@ -1403,6 +1407,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun zap(delta: Int) {
         if (queue.size < 2) return
+        if (delta == 1) learnOutro()
         saveProgress()
         rememberPrevious()
         index = (index + delta).mod(queue.size)
@@ -3224,6 +3229,67 @@ class PlayerActivity : ComponentActivity() {
     private var introSkippedFor: String? = null
     private var skippingIntro = false
 
+    // What the skip button says and where it jumps (8.25): a part from introdb.app (an add-on's
+    // film or episode, see SkipSegments) or the show's learned intro.
+    private var skipLabel by mutableStateOf("Skip intro")
+    private var skipTarget = -1L
+    /** "<channel id>|<kind>" of the looked-up part on offer; null for a learned intro. */
+    private var skipPart: String? = null
+    /** Parts skipped, or passed over with Back, in this session: not offered again. */
+    private val skipsDone = HashSet<String>()
+    private var skips: List<app.falak.player.data.SkipSegments.Part> = emptyList()
+    private var skipsFor: String? = null
+    private var skipsJob: kotlinx.coroutines.Job? = null
+
+    /** An add-on's film or episode starts: where its intro, recap and credits are, if introdb.app knows. */
+    private fun loadSkips(ch: Channel) {
+        if (skipsFor == ch.id) return
+        skipsJob?.cancel()
+        skips = emptyList()
+        skipsFor = ch.id
+        if (!ch.id.startsWith("addon:") || !repo.state.value.settings.skipLookup) return
+        val url = app.falak.player.data.SkipSegments.url(ch.id.removePrefix("addon:")) ?: return
+        skipsJob = lifecycleScope.launch {
+            val found = try {
+                withContext(Dispatchers.IO) {
+                    val request = okhttp3.Request.Builder().url(url).header("User-Agent", "ThePlayer/${app.falak.player.BuildConfig.VERSION_NAME}").build()
+                    repo.http.newCall(request).execute().use { r ->
+                        if (r.isSuccessful) app.falak.player.data.SkipSegments.parse(r.body?.string().orEmpty()) else emptyList()
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            if (skipsFor == ch.id) skips = found
+        }
+    }
+
+    /** An add-on's film or episode: the looked-up part playing now, else its show's learned intro. */
+    private fun addonSkipTick(p: Player, ch: Channel) {
+        val dur = p.duration.coerceAtLeast(0)
+        val pos = p.currentPosition
+        val known = if (skipsFor == ch.id) skips else emptyList()
+        val part = app.falak.player.data.SkipSegments.offer(known, pos, dur)?.takeIf { "${ch.id}|${it.kind}" !in skipsDone }
+        if (part != null) {
+            skipLabel = part.kind.label
+            skipTarget = app.falak.player.data.SkipSegments.target(part, dur)
+            skipPart = "${ch.id}|${part.kind}"
+            skipIntroShown = true
+            return
+        }
+        // (The list has no intro for it: the one learned from your own skip, as for the playlist's series.)
+        val intro = if (known.any { it.kind == app.falak.player.data.SkipSegments.Kind.INTRO }) null else showKey(ch)?.let { repo.state.value.intros[it] }
+        val show = intro != null && introSkippedFor != ch.id && dur > 0 && pos >= intro.start - 2_000 && pos < intro.end - 6_000
+        if (show && intro != null) {
+            skipLabel = "Skip intro"
+            skipTarget = intro.end
+            skipPart = null
+        }
+        skipIntroShown = show
+    }
+
     /** "Show Name" from "Show Name S01E02", "Show Name - S1 E2 - Title", "Show 1x02"… */
     private fun episodeShow(name: String): String =
         name.replace(EPISODE_MARK, "").trim().trimEnd('-', '–', '|', ':', '·').trim()
@@ -3251,6 +3317,11 @@ class PlayerActivity : ComponentActivity() {
 
     /** The show an episode belongs to, for its learned intro: "playlistId|s:<series id>" or "|n:<name>". */
     private fun showKey(ch: Channel): String? {
+        // An add-on's episode ("addon:tt…:1:2"): its series, whichever add-on's link plays.
+        if (ch.id.startsWith("addon:")) {
+            val parts = ch.id.removePrefix("addon:").split(':')
+            return if (parts.size >= 3) "addon|${parts[0]}" else null
+        }
         if (ch.kind != Kind.SERIES) return null
         val pl = repo.currentPlaylist ?: return null
         val sid = repo.currentSeries?.seriesId?.takeIf { it.isNotEmpty() }
@@ -3263,6 +3334,11 @@ class PlayerActivity : ComponentActivity() {
     private fun seriesTick() {
         val p = player
         val ch = queue.getOrNull(index)
+        if (p != null && ch != null && !inPip && ch.id.startsWith("addon:")) {
+            if (upNext != null) upNext = null
+            addonSkipTick(p, ch)
+            return
+        }
         if (p == null || ch == null || ch.kind != Kind.SERIES || inPip) {
             if (upNext != null) upNext = null
             skipIntroShown = false
@@ -3273,9 +3349,19 @@ class PlayerActivity : ComponentActivity() {
         val intro = showKey(ch)?.let { repo.state.value.intros[it] }
         skipIntroShown = intro != null && introSkippedFor != ch.id && dur > 0 &&
             pos >= intro.start - 2_000 && pos < intro.end - 6_000
+        if (skipIntroShown && intro != null) {
+            skipLabel = "Skip intro"
+            skipTarget = intro.end
+            skipPart = null
+        }
         val next = nextEpisode()
         val ended = p.playbackState == Player.STATE_ENDED
-        val credits = dur > 5 * 60_000 && dur - pos <= UP_NEXT_MS
+        // The credits: the last twenty seconds, or from where you went on to the next episode
+        // yourself in this show before (learned, see learnOutro).
+        val auto = repo.state.value.settings.autoNextEpisode
+        val early = showKey(ch)?.let { repo.state.value.intros[it + OUTRO_KEY] }?.start ?: 0L
+        val lastStretch = ended || dur - pos <= UP_NEXT_MS
+        val credits = dur > 5 * 60_000 && dur - pos <= maxOf(UP_NEXT_MS, early)
         if (next == null || upNextDismissed == ch.id || SleepTimer.stopsAfter(ch.id) || kidsFinishing != null || !(ended || credits)) {
             if (upNext != null) {
                 upNext = null
@@ -3286,7 +3372,13 @@ class PlayerActivity : ComponentActivity() {
         if (upNext?.id != next.id) {
             upNext = next
             upNextLabel = episodeLabel(next)
-            upNextSecs = if (repo.state.value.settings.autoNextEpisode) COUNTDOWN_S else null
+            // (Shown early because you skipped the credits before: it only offers. The countdown is
+            // for the last stretch, as it was: left alone, the credits play on.)
+            upNextSecs = if (auto && lastStretch) COUNTDOWN_S else null
+            return
+        }
+        if (upNextSecs == null && auto && lastStretch) {
+            upNextSecs = COUNTDOWN_S
             return
         }
         val secs = upNextSecs ?: return
@@ -3301,22 +3393,56 @@ class PlayerActivity : ComponentActivity() {
         upNextSecs = null
         if (nextEpisode() == null) return
         FreezeWatch.note("up next")
+        // (From the card: nothing new to learn about where the credits start.)
+        outroOffered = true
         zap(1)
     }
 
     private fun dismissUpNext() {
-        upNextDismissed = queue.getOrNull(index)?.id
+        val ch = queue.getOrNull(index)
+        // "Keep watching" on a card that came early: the credits of this show don't start there after all.
+        val p = player
+        if (ch != null && p != null && p.duration - p.currentPosition > UP_NEXT_MS + 2_000) {
+            showKey(ch)?.let { key -> if (repo.state.value.intros[key + OUTRO_KEY] != null) repo.setIntro(key + OUTRO_KEY, 0, 0) }
+        }
+        upNextDismissed = ch?.id
         upNext = null
         upNextSecs = null
     }
 
+    /** Set while the next episode is being started from the Up next card. */
+    private var outroOffered = false
+
+    /**
+     * Learning where a show's credits start (8.25), as its intro is learned: going on to the next
+     * episode yourself late in an episode, before the Up next card is there, is kept (as the time
+     * left) and the card comes at that point in the show's next episodes. Kept with the intros,
+     * under the show's key + [OUTRO_KEY] (its "start" is the time left).
+     */
+    private fun learnOutro() {
+        if (outroOffered) {
+            outroOffered = false
+            return
+        }
+        val ch = queue.getOrNull(index) ?: return
+        val p = player ?: return
+        if (ch.kind != Kind.SERIES || ch.id.startsWith("addon:") || upNext != null || nextEpisode() == null) return
+        val dur = p.duration
+        val pos = p.currentPosition
+        val left = dur - pos
+        if (dur > 5 * 60_000 && pos > dur * 6 / 10 && left in (UP_NEXT_MS + 5_000)..(10 * 60_000L)) {
+            showKey(ch)?.let { repo.setIntro(it + OUTRO_KEY, left, 0) }
+        }
+    }
+
     private fun skipIntro() {
         val ch = queue.getOrNull(index) ?: return
-        val intro = showKey(ch)?.let { repo.state.value.intros[it] } ?: return
-        introSkippedFor = ch.id
+        if (skipTarget < 0) return
+        // (A looked-up part isn't offered again; a learned intro, not again in this episode.)
+        skipPart?.let { skipsDone += it } ?: run { introSkippedFor = ch.id }
         skipIntroShown = false
         skippingIntro = true
-        player?.seekTo(intro.end)
+        player?.seekTo(skipTarget)
     }
 
     // Learning a show's intro: a jump forward early in an episode (one drag, or several presses
@@ -3335,7 +3461,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun learnIntro(from: Long, to: Long) {
         val ch = queue.getOrNull(index) ?: return
-        if (ch.kind != Kind.SERIES) return
+        // (The playlist's series, and an add-on's series when the list has no intro for it.)
+        if (ch.kind != Kind.SERIES && showKey(ch) == null) return
         if (skippingIntro) {
             skippingIntro = false // our own Skip intro: nothing new to learn
             return
