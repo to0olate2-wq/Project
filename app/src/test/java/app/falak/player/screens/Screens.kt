@@ -65,6 +65,7 @@ import app.falak.player.data.Season
 import app.falak.player.data.SeriesInfo
 import app.falak.player.ui.ALL_FILTER
 import app.falak.player.ui.MainActivity
+import app.falak.player.data.SkipSegments
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
 import app.falak.player.ui.Section
@@ -149,6 +150,14 @@ abstract class ScreenshotBase {
         startOver: String? = null,
         /** Auto captions showing these words. */
         autoCaption: String? = null,
+        /**
+         * An add-on's episode at 23:14 of 92 minutes, with these parts from introdb.app: [skipSeen]
+         * gets what the skip button says and where it jumps (null: no button).
+         */
+        skip: List<SkipSegments.Part>? = null,
+        skipSeen: ((Pair<String, Long>?) -> Unit)? = null,
+        /** Where the player is in that episode instead (ms). */
+        skipAt: Long = 1_394_000,
         block: ((String) -> Unit) -> Unit,
     ) = watched {
         seed(if (tv) "tv" else "phone")
@@ -181,6 +190,11 @@ abstract class ScreenshotBase {
         if (prayer) activity.previewPrayer()
         if (startOver != null) activity.previewStartOver(queue[2], replaying = startOver == "replay")
         if (autoCaption != null) activity.previewAutoCaptions(autoCaption)
+        if (skip != null) {
+            val episode = Channel(id = "addon:tt0903747:1:2", name = "A Series · S1 E2", group = "", url = "http://127.0.0.1:1/episode.mkv", kind = Kind.MOVIE)
+            skipSeen?.invoke(activity.previewSkip(StandIn(false, episode.name, skipAt), episode, skip))
+            idle(400)
+        }
         block { name -> capture(activity, name) }
     }
 
@@ -581,7 +595,7 @@ abstract class ScreenshotBase {
     }
 
     /** A player that pretends to be playing a film (or a live channel), so the controls look real. */
-    private class StandIn(private val live: Boolean, private val title: String) : SimpleBasePlayer(Looper.getMainLooper()) {
+    private class StandIn(private val live: Boolean, private val title: String, private val at: Long = 1_394_000) : SimpleBasePlayer(Looper.getMainLooper()) {
         override fun getState(): State {
             val item = MediaItem.Builder().setMediaId(title)
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build()).build()
@@ -606,7 +620,7 @@ abstract class ScreenshotBase {
                 .setSeekForwardIncrementMs(10_000)
                 .setPlayWhenReady(true, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
                 .setPlaybackState(Player.STATE_READY)
-                .setContentPositionMs(if (live) 0 else 1_394_000)
+                .setContentPositionMs(if (live) 0 else at)
                 .build()
         }
 
@@ -1053,6 +1067,51 @@ class PhoneLinkedScreens : ScreenshotBase() {
     fun phoneLinked() = mainScreens("phone", linked = true) { vm, shoot ->
         vm.screen = Screen.SYNC
         shoot("phone-18-devices-linked")
+    }
+}
+
+/**
+ * The skip button on an add-on's episode (8.25): the player is 23:14 into it; the parts are as
+ * introdb.app gives them. Checks what the button says and where it jumps, and takes its picture.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneSkipIntroScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneSkipIntro() {
+        var seen: Pair<String, Long>? = null
+        val parts = SkipSegments.parse(
+            """{"intro":{"start_sec":1380,"end_sec":1470,"start_ms":1380000,"end_ms":1470000},"recap":null,"outro":{"start_sec":5400,"end_sec":5520}}""",
+        )
+        player(tv = false, live = false, skip = parts, skipSeen = { seen = it }) { shoot -> shoot("phone-player-skip-intro") }
+        check(seen == ("Skip intro" to 1_470_000L)) { "The intro is playing, but the button is $seen" }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSkipCreditsScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvSkipCredits() {
+        var seen: Pair<String, Long>? = null
+        // 90:50 into the 92 minutes; the credits run from 90:00 to the end (no end given): the button
+        // jumps to the end of the episode.
+        val parts = SkipSegments.parse("""{"intro":{"start_ms":60000,"end_ms":150000},"outro":{"start_sec":5400}}""")
+        player(tv = true, live = false, skip = parts, skipSeen = { seen = it }, skipAt = 5_450_000) { shoot -> shoot("tv-player-skip-credits") }
+        check(seen == ("Skip credits" to 5_519_500L)) { "The credits are playing, but the button is $seen" }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvSkipNothingScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = TV)
+    fun tvNoButtonOutsideTheParts() {
+        var seen: Pair<String, Long>? = "unset" to 0L
+        // 23:14 is in neither part: nothing on screen.
+        val parts = SkipSegments.parse("""{"intro":{"start_ms":60000,"end_ms":150000},"outro":{"start_sec":5400,"end_sec":5520}}""")
+        player(tv = true, live = false, skip = parts, skipSeen = { seen = it }) { shoot -> shoot("tv-player-skip-none") }
+        check(seen == null) { "No part is playing, but the button is $seen" }
     }
 }
 

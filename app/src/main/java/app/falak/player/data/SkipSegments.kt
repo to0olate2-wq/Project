@@ -67,10 +67,14 @@ object SkipSegments {
     /**
      * The part to offer a button for at [pos]: from a second before it starts until four seconds
      * before it ends (a button for the last moments is no use). [dur]: the length, 0 if not known.
+     * The list is written by its users and has slips (seen in its real answers, 8.26: a film's
+     * "intro" two hours in, inside its credits): an intro or recap counts only in the first half,
+     * credits only in the second.
      */
     fun offer(parts: List<Part>, pos: Long, dur: Long): Part? = parts.firstOrNull { p ->
         val end = if (dur > 0) minOf(p.end, dur) else p.end
-        pos >= p.start - 1_000 && pos < end - 4_000
+        val placed = dur <= 0 || if (p.kind == Kind.OUTRO) p.start > dur / 2 else p.start < dur / 2
+        placed && pos >= p.start - 1_000 && pos < end - 4_000
     }
 
     /** Where the button jumps to: the part's end, or just before the very end (so what follows an episode still happens). */

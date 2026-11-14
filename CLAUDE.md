@@ -193,11 +193,14 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   the show will continue"):** one button (`SkipIntroButton(label)`, UpNext.kt; OK on a TV, a tap on a phone),
   never a skip by itself. **Add-on titles** (`data/SkipSegments.kt`): `loadSkips` asks introdb.app as the film or
   episode starts (`GET https://api.introdb.app/segments?imdb_id=tt…&season=…&episode=…`, or `&is_movie=true`; free,
-  no key; answers `{"intro":{"start_ms","end_ms",…}|null,"recap":…,"outro":…}`; not reachable from the sandbox, the
-  format is from its docs) and `addonSkipTick` shows "Skip intro / recap / credits" while that part plays
+  no key; answers `{"intro":{"start_ms","end_ms",…}|null,"recap":…,"outro":…}`; not reachable from the sandbox, but
+  CI reaches it: `SkipSegmentsLiveTest` asks the real list and reads its answers, only in a `[only …]` run, which
+  sets `LIVE_CHECKS`; checked 8.26, the answers were as expected. The list has slips, e.g. a film's "intro" inside
+  its credits: `offer` takes intros and recaps in the first half only, credits in the second) and `addonSkipTick` shows "Skip intro / recap / credits" while that part plays
   (`offer`: from 1 s before to 4 s before its end; credits jump to the end, where the player closes and the
   series' page has "Next episode"). Settings → Playback → "Skip intro and credits buttons" (`Settings.skipLookup`,
-  on; only the IMDb number, season and episode are sent). Not in the list: the learned intro, now for add-on
+  on; only the IMDb number, season and episode are sent). Tests: `previewSkip` runs the real check on a stand-in
+  player (`PhoneSkipIntroScreens`, `TvSkipCreditsScreens`, `TvSkipNothingScreens`). Not in the list: the learned intro, now for add-on
   series too (`showKey` = "addon|tt…"). **The playlist's series** have no IMDb number: the intro is learned as
   before (a jump forward early in an episode, 20 s to 4 min, `AppState.intros`), and so is where the credits
   start (`learnOutro`: going on to the next episode yourself late in one, before the card; kept as the time left

@@ -52,6 +52,21 @@ class SkipSegmentsTest {
         assertNull(SkipSegments.offer(parts, 1_000_000, dur))
         assertEquals(credits, SkipSegments.offer(parts, 2_650_000, dur))
         assertNull(SkipSegments.offer(parts, 2_698_000, dur))
+        // A real answer for a film (Iron Man, November 2026): an "intro" two hours in, inside the
+        // credits, and a scene after them. In the credits the button is "Skip credits", and it
+        // jumps to that scene.
+        val film = SkipSegments.parse(
+            """{"imdb_id":"tt0371746","media_type":"movie","is_movie":true,"season":0,"episode":0,
+               "intro":{"start_sec":7512,"end_sec":7545,"start_ms":7512000,"end_ms":7545000,"confidence":1,"submission_count":1},
+               "recap":null,"outro":{"start_sec":7038,"end_sec":7540,"start_ms":7038000,"end_ms":7540000,"confidence":1,"submission_count":1},
+               "post_credits":{"start_sec":7540,"end_sec":7580,"start_ms":7540000,"end_ms":7580000}}""",
+        )
+        val length = 7_580_000L
+        assertEquals(SkipSegments.Kind.OUTRO, SkipSegments.offer(film, 7_515_000, length)?.kind)
+        assertEquals(7_540_000, SkipSegments.target(SkipSegments.offer(film, 7_100_000, length)!!, length))
+        assertNull(SkipSegments.offer(film, 60_000, length))
+        // (Credits written into the first half are a slip too.)
+        assertNull(SkipSegments.offer(listOf(SkipSegments.Part(SkipSegments.Kind.OUTRO, 100_000, 200_000)), 150_000, dur))
         // Where it jumps: the end of the intro; for credits, the end of the episode.
         assertEquals(150_000, SkipSegments.target(intro, dur))
         assertEquals(dur - 500, SkipSegments.target(credits, dur))

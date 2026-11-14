@@ -1997,6 +1997,22 @@ class PlayerActivity : ComponentActivity() {
         upNextSecs = 8
     }
 
+    /**
+     * Tests: an add-on's film or episode [ch], where [stand] is in it, with the parts introdb.app
+     * gave for it. Runs the check the player runs every second and returns what the skip button
+     * says and where it would jump (null: no button).
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun previewSkip(stand: Player, ch: Channel, parts: List<app.falak.player.data.SkipSegments.Part>): Pair<String, Long>? {
+        playerView.hideController()
+        queue = listOf(ch)
+        index = 0
+        skips = parts
+        skipsFor = ch.id
+        addonSkipTick(stand, ch)
+        return if (skipIntroShown) skipLabel to skipTarget else null
+    }
+
     /** Screenshot tests: the ambient screen over a paused video. */
     @androidx.annotation.VisibleForTesting
     internal fun previewAmbient() {
@@ -3268,6 +3284,11 @@ class PlayerActivity : ComponentActivity() {
 
     /** An add-on's film or episode: the looked-up part playing now, else its show's learned intro. */
     private fun addonSkipTick(p: Player, ch: Channel) {
+        // (Not over the loading page, or a picture that has stopped to load more.)
+        if (p.playbackState != Player.STATE_READY) {
+            skipIntroShown = false
+            return
+        }
         val dur = p.duration.coerceAtLeast(0)
         val pos = p.currentPosition
         val known = if (skipsFor == ch.id) skips else emptyList()

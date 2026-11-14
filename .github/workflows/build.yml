@@ -199,6 +199,8 @@ jobs:
           only=$(git log -1 --format=%s | sed -n 's/.*\[only \([^]]*\)\].*/\1/p')
           if [ -n "$only" ]; then
             export TORRENT_TEST_REPEAT=6
+            # Tests that ask a real site (SkipSegmentsLiveTest) run only when asked for like this.
+            export LIVE_CHECKS=1
             # A crash in native code leaves its memory behind, for gdb to say where (below).
             sudo sysctl -q -w kernel.core_pattern=/tmp/core.%p || true
             ulimit -c unlimited || true
