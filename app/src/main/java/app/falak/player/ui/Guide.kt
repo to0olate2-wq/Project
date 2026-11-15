@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,7 +57,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -163,7 +161,6 @@ fun GuideOverlay() {
     val tv = isTv()
     val density = LocalDensity.current
     var origin by remember { mutableStateOf(Offset.Zero) }
-    var cardH by remember { mutableIntStateOf(0) }
     val next = remember { FocusRequester() }
     val skip = remember { FocusRequester() }
     BackHandler { Guide.finish() }
@@ -207,28 +204,10 @@ fun GuideOverlay() {
         val cardW = with(density) { minOf(380.dp.toPx(), w - 32.dp.toPx()) }
         val gap = with(density) { 14.dp.toPx() }
         val edge = with(density) { 16.dp.toPx() }
-        // Beside a button at the left (the TV's menu), else under it, or over it near the bottom (the phone's bar).
-        val pos: IntOffset = when {
-            hole == null -> IntOffset(((w - cardW) / 2).toInt(), ((h - cardH) / 2).toInt().coerceAtLeast(0))
-            hole.right < w / 3 && hole.width < w / 4 -> IntOffset(
-                (hole.right + gap).toInt(),
-                (hole.center.y - cardH / 2).coerceIn(edge, (h - cardH - edge).coerceAtLeast(edge)).toInt(),
-            )
-            h - hole.bottom >= cardH + gap + edge -> IntOffset(
-                (hole.center.x - cardW / 2).coerceIn(edge, w - cardW - edge).toInt(),
-                (hole.bottom + gap).toInt(),
-            )
-            else -> IntOffset(
-                (hole.center.x - cardW / 2).coerceIn(edge, w - cardW - edge).toInt(),
-                (hole.top - gap - cardH).coerceAtLeast(edge).toInt(),
-            )
-        }
         val shape = RoundedCornerShape(14.dp)
-        Column(
+        androidx.compose.ui.layout.Layout(content = { Column(
             Modifier
-                .offset { pos }
                 .width(with(density) { cardW.toDp() })
-                .onSizeChanged { cardH = it.height }
                 .background(Ink2, shape)
                 .border(1.dp, Hairline, shape)
                 // (A tap on the card isn't a tap beside it.)
@@ -250,6 +229,27 @@ fun GuideOverlay() {
                 Spacer(Modifier.weight(1f))
                 PaperButton(if (i + 1 < steps.size) "Next" else "Done", modifier = Modifier.focusRequester(next)) { Guide.next() }
             }
+        } }) { measurables, constraints ->
+            val card = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+            val cardH = card.height.toFloat()
+            val cw = card.width.toFloat()
+            // Beside a button at the left (the TV's menu), else under it, or over it near the bottom (the phone's bar).
+            val pos: IntOffset = when {
+                hole == null -> IntOffset(((w - cw) / 2).toInt(), ((h - cardH) / 2).toInt().coerceAtLeast(0))
+                hole.right < w / 3 && hole.width < w / 4 && hole.bottom < h * 0.85f -> IntOffset(
+                    (hole.right + gap).toInt(),
+                    (hole.center.y - cardH / 2).coerceIn(edge, (h - cardH - edge).coerceAtLeast(edge)).toInt(),
+                )
+                h - hole.bottom >= cardH + gap + edge -> IntOffset(
+                    (hole.center.x - cw / 2).coerceIn(edge, (w - cw - edge).coerceAtLeast(edge)).toInt(),
+                    (hole.bottom + gap).toInt(),
+                )
+                else -> IntOffset(
+                    (hole.center.x - cw / 2).coerceIn(edge, (w - cw - edge).coerceAtLeast(edge)).toInt(),
+                    (hole.top - gap - cardH).coerceAtLeast(edge).toInt(),
+                )
+            }
+            layout(constraints.maxWidth, constraints.maxHeight) { card.place(pos) }
         }
     }
 }

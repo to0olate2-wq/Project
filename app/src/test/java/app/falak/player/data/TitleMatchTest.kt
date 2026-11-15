@@ -42,6 +42,10 @@ class TitleMatchTest {
         // Two titles with the same name and no year: none.
         val two = TitleMatch.parse("""{"metas":[{"id":"tt0087182","name":"Dune","releaseInfo":"1984"},{"id":"tt1160419","name":"Dune","releaseInfo":"2021"}]}""")
         assertNull(TitleMatch.pick(two, "Dune", null))
+        // A series' name with no year: the search's first answer, when it has that name.
+        assertEquals("tt0087182", TitleMatch.pick(two, "Dune", null, series = true))
+        val friends = TitleMatch.parse("""{"metas":[{"id":"tt9999991","name":"Best Friends","releaseInfo":"2019"},{"id":"tt0108778","name":"Friends","releaseInfo":"1994–2004"},{"id":"tt9999992","name":"Friends","releaseInfo":"2010"}]}""")
+        assertNull(TitleMatch.pick(friends, "Friends", null, series = true))
         assertEquals("tt1160419", TitleMatch.pick(two, "Dune", 2021))
         // An Arabic name: Cinemeta's search answers with unrelated English titles; none is taken.
         val unrelated = TitleMatch.parse("""{"metas":[{"id":"tt1893273","name":"The Last Letter from Your Lover","releaseInfo":"2021"}]}""")

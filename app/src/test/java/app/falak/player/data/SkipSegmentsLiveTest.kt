@@ -97,8 +97,9 @@ class SkipSegmentsLiveTest {
         for ((type, raw, want) in asked) {
             val (name, year) = TitleMatch.clean(raw)
             val (code, body) = get(TitleMatch.searchUrl(type, name))
-            val found = TitleMatch.pick(TitleMatch.parse(body), name, year)
-            println("FOUND $raw -> \"$name\" $year -> HTTP $code -> $found")
+            val list = TitleMatch.parse(body)
+            val found = TitleMatch.pick(list, name, year, type == "series")
+            println("FOUND $raw -> \"$name\" $year -> HTTP $code -> $found   (first: ${list.take(3).joinToString { it.id + " " + it.name + " " + it.year }})")
             assertEquals(raw, want, found)
             Thread.sleep(800)
         }

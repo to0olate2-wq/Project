@@ -373,7 +373,7 @@ class Repository(private val context: Context) {
             val request = okhttp3.Request.Builder().url(TitleMatch.searchUrl(type, name)).header("User-Agent", "ThePlayer").build()
             http.newCall(request).execute().use { r ->
                 if (!r.isSuccessful) return null // (not remembered: may answer next time)
-                TitleMatch.pick(TitleMatch.parse(r.body?.string().orEmpty()), name, year)
+                TitleMatch.pick(TitleMatch.parse(r.body?.string().orEmpty()), name, year, type == "series")
             }
         } catch (e: Exception) {
             return null
@@ -601,7 +601,19 @@ class Repository(private val context: Context) {
     fun sourceOf(p: Playlist, id: String): Playlist =
         if (p.isCombined) Combined.sourceFor(p, id, _state.value.playlists) ?: p else p
 
-    suspend fun loadVodInfo(p: Playlist, streamId: String): VodInfo? = withContext(Dispatchers.IO) {
+    /**
+     * The year the provider gives for a film ("m" + its stream id) or a series ("s" + its id), as its
+     * details are read: the skip times' lookup finds the right title by it (TitleMatch).
+     */
+    val providerYears = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    private fun noteYear(key: String, year: String) {
+        year.take(4).toIntOrNull()?.takeIf { it in 1900..2100 }?.let { providerYears[key] = it }
+    }
+
+    suspend fun loadVodInfo(p: Playlist, streamId: String): VodInfo? = loadVodInfoAsSent(p, streamId)?.also { noteYear("m$streamId", it.year) }
+
+    private suspend fun loadVodInfoAsSent(p: Playlist, streamId: String): VodInfo? = withContext(Dispatchers.IO) {
         if (p.isCombined) {
             val src = Combined.sourceFor(p, streamId, _state.value.playlists) ?: return@withContext null
             return@withContext xtreamFor(src)?.vodInfo(Combined.untag(streamId))
@@ -609,7 +621,9 @@ class Repository(private val context: Context) {
         xtreamFor(p)?.vodInfo(streamId)
     }
 
-    suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = withContext(Dispatchers.IO) {
+    suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = loadSeriesAsSent(p, seriesId).also { noteYear("s$seriesId", it.year) }
+
+    private suspend fun loadSeriesAsSent(p: Playlist, seriesId: String): SeriesInfo = withContext(Dispatchers.IO) {
         if (p.isCombined) {
             // Asked of the playlist it came from; its episodes carry the same mark.
             val t = Combined.tagOf(seriesId)

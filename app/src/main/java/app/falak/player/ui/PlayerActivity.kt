@@ -3301,13 +3301,15 @@ class PlayerActivity : ComponentActivity() {
 
     /** "tt0133093" for a provider's film, "tt0903747:1:2" for its episode; null when the title isn't surely known. */
     private fun providerVideoId(ch: Channel, show: String?, label: String): String? {
+        // (The year in the name, else the one the provider gave on its page.)
         if (ch.kind == Kind.MOVIE) {
             val (name, year) = app.falak.player.data.TitleMatch.clean(ch.name)
-            return repo.imdbFor("movie", name, year)
+            return repo.imdbFor("movie", name, year ?: repo.providerYears["m" + ch.id.removePrefix("m")])
         }
         val se = Regex("S(\\d+) E(\\d+)").find(label) ?: return null
         val (name, year) = app.falak.player.data.TitleMatch.clean(show ?: return null)
-        val imdb = repo.imdbFor("series", name, year) ?: return null
+        val sid = repo.currentSeries?.seriesId.orEmpty()
+        val imdb = repo.imdbFor("series", name, year ?: repo.providerYears["s$sid"]) ?: return null
         return "$imdb:${se.groupValues[1].toInt()}:${se.groupValues[2].toInt()}"
     }
 

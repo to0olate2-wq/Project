@@ -206,6 +206,35 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   start (`learnOutro`: going on to the next episode yourself late in one, before the card; kept as the time left
   under the show's key + `OUTRO_KEY` in `intros`): the Up next card then comes at that point, offering only; its
   countdown (`autoNextEpisode`) still starts in the last 20 s. "Keep watching" on an early card forgets it.
+  **The playlist's own films and series too (8.27, the owner asked):** introdb.app takes IMDb numbers only (a
+  `tmdb_id` gets HTTP 400, checked) and providers send none, so `data/TitleMatch.kt` finds it: `clean` the name
+  ("EN - The Matrix (1999) 4K" → "The Matrix", 1999), search Cinemeta's catalog (`searchUrl`, no key), `pick` only a
+  sure match (same name once `norm`ed, year ±1; no year: the only one with that name, or for a series the search's
+  first answer when it has that name). The year comes from the name or `repo.providerYears` (noted when the
+  provider's film or series details are read). `repo.imdbFor` (cached for the session) → `providerVideoId` in the
+  player. Films use the add-ons' check (`addonSkipTick`); a series' intro and recap get the button, its listed
+  credits bring the Up next card at that point (or "Skip credits" after the last episode). Arabic or other
+  non-Latin names find nothing sure on Cinemeta (its search answers with unrelated English titles): no button.
+  `SkipSegmentsLiveTest.providerTitlesAreFound` checks real names against the real services.
+- **Home button in the player (8.27, the owner asked):** `homeButton` at the start of the player's top bar (a
+  house; "Home" written on a TV), `goHome()`: the progress is kept, a live channel goes to the mini player as with
+  Back, then MainActivity gets `Notifier.EXTRA_OPEN = "HOME"` → `vm.navigate("HOME")` (Library, Home, the add-on
+  portal's page closed).
+- **Welcome, the guide, what changed (8.27; the owner: "first time installing the app, a welcome screen and
+  features on each button, like a guide, for the first time only"; after an update "show where the update is"),
+  `ui/Guide.kt`, `data/AppChanges.kt`:** buttons register with `Modifier.guideAnchor(name)` (BarTab, RailIcon's
+  square, the Cinema menu's words and tools, the search box, the top bar's TV guide button). `Guide.start(steps)`
+  keeps the steps whose button is on screen (or that point at nothing); `GuideOverlay` (in MainActivity, over
+  everything) dims the screen with a ring round the button and a card placed beside / under / over it (a `Layout`
+  measures the card first). Tap or Next goes on, Skip or Back ends; on a TV Left/Right move between Skip and Next.
+  A new install (no playlist, `Settings.seenVersion` "") shows `WelcomeScreen`; "Get started" sets `seenVersion`
+  and `tourDue`, and `Guide.TOUR` runs when the lists are next on screen. After an update, `AppChanges.since(
+  seenVersion or FIRST_NOTED, VERSION_NAME)` runs as a guide ("What's new in …" then each change, pointing at its
+  button), then `seenVersion` = this version. **Add an `AppChanges.BIG` entry with a release only when a core
+  feature changes how it works or where it is.** Settings → "Help and about": "Show the guide again" and "What
+  changed in this version" (`vm.changesAgain`). `seenVersion` and `tourDue` are `DEVICE_SETTINGS`. Under
+  Robolectric `Guide.auto` is false (nothing starts by itself); `GuideScreens.kt` turns it on.
+- CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
   name carries a year before last year is out; a day that stamped 15% of the library (200+) is no date; without a

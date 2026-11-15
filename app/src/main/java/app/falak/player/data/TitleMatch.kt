@@ -39,12 +39,19 @@ object TitleMatch {
         }
     }
 
-    /** The one result that is surely this title, or null. */
-    fun pick(found: List<Found>, name: String, year: Int?): String? {
+    /**
+     * The one result that is surely this title, or null. With no year, a series' name shared by
+     * several titles ("Friends") is taken when Cinemeta's search puts it first (its best answer,
+     * the well-known one); a film's isn't (remakes share names more often, and a film's year is
+     * nearly always in its name or on its page).
+     */
+    fun pick(found: List<Found>, name: String, year: Int?, series: Boolean = false): String? {
         val want = norm(name)
         if (want.isEmpty()) return null
         val same = found.filter { norm(it.name) == want }
-        if (year == null) return same.singleOrNull()?.id
+        if (year == null) {
+            return same.singleOrNull()?.id ?: if (series && found.firstOrNull()?.let { norm(it.name) == want } == true) found.first().id else null
+        }
         return same.filter { it.year != null && kotlin.math.abs(it.year - year) <= 1 }
             .minByOrNull { kotlin.math.abs(it.year!! - year) }?.id
     }
