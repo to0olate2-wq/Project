@@ -66,13 +66,17 @@ class PeopleTest {
           ${row("tt0101393", "Swedish Dicks", "2016-01-01T00:00:00Z", "Q5398426")},
           ${row("tt9999999", "Some show", "", "Q15416", eps = "10")},
           ${row("tt5555555", "An episode", "2010-01-01T00:00:00Z", "Q21191270")},
-          ${row("tt7777777", "Unknown kind with episodes", "2012-01-01T00:00:00Z", "Q1", eps = "8")}
+          ${row("tt7777777", "Unknown kind with episodes", "2012-01-01T00:00:00Z", "Q1", eps = "8")},
+          {"imdb":{"type":"literal","value":"tt15398776"},"mul":{"xml:lang":"mul","type":"literal","value":"Oppenheimer"},
+           "ar":{"xml:lang":"ar","type":"literal","value":"أوبنهايمر"},"date":{"type":"literal","value":"2023-07-21T00:00:00Z"},"kinds":{"type":"literal","value":"Q11424"}}
         ]}}"""
         val (films, series) = People.parseCredits(text)
-        assertEquals(listOf("John Wick", "The Matrix"), films.map { it.name })
-        assertEquals("ماتريكس", films[1].altName)
-        assertEquals(1999, films[1].year)
-        assertEquals("https://images.metahub.space/poster/small/tt0133093/img", films[1].poster)
+        // A name kept as "mul" (no English one) is used as the English.
+        assertEquals(listOf("Oppenheimer", "John Wick", "The Matrix"), films.map { it.name })
+        assertEquals("أوبنهايمر", films[0].altName)
+        assertEquals("ماتريكس", films[2].altName)
+        assertEquals(1999, films[2].year)
+        assertEquals("https://images.metahub.space/poster/small/tt0133093/img", films[2].poster)
         assertEquals(listOf("Swedish Dicks", "Unknown kind with episodes", "Some show"), series.map { it.name })
         assertTrue(People.creditsQuery("Q43416").contains("wdt:P161 wd:Q43416"))
     }

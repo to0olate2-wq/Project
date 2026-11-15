@@ -120,7 +120,7 @@ object People {
           OPTIONAL { ?p wdt:P18 ?image . }
           OPTIONAL { ?enwiki schema:about ?p ; schema:isPartOf <https://en.wikipedia.org/> . }
           OPTIONAL { ?arwiki schema:about ?p ; schema:isPartOf <https://ar.wikipedia.org/> . }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ar". }
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul,ar". }
         } LIMIT 1
     """.trimIndent()
 
@@ -156,14 +156,15 @@ object People {
     private val NOT_A_TITLE = setOf("Q21191270", "Q3464665", "Q24856", "Q7725310", "Q482994", "Q134556", "Q7302866")
 
     fun creditsQuery(id: String): String = """
-        SELECT ?w (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
+        SELECT ?w (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
                (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
           { ?w wdt:P161 wd:$id . } UNION { ?w wdt:P57 wd:$id . }
           ?w wdt:P345 ?imdbId . FILTER(STRSTARTS(?imdbId, "tt"))
           OPTIONAL { ?w wdt:P31 ?kind . }
-          OPTIONAL { ?w wdt:P577 ?d . }
+          OPTIONAL { ?w wdt:P577|wdt:P580 ?d . }
           OPTIONAL { ?w wdt:P1113|wdt:P2437 ?eps . }
           OPTIONAL { ?w rdfs:label ?enName . FILTER(LANG(?enName) = "en") }
+          OPTIONAL { ?w rdfs:label ?mulName . FILTER(LANG(?mulName) = "mul") }
           OPTIONAL { ?w rdfs:label ?arName . FILTER(LANG(?arName) = "ar") }
         } GROUP BY ?w
     """.trimIndent()
@@ -175,7 +176,8 @@ object People {
             val kinds = value(r["kinds"]).split(',').filter { it.isNotBlank() }.toSet()
             if (kinds.any { it in NOT_A_TITLE } && kinds.none { it in SERIES }) return@mapNotNull null
             val series = kinds.any { it in SERIES } || value(r["episodes"]).isNotEmpty()
-            val en = value(r["en"])
+            // (Since 2024 many titles keep their name as "mul", the same in every language, and no English one.)
+            val en = value(r["en"]).ifBlank { value(r["mul"]) }
             val ar = value(r["ar"])
             val name = en.ifBlank { ar }.ifBlank { return@mapNotNull null }
             Title(

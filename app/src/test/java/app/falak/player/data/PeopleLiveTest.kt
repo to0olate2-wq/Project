@@ -70,6 +70,8 @@ class PeopleLiveTest {
             val films = c.credits(nolan.id)!!.first
             println("Nolan: ${films.take(5).map { it.name }}")
             assertTrue(films.any { it.imdb == "tt1375666" })
+            // English names, not Arabic ones, where Wikidata has them (also as "mul").
+            assertTrue(films.any { it.name == "Oppenheimer" })
             // Typed in part, as in the search box.
             println("Search 'tom han': ${c.search("tom han")?.take(5)}")
         } finally {
