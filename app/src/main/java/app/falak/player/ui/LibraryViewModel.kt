@@ -276,6 +276,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         repo.addonSubs = videoId to subs
     }
 
+    /** Settings → Help and about → What changed in this version: its guide, once the lists are on screen. */
+    var changesAgain by mutableStateOf(false)
+
     /** Settings: the channels hidden because they didn't work are all shown again. */
     fun forgetDeadChannels() = repo.forgetDead()
 
@@ -1311,6 +1314,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             "RECORDINGS" -> screen = Screen.RECORDINGS
             "MORE" -> if (playlist != null) screen = Screen.MORE
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
+            // The player's Home button: the add-ons' portal and any page left as they were, Home shown.
+            "HOME" -> {
+                if (playlist == null) {
+                    screen = Screen.PLAYLISTS
+                    return
+                }
+                screen = Screen.LIBRARY
+                section = Section.HOME
+                group = null
+                query = ""
+                addons.closeItem()
+            }
             else -> {
                 val s = Section.entries.firstOrNull { it.name == where } ?: return
                 if (playlist == null) return

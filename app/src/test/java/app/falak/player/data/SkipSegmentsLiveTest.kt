@@ -83,4 +83,30 @@ class SkipSegmentsLiveTest {
             Thread.sleep(800)
         }
     }
+
+    /** A provider's titles, as they are named in playlists: their IMDb number found on Cinemeta, then their parts on introdb.app. */
+    @Test
+    fun providerTitlesAreFound() {
+        assumeTrue("Only when asked for", System.getenv("LIVE_CHECKS") != null)
+        val asked = listOf(
+            Triple("series", "EN - Stranger Things (2016)", "tt4574334"),
+            Triple("series", "|EN| Friends", "tt0108778"),
+            Triple("movie", "The Matrix (1999) 4K", "tt0133093"),
+            Triple("movie", "EN - Iron Man 2008", "tt0371746"),
+        )
+        for ((type, raw, want) in asked) {
+            val (name, year) = TitleMatch.clean(raw)
+            val (code, body) = get(TitleMatch.searchUrl(type, name))
+            val found = TitleMatch.pick(TitleMatch.parse(body), name, year)
+            println("FOUND $raw -> \"$name\" $year -> HTTP $code -> $found")
+            assertEquals(raw, want, found)
+            Thread.sleep(800)
+        }
+        // Stranger Things S1 E1 from its name, then its intro.
+        val (n, y) = TitleMatch.clean("EN - Stranger Things (2016)")
+        val id = TitleMatch.pick(TitleMatch.parse(get(TitleMatch.searchUrl("series", n)).second), n, y)
+        val parts = SkipSegments.parse(get(SkipSegments.url("$id:1:1")!!).second)
+        println("FOUND parts $parts")
+        assertTrue("No intro for Stranger Things S1 E1", parts.any { it.kind == SkipSegments.Kind.INTRO })
+    }
 }

@@ -2,6 +2,7 @@
 
 package app.falak.player.ui
 
+import app.falak.player.BuildConfig
 import app.falak.player.FreezeWatch
 import app.falak.player.sync.deviceName
 import app.falak.player.sync.SyncServer
@@ -176,6 +177,12 @@ class MainActivity : ComponentActivity() {
                             // The app opening with a saved playlist: the logo (where Android's launch
                             // screen had it) until the lists are ready.
                             StartScreen("Opening ${vm.playlist?.name.orEmpty()}…")
+                        } else if (Guide.auto && state.settings.seenVersion.isEmpty() && state.playlists.isEmpty()) {
+                            // A new install (8.27): what the app is, then adding a playlist; the guide
+                            // to the buttons comes once its pages are open.
+                            WelcomeScreen {
+                                vm.updateSettings { it.copy(seenVersion = BuildConfig.VERSION_NAME, tourDue = true) }
+                            }
                         } else AppShell(vm, state, shell) { AnimatedContent(
                             targetState = vm.screen,
                             transitionSpec = {
@@ -282,6 +289,47 @@ class MainActivity : ComponentActivity() {
                                 vm.guidePreview = null
                             }
                             KidsTimePage(b, state) { app.falak.player.data.KidsClock.dismiss() }
+                        }
+                        // The guide, over everything (when one is running).
+                        GuideOverlay()
+                    }
+                    // The guide to the main buttons (after the welcome page, or asked for in Settings), and
+                    // after an update, where its big changes are (AppChanges): once the lists are on screen.
+                    val listsShown = vm.screen == Screen.LIBRARY && vm.playlist != null && !vm.startingUp && !vm.kidsActive &&
+                        !(vm.choosingProfile && vm.profilesWanted(state))
+                    LaunchedEffect(listsShown, state.settings.tourDue, state.settings.seenVersion, vm.changesAgain) {
+                        if (!Guide.auto || !listsShown || Guide.steps != null) return@LaunchedEffect
+                        val current = BuildConfig.VERSION_NAME
+                        val s = vm.state.value.settings
+                        if (!s.tourDue && s.seenVersion == current && !vm.changesAgain) return@LaunchedEffect
+                        // The pages settle and the buttons say where they are.
+                        kotlinx.coroutines.delay(1_200)
+                        val now = vm.state.value.settings
+                        when {
+                            now.tourDue -> Guide.start(Guide.TOUR) {
+                                vm.updateSettings { it.copy(tourDue = false, seenVersion = current) }
+                            }
+                            vm.changesAgain || now.seenVersion != current -> {
+                                val again = vm.changesAgain
+                                vm.changesAgain = false
+                                val notes = if (again) {
+                                    val latest = app.falak.player.data.AppChanges.BIG.lastOrNull()?.version
+                                    app.falak.player.data.AppChanges.BIG.filter { it.version == latest }
+                                } else {
+                                    app.falak.player.data.AppChanges.since(now.seenVersion.ifEmpty { app.falak.player.data.AppChanges.FIRST_NOTED }, current)
+                                }
+                                val seen = { vm.updateSettings { it.copy(seenVersion = current) } }
+                                if (notes.isEmpty()) {
+                                    seen()
+                                } else {
+                                    val version = notes.last().version
+                                    Guide.start(
+                                        listOf(GuideStep(emptyList(), "What's new in $version", "A few things work differently now. Here's where.")) +
+                                            notes.map { GuideStep(it.keys, it.title, it.text) },
+                                        seen,
+                                    )
+                                }
+                            }
                         }
                     }
                     // Left alone for a while on the lists: the ambient screen.

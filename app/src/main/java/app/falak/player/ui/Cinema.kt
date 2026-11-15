@@ -150,6 +150,7 @@ private fun MenuWord(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Column(
         Modifier
+            .guideAnchor(label)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(if (focused) Paper else Color.Transparent)
@@ -198,6 +199,7 @@ private fun MenuTool(
     Row(
         Modifier
             .height(36.dp)
+            .guideAnchor(label)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(if (focused) Paper else Color.Transparent)

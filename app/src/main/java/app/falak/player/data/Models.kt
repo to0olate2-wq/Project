@@ -471,7 +471,11 @@ data class Settings(
      * synced with Wi-Fi linking like other settings, so one added on the phone reaches the TV.
      */
     val addons: List<String> = emptyList(),
-    /** Add-on titles: ask introdb.app where the intro, recap and credits are, for the skip buttons (see SkipSegments). */
+    /** The app's version opened last on this device ("" before 8.27, or on a new install): for the update guide (AppChanges). */
+    val seenVersion: String = "",
+    /** The guide to the main buttons is to be shown when a playlist's pages are next on screen (Guide.TOUR). */
+    val tourDue: Boolean = false,
+    /** Ask introdb.app where the intro, recap and credits are, for the skip buttons (see SkipSegments, TitleMatch). */
     val skipLookup: Boolean = true,
     /** Live TV: channels that didn't work are left out of the rows and lists for a week (see DeadChannels). */
     val hideDead: Boolean = true,

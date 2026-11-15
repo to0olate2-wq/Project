@@ -362,6 +362,26 @@ class Repository(private val context: Context) {
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
+    /** "movie|The Matrix|1999" → its IMDb number, or "" when none is sure (this session; see TitleMatch). */
+    private val imdbFound = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** The IMDb number of a provider's film or series ([type] "movie" or "series"), found by its name; null if not sure. Network: call off the main thread. */
+    fun imdbFor(type: String, name: String, year: Int?): String? {
+        val key = "$type|${TitleMatch.norm(name)}|${year ?: ""}"
+        imdbFound[key]?.let { return it.ifEmpty { null } }
+        val found = try {
+            val request = okhttp3.Request.Builder().url(TitleMatch.searchUrl(type, name)).header("User-Agent", "ThePlayer").build()
+            http.newCall(request).execute().use { r ->
+                if (!r.isSuccessful) return null // (not remembered: may answer next time)
+                TitleMatch.pick(TitleMatch.parse(r.body?.string().orEmpty()), name, year)
+            }
+        } catch (e: Exception) {
+            return null
+        }
+        imdbFound[key] = found.orEmpty()
+        return found
+    }
+
     /** The subtitles the add-ons have for what is playing: its video id → them (set by the portal as it starts). */
     @Volatile var addonSubs: Pair<String, List<AddonSub>>? = null
 

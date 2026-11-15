@@ -205,7 +205,12 @@ jobs:
             sudo sysctl -q -w kernel.core_pattern=/tmp/core.%p || true
             ulimit -c unlimited || true
           fi
-          ./gradlew testPlayDebugUnitTest ${only:+--tests "$only"} --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
+          # (Several, separated by spaces: "[only *GuideScreens *TitleMatch*]".)
+          picks=()
+          set -f
+          for t in $only; do picks+=(--tests "$t"); done
+          set +f
+          ./gradlew testPlayDebugUnitTest "${picks[@]}" --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
       # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".
       - name: Publish to the screenshots branch
