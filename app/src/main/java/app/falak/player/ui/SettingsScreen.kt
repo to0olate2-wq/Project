@@ -108,7 +108,7 @@ enum class SettingsPage(val title: String) {
     REMINDERS("Reminders & alerts"),
     FAMILY("Profiles & parental control"),
     DEVICES("Devices & phone remote"),
-    ABOUT("About"),
+    ABOUT("Help and about"),
     SUBTITLE_STYLE("Subtitle style"),
     ;
 
@@ -398,7 +398,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             item {
                 HubRow(
                     { HubIcon(rememberVectorPainter(Icons.Outlined.Info)) },
-                    "About",
+                    "Help and about",
                     "The Player ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})" +
                         if (Updater.enabled) " · Check for updates" else "",
                     hubAt(SettingsPage.ABOUT.name),
@@ -619,16 +619,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 s.autoNextEpisode,
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
         }
-        if (Addons.enabled) {
-            item {
-                SwitchRow(
-                    "Skip intro and credits buttons",
-                    "Films and series from add-ons: a button shows while the intro, a recap or the end credits play; press it to skip, " +
-                        "or leave it and it plays on. The times come from introdb.app, a free list kept by its users: the app sends it the " +
-                        "title's IMDb number, season and episode, nothing about you. Not every title is in it.",
-                    s.skipLookup,
-                ) { vm.updateSettings { it.copy(skipLookup = !it.skipLookup) } }
-            }
+        item {
+            SwitchRow(
+                "Skip intro and credits buttons",
+                "A button shows while the intro, a recap or the end credits play; press it to skip, or leave it and it plays on. " +
+                    "The times come from introdb.app, a free list kept by its users. It is asked with the title's IMDb number, season " +
+                    "and episode; for your provider's films and series that number is first found by the title's name on Cinemeta " +
+                    "(Stremio's free list). Nothing about you is sent. Not every title is in the list.",
+                s.skipLookup,
+            ) { vm.updateSettings { it.copy(skipLookup = !it.skipLookup) } }
         }
         item {
             SwitchRow("Larger buffer", "Fewer pauses on slow connections; channels start a little slower", s.bigBuffer) {
@@ -1377,6 +1376,19 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         SettingsPage.ABOUT -> {
+        // The guide to the main buttons, and what changed in this version (8.27): shown over the lists.
+        item {
+            ClickRow("Show the guide again", "A short walk through the main buttons", focusAt("guide")) {
+                vm.updateSettings { it.copy(tourDue = true) }
+                vm.navigate("HOME")
+            }
+        }
+        item {
+            ClickRow("What changed in this version", "Where the big changes are", focusAt("changes")) {
+                vm.changesAgain = true
+                vm.navigate("HOME")
+            }
+        }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text("Made by Ahmed", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = Paper)

@@ -153,6 +153,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** The star before the name at the top of the controls: Favorites. */
     private lateinit var favButton: TextView
+    private lateinit var homeButton: TextView
 
     /** The top of the controls: ☆, what's playing (and what's on now); phones also the setting icons. */
     private lateinit var topBar: LinearLayout
@@ -546,6 +547,12 @@ class PlayerActivity : ComponentActivity() {
         // Add what's playing to Favorites without leaving the player: the star before its name.
         favButton = pill("", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
+        // Straight to the app's Home from anything playing (8.27, the owner asked): a TV says so on
+        // the button, a phone shows the house only.
+        homeButton = pill(if (tvLayout) "Home" else "", R.drawable.ic_pl_home) { goHome() }.apply {
+            tag = "Home"
+            contentDescription = "Home"
+        }
         tracksButton = pill("Audio and subtitles", R.drawable.ic_pl_subtitles) { showTracksPanel() }.apply { visibility = View.GONE }
         aspectButton = pill("Picture size  ·  " + aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
@@ -3023,6 +3030,7 @@ class PlayerActivity : ComponentActivity() {
         gravity = Gravity.CENTER_VERTICAL
         clipToPadding = false
         clipChildren = false
+        addView(homeButton, pillParams())
         addView(favButton, pillParams())
         titleView = TextView(this@PlayerActivity).apply {
             setTextColor(Color.WHITE)
@@ -3257,15 +3265,24 @@ class PlayerActivity : ComponentActivity() {
     private var skipsFor: String? = null
     private var skipsJob: kotlinx.coroutines.Job? = null
 
-    /** An add-on's film or episode starts: where its intro, recap and credits are, if introdb.app knows. */
+    /**
+     * A film or episode starts: where its intro, recap and credits are, if introdb.app knows. An
+     * add-on's has its IMDb number in its id; a provider's is found by its name (8.27, see
+     * TitleMatch), only when it surely is that title.
+     */
     private fun loadSkips(ch: Channel) {
         if (skipsFor == ch.id) return
         skipsJob?.cancel()
         skips = emptyList()
         skipsFor = ch.id
-        if (!ch.id.startsWith("addon:") || !repo.state.value.settings.skipLookup) return
-        val url = app.falak.player.data.SkipSegments.url(ch.id.removePrefix("addon:")) ?: return
+        if (!repo.state.value.settings.skipLookup || ch.id.startsWith("cu:")) return
+        val addon = ch.id.startsWith("addon:")
+        if (!addon && ch.kind != Kind.MOVIE && ch.kind != Kind.SERIES) return
+        val show = if (!addon && ch.kind == Kind.SERIES) (repo.currentSeries?.name ?: episodeShow(ch.name)) else null
+        val label = if (!addon && ch.kind == Kind.SERIES) episodeLabel(ch) else ""
         skipsJob = lifecycleScope.launch {
+            val video = if (addon) ch.id.removePrefix("addon:") else withContext(Dispatchers.IO) { providerVideoId(ch, show, label) }
+            val url = video?.let { app.falak.player.data.SkipSegments.url(it) } ?: return@launch
             val found = try {
                 withContext(Dispatchers.IO) {
                     val request = okhttp3.Request.Builder().url(url).header("User-Agent", "ThePlayer/${app.falak.player.BuildConfig.VERSION_NAME}").build()
@@ -3282,7 +3299,21 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** An add-on's film or episode: the looked-up part playing now, else its show's learned intro. */
+    /** "tt0133093" for a provider's film, "tt0903747:1:2" for its episode; null when the title isn't surely known. */
+    private fun providerVideoId(ch: Channel, show: String?, label: String): String? {
+        // (The year in the name, else the one the provider gave on its page.)
+        if (ch.kind == Kind.MOVIE) {
+            val (name, year) = app.falak.player.data.TitleMatch.clean(ch.name)
+            return repo.imdbFor("movie", name, year ?: repo.providerYears["m" + ch.id.removePrefix("m")])
+        }
+        val se = Regex("S(\\d+) E(\\d+)").find(label) ?: return null
+        val (name, year) = app.falak.player.data.TitleMatch.clean(show ?: return null)
+        val sid = repo.currentSeries?.seriesId.orEmpty()
+        val imdb = repo.imdbFor("series", name, year ?: repo.providerYears["s$sid"]) ?: return null
+        return "$imdb:${se.groupValues[1].toInt()}:${se.groupValues[2].toInt()}"
+    }
+
+    /** A film or episode with no Up next card: the looked-up part playing now, else its show's learned intro. */
     private fun addonSkipTick(p: Player, ch: Channel) {
         // (Not over the loading page, or a picture that has stopped to load more.)
         if (p.playbackState != Player.STATE_READY) {
@@ -3355,7 +3386,7 @@ class PlayerActivity : ComponentActivity() {
     private fun seriesTick() {
         val p = player
         val ch = queue.getOrNull(index)
-        if (p != null && ch != null && !inPip && ch.id.startsWith("addon:")) {
+        if (p != null && ch != null && !inPip && (ch.id.startsWith("addon:") || (ch.kind == Kind.MOVIE && !ch.id.startsWith("cu:")))) {
             if (upNext != null) upNext = null
             addonSkipTick(p, ch)
             return
@@ -3367,20 +3398,34 @@ class PlayerActivity : ComponentActivity() {
         }
         val dur = p.duration
         val pos = p.currentPosition
-        val intro = showKey(ch)?.let { repo.state.value.intros[it] }
-        skipIntroShown = intro != null && introSkippedFor != ch.id && dur > 0 &&
-            pos >= intro.start - 2_000 && pos < intro.end - 6_000
-        if (skipIntroShown && intro != null) {
-            skipLabel = "Skip intro"
-            skipTarget = intro.end
-            skipPart = null
-        }
         val next = nextEpisode()
+        // Looked up (8.27): the intro and a recap get the button; the credits bring the Up next card
+        // (or, after the last episode, "Skip credits").
+        val listed = if (skipsFor == ch.id && p.playbackState == Player.STATE_READY) skips else emptyList()
+        val part = app.falak.player.data.SkipSegments.offer(listed.filter { it.kind != app.falak.player.data.SkipSegments.Kind.OUTRO || next == null }, pos, dur.coerceAtLeast(0))
+            ?.takeIf { "${ch.id}|${it.kind}" !in skipsDone }
+        val intro = if (listed.any { it.kind == app.falak.player.data.SkipSegments.Kind.INTRO }) null else showKey(ch)?.let { repo.state.value.intros[it] }
+        if (part != null) {
+            skipLabel = part.kind.label
+            skipTarget = app.falak.player.data.SkipSegments.target(part, dur.coerceAtLeast(0))
+            skipPart = "${ch.id}|${part.kind}"
+            skipIntroShown = true
+        } else {
+            skipIntroShown = intro != null && introSkippedFor != ch.id && dur > 0 &&
+                pos >= intro.start - 2_000 && pos < intro.end - 6_000
+            if (skipIntroShown && intro != null) {
+                skipLabel = "Skip intro"
+                skipTarget = intro.end
+                skipPart = null
+            }
+        }
         val ended = p.playbackState == Player.STATE_ENDED
         // The credits: the last twenty seconds, or from where you went on to the next episode
         // yourself in this show before (learned, see learnOutro).
         val auto = repo.state.value.settings.autoNextEpisode
-        val early = showKey(ch)?.let { repo.state.value.intros[it + OUTRO_KEY] }?.start ?: 0L
+        val learnedOutro = showKey(ch)?.let { repo.state.value.intros[it + OUTRO_KEY] }?.start ?: 0L
+        val listedOutro = listed.firstOrNull { it.kind == app.falak.player.data.SkipSegments.Kind.OUTRO && dur > 0 && it.start > dur / 2 }?.let { dur - it.start } ?: 0L
+        val early = maxOf(learnedOutro, listedOutro)
         val lastStretch = ended || dur - pos <= UP_NEXT_MS
         val credits = dur > 5 * 60_000 && dur - pos <= maxOf(UP_NEXT_MS, early)
         if (next == null || upNextDismissed == ch.id || SleepTimer.stopsAfter(ch.id) || kidsFinishing != null || !(ended || credits)) {
@@ -5465,6 +5510,22 @@ class PlayerActivity : ComponentActivity() {
      * Mini player). This player lets go of the stream first, as many providers allow one
      * connection at a time.
      */
+    /**
+     * The Home button: out of the player onto the app's Home, whichever page it was opened from
+     * (a film's page, the add-ons' portal, the guide). A live channel carries on in the mini
+     * player, as with Back (Settings → Mini player).
+     */
+    private fun goHome() {
+        saveProgress()
+        offerMini()
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(app.falak.player.data.Notifier.EXTRA_OPEN, "HOME")
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        finish()
+    }
+
     private fun offerMini(takeFocus: Boolean = true) {
         val ch = queue.getOrNull(index) ?: return
         val p = player ?: return

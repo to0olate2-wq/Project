@@ -218,6 +218,7 @@ internal fun BarTab(
     Column(
         modifier
             .fillMaxHeight()
+            .guideAnchor(label)
             .focusRing(RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             // TalkBack says which tab is open.

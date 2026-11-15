@@ -323,7 +323,9 @@ private fun RailIcon(
         else -> Muted
     }
     val side = (closedWidth - box) / 2
+    // (Where the guide points at it: the icon's square at the rail's edge.)
     Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.padding(start = side).size(box).guideAnchor(label))
         // The section you're in: a short orange mark on the rail's edge.
         if (selected) {
             Box(
@@ -500,6 +502,7 @@ fun SidebarTopBar(
             // Takes the free width up to a comfortable 560 dp; the buttons stay at the far right.
             // With a title beside it (TV): a narrower box.
             (if (title != null) Modifier.width(330.dp) else Modifier.weight(1f).widthIn(max = 560.dp))
+                .guideAnchor("Search")
                 .panel(shape)
                 .padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -537,7 +540,7 @@ fun SidebarTopBar(
         if (tools) Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))
             if (hasGuide) {
-                IconButton(onClick = onGuide) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
+                IconButton(onClick = onGuide, modifier = Modifier.guideAnchor("TV guide")) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
             }
             profileButton?.invoke()
             if (onDownloads != null) {
