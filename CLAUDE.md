@@ -253,22 +253,31 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   audio sink is wrapped so the clock the picture follows is moved (`Offset.us`, read live); VLC
   `setAudioDelay` (set again at each Playing). `Settings.audioDelayMs` (+ later, − earlier; this device's).
   Player ("Play with") window → "Sound timing" (−/+ 50 ms, heard at once), and Settings → Sound.
-  (2) **Trakt**, `data/Trakt.kt` (reading/sending, tested) + `data/TraktClient.kt` (network): the app's own Trakt
-  app = repository secrets `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` → `BuildConfig.TRAKT_ID/SECRET` (build job only;
-  the screens job gets it as `TRAKT_LIVE_ID` so test builds have no key). Since 2026 Trakt apps are made at
-  developer.trakt.tv (GitHub sign-in), and a free account connects ONE outside app. Without a key: no actors, no
-  Trakt ratings, no Trakt page (IMDb ratings still, from Cinemeta). Settings → Trakt: connect with a device code
-  (trakt.tv/activate, QR), keys in `Settings.trakt*` (`DEVICE_SETTINGS`: each device connects itself). Player
-  scrobbles start/pause/stop (`traktUpdate`/`traktStop`, the IMDb video id from `providerVideoId` or `addon:`).
-  Add-on portal: My list also shows and changes the Trakt watchlist. (3) **Ratings**: `rememberScores` →
-  "IMDb 8.7 · Trakt 87%" on film/series pages (provider titles via `imdbFor`) and add-on pages.
-  (4) **Actors** (`ui/PersonScreen.kt`, `Screen.PERSON`, `vm.openPerson/closePerson`, `PersonOpen.from`):
-  `CastNames` (chips; plain text without Trakt or in kids mode), the page = photo, born, story, "In your playlist"
-  (`Trakt.inLibrary`: cleaned name + year ±1), Films, Series (others open with add-ons that bring links, returnTo
-  PERSON; Back from a title opened there comes back: `titleFromPerson` / `leaveTitle`). Search: "People" row
-  (`rememberPeopleFound`, after the titles). Add-on pages read cast from `cast`/`director` or Cinemeta's `links`.
-  Tests: `TraktTest` (runs on the sandbox), `SoundTimingTest`, `AddonsTest`, `PersonScreens.kt` (`PersonForTest`),
-  `TraktLiveTest` (`[only *TraktLiveTest]`).
+  (2) **Actors** from **Wikidata** (no key; the owner OK'd it after Trakt's change), `data/People.kt` (queries and
+  reading, tested) + `data/PeopleClient.kt` (`repo.people`; User-Agent names the app, Wikimedia asks it; `testing`
+  under Robolectric: nothing asked). Find = `wbsearchentities` (Arabic names asked in Arabic) + a SPARQL keeping
+  humans who are cast (P161) or director (P57) of something, with a Commons photo (`Special:FilePath…?width=360`).
+  Page = SPARQL (born, died, place, photo, en/ar Wikipedia) + Wikipedia's REST summary. Titles = SPARQL of what lists
+  them with an IMDb number; names: en, else **mul** (since 2024 many items have no English label, only "mul"), Arabic
+  as `altName`; series by kind (P31) or episode/season counts; posters `images.metahub.space/poster/small/tt…/img`.
+  Checked live 8.29 (`PeopleLiveTest`, `[only …]`): Keanu Reeves 81 films, Adel Imam in Arabic, Nolan.
+  `ui/PersonScreen.kt` (`Screen.PERSON`, `vm.openPerson/closePerson`, `PersonOpen.from`): `CastNames` (chips; text
+  in kids mode); photo, line, born, story, "In your playlist" (`People.inLibrary`: cleaned name or Arabic name +
+  year ±1), Films, Series (others open with add-ons that bring links, returnTo PERSON; Back from a title opened
+  there comes back: `titleFromPerson` / `leaveTitle`). Search: "People" row (`rememberPeopleFound`, after the
+  titles, names must contain every typed word). Add-on pages read cast from `cast`/`director` or Cinemeta's `links`.
+  (3) **Ratings**: `rememberScores` → "IMDb 8.7" (Cinemeta, `repo.imdbRating`) + "Trakt 87%" when there's a Trakt
+  key, on film/series pages (provider titles via `imdbFor`) and add-on pages. Nothing asked in screen tests.
+  (4) **Trakt (optional)**, `data/Trakt.kt` + `data/TraktClient.kt`: only with the owner's Trakt app (repository
+  secret `TRAKT_CLIENT_ID` → `BuildConfig.TRAKT_ID`; the screens job gets it as `TRAKT_LIVE_ID`). Since Oct 2026:
+  apps are made at developer.trakt.tv (Trakt account + linked GitHub), **no client secret** (sent only if
+  `TRAKT_CLIENT_SECRET` exists), sign-in calls on `auth.trakt.tv`, redirect `http://localhost`; a Development app lets
+  only its owner + 16 invited people connect (Production access needs Trakt's review). The owner hasn't made one
+  (8.29): Settings → Trakt says it isn't set up. With it: device code (trakt.tv/activate, QR), keys in
+  `Settings.trakt*` (`DEVICE_SETTINGS`), the player scrobbles (`traktUpdate`/`traktStop`), My list ↔ watchlist.
+  Never tried against a real Trakt account.
+  Tests: `PeopleTest`, `TraktTest` (both run on the sandbox), `SoundTimingTest`, `AddonsTest`, `PersonScreens.kt`
+  (`PersonForTest`), `PeopleLiveTest`, `TraktLiveTest`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
