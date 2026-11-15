@@ -62,6 +62,7 @@ import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Watch
 import app.falak.player.data.progressKey
+import app.falak.player.repo
 
 @Composable
 fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, Channel) -> Unit) {
@@ -74,7 +75,13 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val playFocus = remember { FocusRequester() }
     val tv = isTv()
 
-    BackHandler { vm.screen = Screen.LIBRARY }
+    BackHandler { vm.leaveTitle() }
+    // IMDb and Trakt (8.29), once the page is read: the series is looked up by its name.
+    val repo = androidx.compose.ui.platform.LocalContext.current.repo
+    val scores = rememberScores(if (info == null) null else show.id + "|" + info.year, "series") {
+        val (name, year) = app.falak.player.data.TitleMatch.clean(show.name)
+        repo.imdbFor("series", name, year ?: info?.year?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toInt() } ?: repo.providerYears["s" + show.seriesId])
+    }
 
     // The player gets every episode of every season, so the next one follows across seasons.
     val all = remember(info) { info?.seasons?.flatMap { it.episodes }.orEmpty() }
@@ -90,7 +97,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     LaunchedEffect(show.id, next != null) { if (next != null) runCatching { playFocus.requestFocus() } }
 
     val cover = info?.cover?.takeIf { it.isNotBlank() } ?: show.logo
-    TitleStage(info?.backdrop, cover, show.name, list, onBack = { vm.screen = Screen.LIBRARY }) { stage ->
+    TitleStage(info?.backdrop, cover, show.name, list, onBack = { vm.leaveTitle() }) { stage ->
         // (TV: the episodes keep to the left, the picture in view beside them.)
         val column = Modifier.padding(horizontal = pageMargin()).widthIn(max = if (stage.tv) 600.dp else 760.dp).fillMaxWidth()
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -101,7 +108,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     name = show.name,
                     meta = listOfNotNull(
                         info?.year?.takeIf { it.isNotBlank() },
-                        ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: show.rating),
+                        scores ?: ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: show.rating),
                         info?.seasons?.size?.takeIf { it > 0 }?.let { "$it season" + if (it == 1) "" else "s" },
                     ).joinToString("  ·  "),
                     genre = info?.genre,
@@ -137,7 +144,9 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             }
             info?.cast?.takeIf { it.isNotBlank() }?.let { cast ->
                 item(key = "credits") {
-                    Column(Modifier.padding(horizontal = pageMargin()).padding(top = 16.dp).widthIn(max = 760.dp)) { Credit("Cast", cast) }
+                    Column(Modifier.padding(horizontal = pageMargin()).padding(top = 16.dp).widthIn(max = 760.dp)) {
+                        CastNames(vm, "Cast", app.falak.player.data.Trakt.castNames(cast))
+                    }
                 }
             }
             when {

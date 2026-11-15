@@ -134,6 +134,9 @@ data class AddonMeta(
     val genres: List<String>,
     val rating: String,
     val videos: List<AddonVideo>,
+    /** Its actors' names (8.29: each opens the actor's page) and directors. */
+    val cast: List<String> = emptyList(),
+    val director: List<String> = emptyList(),
 )
 
 /** A link the player can open, from one add-on. */
@@ -358,6 +361,8 @@ object Addons {
             genres = m.strings("genres") ?: m.strings("genre").orEmpty(),
             rating = m.str("imdbRating"),
             videos = videos,
+            cast = people(m, "cast", "Cast"),
+            director = people(m, "director", "Directors"),
         )
     }
 
@@ -544,6 +549,19 @@ object Addons {
     private fun JsonObject.int(key: String): Int = (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: 0
 
     private fun JsonObject.bool(key: String): Boolean = (this[key] as? JsonPrimitive)?.contentOrNull == "true"
+
+    /**
+     * People of a title's page: the add-on's list ([key], "cast"), else its links of that
+     * [category] (Cinemeta's newer pages: {"name":…, "category":"Cast", "url":"stremio:///search…"}).
+     */
+    private fun people(m: JsonObject, key: String, category: String): List<String> {
+        val listed = m.strings(key).orEmpty().flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
+        if (listed.isNotEmpty()) return listed.distinct().take(15)
+        return (m["links"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            if (o.str("category").equals(category, ignoreCase = true)) o.str("name").trim().ifEmpty { null } else null
+        }.distinct().take(15)
+    }
 
     private fun JsonObject.strings(key: String): List<String>? = when (val v = this[key]) {
         is JsonArray -> v.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }

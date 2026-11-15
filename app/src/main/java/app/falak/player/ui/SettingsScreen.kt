@@ -51,6 +51,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,6 +112,7 @@ enum class SettingsPage(val title: String) {
     REMINDERS("Reminders & alerts"),
     FAMILY("Profiles & parental control"),
     DEVICES("Devices & phone remote"),
+    TRAKT("Trakt"),
     ABOUT("Help and about"),
     SUBTITLE_STYLE("Subtitle style"),
     ;
@@ -383,6 +386,16 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     hubAt(SettingsPage.DEVICES.name),
                     selected = twoPane && (page == SettingsPage.DEVICES || page?.parent == SettingsPage.DEVICES),
                 ) { openPage(SettingsPage.DEVICES) }
+            }
+            item {
+                // Trakt (8.29): ratings and actors for everyone; your account to mark what you watch.
+                HubRow(
+                    { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Person, null, tint = Paper) },
+                    "Trakt",
+                    if (s.traktAccess.isNotEmpty()) "Connected" + (s.traktUser.ifBlank { null }?.let { " as $it" } ?: "") else "Not connected",
+                    hubAt(SettingsPage.TRAKT.name),
+                    selected = twoPane && page == SettingsPage.TRAKT,
+                ) { openPage(SettingsPage.TRAKT) }
             }
             item {
                 HubRow(
@@ -772,6 +785,24 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
         SettingsPage.SOUND -> {
         item { SectionTitle("Sound", first = true) }
+        item {
+            // Sound timing (8.29): also in the player (Player → Sound timing), where it can be heard.
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Sound timing", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    app.falak.player.player.SoundTiming.label(s.audioDelayMs) + ". For sound out of step with the picture on this device " +
+                        "(a soundbar often makes it late: move it earlier). Easiest to set while watching: Player → Sound timing.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    TagChip("− 50 ms", false) { vm.updateSettings { it.copy(audioDelayMs = app.falak.player.player.SoundTiming.clamp(it.audioDelayMs - 50)) } }
+                    TagChip("In step", s.audioDelayMs == 0) { vm.updateSettings { it.copy(audioDelayMs = 0) } }
+                    TagChip("+ 50 ms", false) { vm.updateSettings { it.copy(audioDelayMs = app.falak.player.player.SoundTiming.clamp(it.audioDelayMs + 50)) } }
+                }
+            }
+        }
         item {
             SwitchRow(
                 "Even out volume between channels",
@@ -1472,6 +1503,10 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
         }
 
+        SettingsPage.TRAKT -> {
+        item { SectionTitle("Trakt", first = true) }
+        item { TraktSettings(vm, s, focusAt("first")) }
+        }
         SettingsPage.ABOUT -> {
         // The guide to the main buttons, and what changed in this version (8.27): shown over the lists.
         item {
@@ -2416,4 +2451,113 @@ private fun EditPinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (Strin
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+
+/**
+ * Settings → Trakt (8.29): connect this device to a Trakt account with a code (typed on
+ * trakt.tv/activate, on a phone or computer), what it does, and disconnecting.
+ */
+@Composable
+private fun TraktSettings(vm: LibraryViewModel, s: app.falak.player.data.Settings, modifier: Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repo = context.repo
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf<app.falak.player.data.Trakt.DeviceCode?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
+    Column {
+        Text(
+            "Ratings from IMDb and Trakt on film and series pages, and actors' pages (tap a name in the cast, or search for one), " +
+                "work without an account. Connect yours to mark the films and episodes you watch on Trakt and see your Trakt watchlist " +
+                "with your add-ons. A free Trakt account can connect one outside app at a time.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+        )
+        when {
+            !repo.trakt.available -> Text(
+                "Trakt isn't set up in this version yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Paper,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+            )
+            s.traktAccess.isNotEmpty() -> {
+                ClickRow("Connected" + (s.traktUser.ifBlank { null }?.let { " as $it" } ?: ""), "Disconnect this device from Trakt", modifier) {
+                    scope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.disconnect() }
+                        note = "Disconnected."
+                    }
+                }
+                SwitchRow(
+                    "Mark what I watch on Trakt",
+                    "Films and episodes you watch past 80% show as watched on Trakt (as they play: also 'watching now')",
+                    s.traktScrobble,
+                ) { vm.updateSettings { it.copy(traktScrobble = !it.traktScrobble) } }
+            }
+            else -> ClickRow("Connect your Trakt account", "You'll get a code to type on trakt.tv/activate", modifier) {
+                note = null
+                scope.launch {
+                    val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.startConnecting() }
+                    if (d == null) note = "Couldn't reach Trakt. Check the internet and try again." else code = d
+                }
+            }
+        }
+        note?.let { Text(it, fontFamily = Sans, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) }
+    }
+    code?.let { d ->
+        // Asked again every few seconds until the code is typed (or it runs out).
+        LaunchedEffect(d) {
+            var wait = d.interval * 1000L
+            val until = System.currentTimeMillis() + d.expiresIn * 1000L
+            while (System.currentTimeMillis() < until) {
+                kotlinx.coroutines.delay(wait)
+                when (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.checkConnecting(d) }) {
+                    app.falak.player.data.TraktClient.Waiting.CONNECTED -> {
+                        code = null
+                        note = "Connected."
+                        return@LaunchedEffect
+                    }
+                    app.falak.player.data.TraktClient.Waiting.SLOW_DOWN -> wait += 1000L
+                    app.falak.player.data.TraktClient.Waiting.WAITING -> {}
+                    app.falak.player.data.TraktClient.Waiting.REFUSED -> {
+                        code = null
+                        note = "Trakt said no (the code was turned down)."
+                        return@LaunchedEffect
+                    }
+                    else -> {
+                        code = null
+                        note = "The code ran out or didn't work. Try again."
+                        return@LaunchedEffect
+                    }
+                }
+            }
+            code = null
+            note = "The code ran out. Try again."
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { code = null },
+            title = { Text("Connect Trakt") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("On your phone or computer, open", style = MaterialTheme.typography.bodyMedium)
+                    Text(d.url.removePrefix("https://"), style = MaterialTheme.typography.titleMedium, color = Paper, modifier = Modifier.padding(vertical = 4.dp))
+                    Text("and type this code:", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        d.userCode,
+                        fontFamily = Sans,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 32.sp,
+                        letterSpacing = 4.sp,
+                        color = Paper,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                    qrBitmap(d.url, 360)?.let { qr ->
+                        androidx.compose.foundation.Image(qr, "Code for ${d.url}", Modifier.size(150.dp))
+                    }
+                    Text("This page carries on by itself once it's typed.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = { TextButton(onClick = { code = null }) { Text("Cancel") } },
+        )
+    }
 }

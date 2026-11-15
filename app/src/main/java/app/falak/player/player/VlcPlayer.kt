@@ -180,6 +180,13 @@ class VlcPlayer(
 
     /** The sleep timer's fade (1 = full); silent stays silent. */
     private var level = 100
+    private var audioDelayUs = 0L
+
+    /** Sound timing: + later, − earlier (VLC holds it per stream, so it's set again as each one plays). */
+    fun setAudioDelay(ms: Int) {
+        audioDelayUs = ms * 1000L
+        if (!released) runCatching { vlc.setAudioDelay(audioDelayUs) }
+    }
 
     /** Silent (two-screen mode, while the other picture is heard). Kept across channels. */
     fun setMuted(on: Boolean) {
@@ -217,6 +224,7 @@ class VlcPlayer(
                 state = Player.STATE_READY
                 // VLC's sound output starts afresh with each stream.
                 if (muted) runCatching { vlc.volume = 0 } else if (level != 100) runCatching { vlc.volume = level }
+                if (audioDelayUs != 0L) runCatching { vlc.setAudioDelay(audioDelayUs) }
             }
             MediaPlayer.Event.Paused -> if (state == Player.STATE_BUFFERING) state = Player.STATE_READY
             MediaPlayer.Event.EndReached -> state = Player.STATE_ENDED

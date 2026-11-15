@@ -227,6 +227,16 @@ class AddonsTest {
         assertEquals(listOf("tt2:1:1", "tt2:1:2", "tt2:2:1", "tt2:0:1"), meta.videos.map { it.id })
         assertEquals(listOf("Drama"), meta.genres)
         assertNull(Addons.parseMeta("""{"metas":[]}"""))
+        // 8.29: the actors, from the list or (Cinemeta's newer pages) from its links.
+        val listed = Addons.parseMeta("""{"meta":{"id":"tt3","type":"movie","name":"F","cast":["Keanu Reeves","Carrie-Anne Moss"],"director":"Lana Wachowski, Lilly Wachowski"}}""")!!
+        assertEquals(listOf("Keanu Reeves", "Carrie-Anne Moss"), listed.cast)
+        assertEquals(listOf("Lana Wachowski", "Lilly Wachowski"), listed.director)
+        val linked = Addons.parseMeta(
+            """{"meta":{"id":"tt4","type":"movie","name":"G","links":[{"name":"Drama","category":"Genres","url":"stremio:///discover/x"},
+                {"name":"Tom Hanks","category":"Cast","url":"stremio:///search?search=Tom%20Hanks"},{"name":"Robert Zemeckis","category":"Directors","url":"x"}]}}""",
+        )!!
+        assertEquals(listOf("Tom Hanks"), linked.cast)
+        assertEquals(listOf("Robert Zemeckis"), linked.director)
     }
 
     @Test

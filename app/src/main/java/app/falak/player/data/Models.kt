@@ -451,6 +451,18 @@ data class Settings(
     val suhoorReminder: Int = 0,
     /** Pause & rewind live TV: live channels play through a buffer kept on this device; "on" or "off". */
     val liveBuffer: String = "on",
+    /**
+     * Sound timing (8.29; the owner picked it): ms the sound is moved, + later, − earlier (a
+     * soundbar that makes the sound late wants it earlier). This device's: it depends on its speakers.
+     */
+    val audioDelayMs: Int = 0,
+    /** Trakt (8.29): this device's connection to a Trakt account (see TraktClient); "" = none. */
+    val traktAccess: String = "",
+    val traktRefresh: String = "",
+    val traktUntil: Long = 0L,
+    val traktUser: String = "",
+    /** Mark films and episodes watched on Trakt as they play (when connected). */
+    val traktScrobble: Boolean = true,
     /** How far back live TV can be rewound, in minutes (the buffer is cleared when the channel changes). */
     val liveBufferMinutes: Int = 30,
     /** Recordings: where they're saved ("" = this device, else the folder on a USB drive or memory card). */
