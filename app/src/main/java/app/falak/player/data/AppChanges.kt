@@ -43,6 +43,18 @@ object AppChanges {
             "On a phone, the lock on the left of the player stops touches while you watch. " +
                 "The cast button at the top sends a channel or film to a Chromecast on your Wi-Fi.",
         ),
+        Change(
+            "8.29",
+            "Actors and ratings",
+            "Tap an actor on a film's or series' page to see what they played in, with what your playlist has first; " +
+                "search finds actors by name too. Film and series pages show their IMDb rating.",
+            keys = listOf("Search"),
+        ),
+        Change(
+            "8.29",
+            "Sound timing",
+            "Sound out of step with the picture? In the player, Player → Sound timing moves it earlier or later.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

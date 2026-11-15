@@ -159,13 +159,15 @@ fun SearchResults(
             Kind.SERIES -> Section.SERIES
         }
     }
+    // Actors and directors by name (8.29), over the rest.
+    val people = rememberPeopleFound(q)
     if (ranked == null) {
         Box(Modifier.fillMaxSize())
         return
     }
     val live = onNow.orEmpty()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-        if (ranked.isEmpty() && onNow != null && live.isEmpty()) {
+        if (ranked.isEmpty() && onNow != null && live.isEmpty() && people.isEmpty()) {
             item(key = "none") { NothingFound(q) }
         }
         for ((kind, list) in groups) {
@@ -193,6 +195,10 @@ fun SearchResults(
                     }
                 }
             }
+        }
+        // (After the titles: a name like a channel's or a film's finds them first.)
+        if (people.isNotEmpty()) {
+            item(key = "people") { PeopleShelf(vm, people) }
         }
         if (live.isNotEmpty()) {
             item(key = "onNow") {

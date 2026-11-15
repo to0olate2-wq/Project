@@ -52,7 +52,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE, ADDONS }
+enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE, ADDONS, PERSON }
+
+/** An actor's page (8.29): by name (a cast list), or the person already found (the search). */
+data class PersonOpen(val name: String, val found: app.falak.player.data.People.Person?, val from: Screen)
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
@@ -228,6 +231,35 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         st.copy(gridSections = if (grid) (st.gridSections + s.name).distinct() else st.gridSections - s.name)
     }
     var sort by mutableStateOf(Sort.DEFAULT)
+
+    /** The actor's page open (Screen.PERSON), and where Back from it goes. */
+    var person by mutableStateOf<PersonOpen?>(null)
+
+    /** A film or series opened from an actor's page: Back goes to that page. */
+    var titleFromPerson = false
+
+    fun openPerson(name: String, found: app.falak.player.data.People.Person? = null) {
+        if (name.isBlank()) return
+        // (From a title opened on an actor's page, Back from this one still goes to that title.)
+        person = PersonOpen(name.trim(), found, screen)
+        titleFromPerson = false
+        screen = Screen.PERSON
+    }
+
+    fun closePerson() {
+        val from = person?.from
+        screen = if (from == null || from == Screen.PERSON) Screen.LIBRARY else from
+    }
+
+    /** Back from a film's or series' page. */
+    fun leaveTitle() {
+        if (titleFromPerson && person != null) {
+            titleFromPerson = false
+            screen = Screen.PERSON
+        } else {
+            screen = Screen.LIBRARY
+        }
+    }
 
     var details by mutableStateOf<Channel?>(null)
         private set

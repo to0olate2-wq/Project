@@ -59,6 +59,7 @@ import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.progressKey
+import app.falak.player.repo
 import coil.compose.AsyncImage
 
 @Composable
@@ -77,7 +78,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         vm.index.groupsOf(Kind.MOVIE)[ch.group].orEmpty().asSequence().filter { it.id != ch.id }.take(24).toList()
     }
 
-    BackHandler { vm.screen = Screen.LIBRARY }
+    BackHandler { vm.leaveTitle() }
     LaunchedEffect(ch.id) {
         // (Also when another film is opened from "More like this": back at its top, on Play.)
         list.scrollToItem(0)
@@ -85,7 +86,13 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     val poster = info?.poster?.takeIf { it.isNotBlank() } ?: ch.logo
-    TitleStage(info?.backdrop, poster, ch.name, list, onBack = { vm.screen = Screen.LIBRARY }) { stage ->
+    // IMDb and Trakt (8.29), once the page says the year: the film is looked up by its name.
+    val repo = context.repo
+    val scores = rememberScores(if (vm.detailsLoading) null else ch.id + "|" + info?.year, "movie") {
+        val (name, year) = app.falak.player.data.TitleMatch.clean(ch.name)
+        repo.imdbFor("movie", name, year ?: info?.year?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toInt() } ?: repo.providerYears["m" + ch.id.removePrefix("m")])
+    }
+    TitleStage(info?.backdrop, poster, ch.name, list, onBack = { vm.leaveTitle() }) { stage ->
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "head") {
                 TitleHead(
@@ -95,7 +102,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     meta = listOfNotNull(
                         info?.year?.takeIf { it.isNotBlank() },
                         info?.duration?.let { formatRuntime(it) },
-                        ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
+                        scores ?: ratingLabel(info?.rating?.takeIf { it.isNotBlank() } ?: ch.rating),
                     ).joinToString("  ·  "),
                     genre = info?.genre,
                     plot = info?.plot,
@@ -140,8 +147,8 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             if (cast != null || director != null) {
                 item(key = "credits") {
                     Column(Modifier.padding(horizontal = pageMargin()).padding(top = 18.dp).widthIn(max = 760.dp)) {
-                        cast?.let { Credit("Cast", it) }
-                        director?.let { Credit("Director", it) }
+                        cast?.let { CastNames(vm, "Cast", app.falak.player.data.People.castNames(it)) }
+                        director?.let { CastNames(vm, "Director", app.falak.player.data.People.castNames(it, max = 3)) }
                     }
                 }
             }

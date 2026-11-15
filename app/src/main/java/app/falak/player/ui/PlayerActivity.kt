@@ -979,6 +979,8 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // (Leaving the player: Trakt is told where it got to.)
+        if (isFinishing) traktStop() else traktUpdate()
         cast?.let { c -> runCatching { c.sessionManager.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) } }
         if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
@@ -1100,7 +1102,10 @@ class PlayerActivity : ComponentActivity() {
                     if (level) app.falak.player.player.VolumeLeveler() else null,
                     night,
                 )
-                if (processors.isEmpty()) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+                if (processors.isEmpty()) {
+                    val plain = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams) ?: return null
+                    return app.falak.player.player.SoundTiming.wrap(plain, soundTiming)
+                }
                 // With auto captions the sound is always decoded here, never passed on encoded to a
                 // sound system (Dolby to a soundbar), so the captions can hear it.
                 @Suppress("DEPRECATION")
@@ -1124,7 +1129,9 @@ class PlayerActivity : ComponentActivity() {
                     .setAudioProcessors(processors.toTypedArray())
                     .build()
                 // Auto captions also see when each piece of sound is heard.
-                return if (tap != null) captionsEngine().watch(built) else built
+                val heard = if (tap != null) captionsEngine().watch(built) else built
+                // Sound timing (8.29): the picture follows the sound's clock, moved by the setting.
+                return app.falak.player.player.SoundTiming.wrap(heard, soundTiming)
             }
         }
             .setEnableDecoderFallback(true)
@@ -1159,6 +1166,7 @@ class PlayerActivity : ComponentActivity() {
         )
         val p = builder.build()
         p.addAnalyticsListener(statsListener)
+        soundTiming.us = repo.state.value.settings.audioDelayMs * 1000L
         // Language preferences from Settings.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().apply {
             if (s.audioLang.isNotEmpty()) setPreferredAudioLanguage(s.audioLang)
@@ -1196,6 +1204,7 @@ class PlayerActivity : ComponentActivity() {
         root.addView(layout, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         playerView.videoSurfaceView?.visibility = View.GONE
         v.attach(layout)
+        v.setAudioDelay(st.audioDelayMs)
         v.setScale(if (browserOpen) 0 else aspect)
         v.addListener(listener)
         v.onTracksChanged = {
@@ -1292,6 +1301,8 @@ class PlayerActivity : ComponentActivity() {
             }
             // What is playing, in figures (8.28).
             .setNeutralButton("Stream info") { _, _ -> showStreamInfo() }
+            // Sound out of step with the picture (a soundbar, a slow stream): moved here (8.29).
+            .setPositiveButton("Sound timing") { _, _ -> showSoundTiming() }
             .setNegativeButton("Close", null)
             .show()
     }
@@ -1489,6 +1500,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private val listener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) = traktUpdate()
+
         override fun onPlayerError(error: PlaybackException) {
             val p = player ?: return
             if (exo != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
@@ -3347,14 +3360,22 @@ class PlayerActivity : ComponentActivity() {
         if (skipsFor == ch.id) return
         skipsJob?.cancel()
         skips = emptyList()
+        // (Trakt: the one before is done; this one is told once its IMDb number is known.)
+        traktStop()
         skipsFor = ch.id
-        if (!repo.state.value.settings.skipLookup || ch.id.startsWith("cu:")) return
+        val lookup = repo.state.value.settings.skipLookup
+        if ((!lookup && !repo.trakt.connected) || ch.id.startsWith("cu:")) return
         val addon = ch.id.startsWith("addon:")
         if (!addon && ch.kind != Kind.MOVIE && ch.kind != Kind.SERIES) return
         val show = if (!addon && ch.kind == Kind.SERIES) (repo.currentSeries?.name ?: episodeShow(ch.name)) else null
         val label = if (!addon && ch.kind == Kind.SERIES) episodeLabel(ch) else ""
         skipsJob = lifecycleScope.launch {
             val video = if (addon) ch.id.removePrefix("addon:") else withContext(Dispatchers.IO) { providerVideoId(ch, show, label) }
+            if (video != null && skipsFor == ch.id) {
+                traktVideo = video
+                traktUpdate()
+            }
+            if (!lookup) return@launch
             val url = video?.let { app.falak.player.data.SkipSegments.url(it) } ?: return@launch
             val found = try {
                 withContext(Dispatchers.IO) {
@@ -3370,6 +3391,52 @@ class PlayerActivity : ComponentActivity() {
             }
             if (skipsFor == ch.id) skips = found
         }
+    }
+
+    // ---- Trakt (8.29): what plays is marked on the account, if one is connected ----
+
+    /** The film or episode playing, as Trakt knows it ("tt0133093" / "tt0903747:1:2"); null: not known. */
+    private var traktVideo: String? = null
+    /** What Trakt was told last about it: "", "start", "pause". */
+    private var traktSaid = ""
+
+    private fun traktProgress(): Double {
+        val p = player ?: return 0.0
+        val d = p.duration
+        return if (d > 0) p.currentPosition * 100.0 / d else 0.0
+    }
+
+    private fun traktSend(action: String, video: String, progress: Double) {
+        if (!repo.trakt.connected) return
+        // (Its own thread: the last "stop" is sent as the player closes, after its coroutines are gone.)
+        val trakt = repo.trakt
+        Thread { trakt.scrobble(action, video, progress) }.start()
+    }
+
+    /** Playing: "start"; paused: "pause"; at the end: done ("stop", marked watched). */
+    private fun traktUpdate() {
+        val video = traktVideo ?: return
+        val p = player ?: return
+        if (castingTo != null) return
+        when {
+            p.playbackState == Player.STATE_ENDED -> traktStop()
+            p.isPlaying && traktSaid != "start" -> {
+                traktSaid = "start"
+                traktSend("start", video, traktProgress())
+            }
+            !p.isPlaying && traktSaid == "start" && p.playbackState == Player.STATE_READY -> {
+                traktSaid = "pause"
+                traktSend("pause", video, traktProgress())
+            }
+        }
+    }
+
+    /** Leaving it (another one, the player closed): Trakt keeps where it got to; past 80% it's watched. */
+    private fun traktStop() {
+        val video = traktVideo ?: return
+        if (traktSaid.isNotEmpty()) traktSend("stop", video, if (player?.playbackState == Player.STATE_ENDED) 100.0 else traktProgress())
+        traktVideo = null
+        traktSaid = ""
     }
 
     /** "tt0133093" for a provider's film, "tt0903747:1:2" for its episode; null when the title isn't surely known. */
@@ -5630,6 +5697,67 @@ class PlayerActivity : ComponentActivity() {
         locked = false
         playerView.useController = true
         playerView.showController()
+    }
+
+    // ---- sound timing (8.29) ----
+
+    /** What ExoPlayer's sound clock is moved by, read on its playback thread. */
+    private val soundTiming = app.falak.player.player.SoundTiming.Offset()
+
+    private fun applySoundTiming(ms: Int) {
+        soundTiming.us = ms * 1000L
+        vlc?.setAudioDelay(ms)
+    }
+
+    /** Player → Sound timing: the sound earlier or later in steps of 50 ms, heard at once, kept for this device. */
+    private fun showSoundTiming() {
+        var ms = repo.state.value.settings.audioDelayMs
+        val themed = android.view.ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val value = TextView(themed).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(4))
+        }
+        val hint = TextView(themed).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            alpha = 0.7f
+            gravity = Gravity.CENTER
+            setPadding(dp(20), 0, dp(20), dp(12))
+            text = "Lips move after you hear the words: sound later. Words come after the lips (a soundbar): sound earlier."
+        }
+        fun show() {
+            value.text = app.falak.player.player.SoundTiming.label(ms)
+        }
+        fun step(by: Int) {
+            ms = app.falak.player.player.SoundTiming.clamp(ms + by)
+            show()
+            applySoundTiming(ms)
+            val keep = ms
+            repo.updateSettings { it.copy(audioDelayMs = keep) }
+        }
+        val earlier = android.widget.Button(themed).apply { text = "− Earlier"; setOnClickListener { step(-50) } }
+        val reset = android.widget.Button(themed).apply { text = "In step"; setOnClickListener { step(-ms) } }
+        val later = android.widget.Button(themed).apply { text = "Later +"; setOnClickListener { step(50) } }
+        val buttons = LinearLayout(themed).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            for (b in listOf(earlier, reset, later)) addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        }
+        val box = LinearLayout(themed).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            addView(value)
+            addView(hint)
+            addView(buttons)
+        }
+        show()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Sound timing")
+            .setView(box)
+            .setNegativeButton("Done", null)
+            .create()
+            .apply { setOnShowListener { later.requestFocus() } }
+            .show()
     }
 
     // ---- stream info (8.28) ----

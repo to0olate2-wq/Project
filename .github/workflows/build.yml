@@ -92,6 +92,9 @@ jobs:
     env:
       VERSION_CODE: ${{ github.run_number }}
       STATS_URL: ${{ needs.stats.outputs.url }}
+      # Trakt (8.29): the app's own Trakt app, made by the owner at developer.trakt.tv (repository secrets).
+      TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+      TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
@@ -159,6 +162,9 @@ jobs:
   screens:
     # Pinned: since ubuntu-latest moved to Ubuntu 26, the screen tests sometimes hang there.
     runs-on: ubuntu-24.04
+    env:
+      # Only for TraktLiveTest in an [only …] run (another name, so the app built for the tests has no Trakt key).
+      TRAKT_LIVE_ID: ${{ secrets.TRAKT_CLIENT_ID }}
     continue-on-error: true
     # A stuck screen test must not hold a runner for hours.
     timeout-minutes: 45
