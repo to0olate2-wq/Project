@@ -18,7 +18,7 @@ class TraktClient(
     private val clientId: String = BuildConfig.TRAKT_ID,
     private val secret: String = BuildConfig.TRAKT_SECRET,
 ) {
-    /** The app has its Trakt app (the owner's, built in by CI): people and ratings can be asked for. */
+    /** The app has its Trakt app (the owner's, built in by CI): ratings, and accounts can connect. */
     val available: Boolean get() = clientId.isNotEmpty() && !testing
 
     /** A Trakt account is connected on this device. */
@@ -46,40 +46,9 @@ class TraktClient(
         0 to ""
     }
 
-    // ---- people and ratings (the app's key only) ----
+    // ---- ratings (the app's key only) ----
 
-    private val peopleFound = java.util.concurrent.ConcurrentHashMap<String, List<Trakt.Person>>()
-    private val credits = java.util.concurrent.ConcurrentHashMap<String, List<Trakt.Title>>()
-    private val abouts = java.util.concurrent.ConcurrentHashMap<String, Trakt.About>()
     private val scores = java.util.concurrent.ConcurrentHashMap<String, Trakt.Score>()
-
-    fun searchPeople(name: String): List<Trakt.Person>? {
-        if (!available || name.isBlank()) return null
-        val key = TitleMatch.norm(name)
-        peopleFound[key]?.let { return it }
-        val found = Trakt.parsePeople(get(Trakt.searchPeopleUrl(name)) ?: return null)
-        peopleFound[key] = found
-        return found
-    }
-
-    /** The person a film's cast names. */
-    fun person(name: String): Trakt.Person? = searchPeople(name)?.let { Trakt.pickPerson(it, name) }
-
-    fun about(slug: String): Trakt.About? {
-        abouts[slug]?.let { return it }
-        val a = Trakt.parseAbout(get(Trakt.aboutUrl(slug)) ?: return null) ?: return null
-        abouts[slug] = a
-        return a
-    }
-
-    /** Their films ([type] "movie") or series ("series"), newest first. Null: no answer. */
-    fun credits(slug: String, type: String): List<Trakt.Title>? {
-        val key = "$slug|$type"
-        credits[key]?.let { return it }
-        val list = Trakt.parseCredits(get(Trakt.creditsUrl(slug, type)) ?: return null, type)
-        credits[key] = list
-        return list
-    }
 
     fun score(imdb: String, type: String): Trakt.Score? {
         if (!available) return null
@@ -93,8 +62,8 @@ class TraktClient(
     // ---- connecting an account ----
 
     fun startConnecting(): Trakt.DeviceCode? {
-        if (!available || secret.isEmpty()) return null
-        val (code, text) = post("${Trakt.API}/oauth/device/code", Trakt.deviceCodeBody(clientId))
+        if (!available) return null
+        val (code, text) = post("${Trakt.AUTH}/oauth/device/code", Trakt.deviceCodeBody(clientId))
         return if (code in 200..299) Trakt.parseDeviceCode(text) else null
     }
 
@@ -102,7 +71,7 @@ class TraktClient(
 
     /** Asked every [Trakt.DeviceCode.interval] seconds until the code is typed on trakt.tv/activate. */
     fun checkConnecting(d: Trakt.DeviceCode): Waiting {
-        val (code, text) = post("${Trakt.API}/oauth/device/token", Trakt.deviceTokenBody(d.deviceCode, clientId, secret))
+        val (code, text) = post("${Trakt.AUTH}/oauth/device/token", Trakt.deviceTokenBody(d.deviceCode, clientId, secret))
         return when (code) {
             200 -> {
                 val t = Trakt.parseTokens(text, System.currentTimeMillis()) ?: return Waiting.FAILED
@@ -113,7 +82,8 @@ class TraktClient(
             400 -> Waiting.WAITING
             429 -> Waiting.SLOW_DOWN
             410 -> Waiting.EXPIRED
-            418 -> Waiting.REFUSED
+            // 418: said no; 403: not one of the people the app lets in (a development app: 16 at most).
+            418, 403 -> Waiting.REFUSED
             0 -> Waiting.WAITING // (no answer this time: asked again)
             else -> Waiting.FAILED
         }
@@ -123,7 +93,7 @@ class TraktClient(
         val token = settings().traktAccess
         save { it.copy(traktAccess = "", traktRefresh = "", traktUntil = 0L, traktUser = "") }
         if (token.isNotEmpty() && available) {
-            post("${Trakt.API}/oauth/revoke", """{"token":"$token","client_id":"$clientId","client_secret":"$secret"}""")
+            post("${Trakt.AUTH}/oauth/revoke", """{"token":"$token","client_id":"$clientId"""" + (if (secret.isEmpty()) "" else ""","client_secret":"$secret"""") + "}")
         }
     }
 
@@ -133,7 +103,7 @@ class TraktClient(
         val s = settings()
         if (!available || s.traktAccess.isEmpty()) return null
         if (System.currentTimeMillis() < s.traktUntil || s.traktRefresh.isEmpty()) return s.traktAccess
-        val (code, text) = post("${Trakt.API}/oauth/token", Trakt.refreshBody(s.traktRefresh, clientId, secret))
+        val (code, text) = post("${Trakt.AUTH}/oauth/token", Trakt.refreshBody(s.traktRefresh, clientId, secret))
         val t = if (code == 200) Trakt.parseTokens(text, System.currentTimeMillis()) else null
         if (t != null) {
             save { it.copy(traktAccess = t.access, traktRefresh = t.refresh, traktUntil = t.until) }

@@ -55,7 +55,7 @@ import java.util.UUID
 enum class Screen { PLAYLISTS, LIBRARY, SERIES, DETAILS, GUIDE, SETTINGS, GROUPS, SYNC, NOTICES, KIDS, LOCKS, PROFILES, REMOTE, PRAYER, DOWNLOADS, ARRANGE, RECORDINGS, MORE, ADDONS, PERSON }
 
 /** An actor's page (8.29): by name (a cast list), or the person already found (the search). */
-data class PersonOpen(val name: String, val found: app.falak.player.data.Trakt.Person?, val from: Screen)
+data class PersonOpen(val name: String, val found: app.falak.player.data.People.Person?, val from: Screen)
 
 /** Settings and the pages it opens (Back from those returns to the Settings page they came from). */
 val SETTINGS_SCREENS = setOf(Screen.SETTINGS, Screen.SYNC, Screen.PROFILES, Screen.REMOTE, Screen.PRAYER, Screen.KIDS, Screen.LOCKS, Screen.GROUPS)
@@ -238,7 +238,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** A film or series opened from an actor's page: Back goes to that page. */
     var titleFromPerson = false
 
-    fun openPerson(name: String, found: app.falak.player.data.Trakt.Person? = null) {
+    fun openPerson(name: String, found: app.falak.player.data.People.Person? = null) {
         if (name.isBlank()) return
         // (From a title opened on an actor's page, Back from this one still goes to that title.)
         person = PersonOpen(name.trim(), found, screen)

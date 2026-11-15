@@ -2467,9 +2467,9 @@ private fun TraktSettings(vm: LibraryViewModel, s: app.falak.player.data.Setting
     var note by remember { mutableStateOf<String?>(null) }
     Column {
         Text(
-            "Ratings from IMDb and Trakt on film and series pages, and actors' pages (tap a name in the cast, or search for one), " +
-                "work without an account. Connect yours to mark the films and episodes you watch on Trakt and see your Trakt watchlist " +
-                "with your add-ons. A free Trakt account can connect one outside app at a time.",
+            "Connect your Trakt account to mark the films and episodes you watch on Trakt, and to see your Trakt watchlist " +
+                "with your add-ons. Trakt lets only the people added to this app connect (16 at most), and a free Trakt account " +
+                "connects one outside app at a time.",
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
@@ -2521,7 +2521,7 @@ private fun TraktSettings(vm: LibraryViewModel, s: app.falak.player.data.Setting
                     app.falak.player.data.TraktClient.Waiting.WAITING -> {}
                     app.falak.player.data.TraktClient.Waiting.REFUSED -> {
                         code = null
-                        note = "Trakt said no (the code was turned down)."
+                        note = "Trakt said no: the code was turned down, or this account isn't one of the people added to the app."
                         return@LaunchedEffect
                     }
                     else -> {

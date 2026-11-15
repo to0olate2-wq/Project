@@ -147,8 +147,8 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             if (cast != null || director != null) {
                 item(key = "credits") {
                     Column(Modifier.padding(horizontal = pageMargin()).padding(top = 18.dp).widthIn(max = 760.dp)) {
-                        cast?.let { CastNames(vm, "Cast", app.falak.player.data.Trakt.castNames(it)) }
-                        director?.let { CastNames(vm, "Director", app.falak.player.data.Trakt.castNames(it, max = 3)) }
+                        cast?.let { CastNames(vm, "Cast", app.falak.player.data.People.castNames(it)) }
+                        director?.let { CastNames(vm, "Director", app.falak.player.data.People.castNames(it, max = 3)) }
                     }
                 }
             }

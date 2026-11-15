@@ -39,6 +39,7 @@ import app.falak.player.data.Addons
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
+import app.falak.player.data.People
 import app.falak.player.data.Trakt
 import app.falak.player.data.mine
 import app.falak.player.data.progressKey
@@ -50,17 +51,18 @@ import kotlinx.coroutines.withContext
 
 /**
  * An actor's page (8.29; the owner: "click on the actors to see what shows they have"): their photo
- * and story, then what of theirs is in your playlist, then all their films and series (from Trakt).
+ * and story, then what of theirs is in your playlist, then all their films and series (Wikidata and
+ * Wikipedia, see People: free, nothing to set up).
  * A title in the playlist opens its page there; the others open with your add-ons, when you have
  * add-ons that bring links (GitHub version).
  */
 data class PersonPage(
-    val person: Trakt.Person,
-    val about: Trakt.About?,
-    val films: List<Trakt.Title>,
-    val series: List<Trakt.Title>,
+    val person: People.Person,
+    val about: People.About?,
+    val films: List<People.Title>,
+    val series: List<People.Title>,
     /** Theirs that the playlist has. */
-    val yours: List<Pair<Trakt.Title, Channel>>,
+    val yours: List<Pair<People.Title, Channel>>,
 )
 
 sealed interface PersonLoad {
@@ -68,10 +70,9 @@ sealed interface PersonLoad {
     data class Ready(val page: PersonPage) : PersonLoad
     data object NotFound : PersonLoad
     data object NoAnswer : PersonLoad
-    data object NoTrakt : PersonLoad
 }
 
-/** Screen tests: the page as if Trakt had answered. */
+/** Screen tests: the page as if Wikidata had answered. */
 object PersonForTest {
     @Volatile var page: PersonPage? = null
 }
@@ -93,26 +94,17 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
             value = PersonLoad.Ready(it)
             return@produceState
         }
-        if (!repo.trakt.available) {
-            value = PersonLoad.NoTrakt
-            return@produceState
-        }
         value = PersonLoad.Loading
         value = withContext(Dispatchers.IO) {
             val p = open.found ?: run {
-                val found = repo.trakt.searchPeople(open.name) ?: return@withContext PersonLoad.NoAnswer
-                Trakt.pickPerson(found, open.name) ?: return@withContext PersonLoad.NotFound
+                val found = repo.people.search(open.name) ?: return@withContext PersonLoad.NoAnswer
+                People.pick(found, open.name) ?: return@withContext PersonLoad.NotFound
             }
             coroutineScope {
-                val about = async { repo.trakt.about(p.slug) }
-                val films = async { repo.trakt.credits(p.slug, "movie") }
-                val series = async { repo.trakt.credits(p.slug, "series") }
-                val f = films.await()
-                val s = series.await()
-                if (f == null && s == null) return@coroutineScope PersonLoad.NoAnswer
-                val all = f.orEmpty() + s.orEmpty()
-                val yours = Trakt.inLibrary(all, index.movies + index.series)
-                PersonLoad.Ready(PersonPage(p, about.await(), f.orEmpty(), s.orEmpty(), yours))
+                val about = async { repo.people.about(p.id) }
+                val (films, series) = repo.people.credits(p.id) ?: return@coroutineScope PersonLoad.NoAnswer
+                val yours = People.inLibrary(films + series, index.movies + index.series)
+                PersonLoad.Ready(PersonPage(p, about.await(), films, series, yours))
             }
         }
     }
@@ -133,11 +125,10 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
             PersonLoad.Loading -> item(key = "wait") {
                 BusyLine(Modifier.padding(horizontal = pageMargin(), vertical = 24.dp).widthIn(max = 420.dp).fillMaxWidth())
             }
-            PersonLoad.NoTrakt -> item(key = "notrakt") { PersonNote("Actors' pages come from Trakt, which isn't set up in this version yet.") }
-            PersonLoad.NotFound -> item(key = "none") { PersonNote("Trakt doesn't know “${open.name}”.") }
+            PersonLoad.NotFound -> item(key = "none") { PersonNote("Nothing is known about “${open.name}” yet.") }
             PersonLoad.NoAnswer -> item(key = "fail") {
                 Column(Modifier.padding(horizontal = pageMargin())) {
-                    PersonNote("Couldn't reach Trakt. Check the internet and try again.", padded = false)
+                    PersonNote("Couldn't get their page. Check the internet and try again.", padded = false)
                     GhostButton("Try again") { tries++ }
                 }
             }
@@ -201,7 +192,7 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
                     }
                 }
                 if (page.films.isEmpty() && page.series.isEmpty()) {
-                    item(key = "nothing") { PersonNote("Trakt lists no films or series of theirs.") }
+                    item(key = "nothing") { PersonNote("No films or series of theirs are listed yet.") }
                 } else if (!canOpenOthers) {
                     item(key = "hint") {
                         PersonNote(
@@ -214,9 +205,9 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
     }
 }
 
-/** A title of Trakt's as a card ("1999 · Neo" under it in the sidebar look). */
-private fun Trakt.Title.asCard() = Channel(
-    id = "trakt:$type:$imdb",
+/** One of their titles as a card ("1999" under it in the sidebar look). */
+private fun People.Title.asCard() = Channel(
+    id = "person:$type:$imdb",
     name = name,
     group = listOfNotNull(year?.toString(), character.ifBlank { null }).joinToString(" · "),
     url = "",
@@ -238,7 +229,7 @@ private fun PersonHead(page: PersonPage, tv: Boolean) {
         Spacer(Modifier.size(18.dp))
         Column(Modifier.weight(1f)) {
             val line = listOfNotNull(
-                a?.job?.ifBlank { null }?.let { jobWord(it) },
+                a?.line?.ifBlank { null },
                 a?.born?.ifBlank { null }?.let { b ->
                     "Born " + b.take(4) + (a.place.ifBlank { null }?.let { " in $it" } ?: "")
                 },
@@ -253,14 +244,6 @@ private fun PersonHead(page: PersonPage, tv: Boolean) {
     }
 }
 
-private fun jobWord(dept: String): String = when (dept.lowercase()) {
-    "acting" -> "Actor"
-    "directing" -> "Director"
-    "writing" -> "Writer"
-    "production" -> "Producer"
-    else -> dept.replaceFirstChar { it.uppercase() }
-}
-
 @Composable
 private fun PersonNote(text: String, padded: Boolean = true) {
     Text(
@@ -273,14 +256,12 @@ private fun PersonNote(text: String, padded: Boolean = true) {
 }
 
 /**
- * The cast of a film or series (8.29): each name opens their page. Plain text when Trakt isn't
- * there (or in kids mode).
+ * The cast of a film or series (8.29): each name opens their page. Plain text in kids mode.
  */
 @Composable
 fun CastNames(vm: LibraryViewModel, label: String, names: List<String>) {
     if (names.isEmpty()) return
-    val repo = LocalContext.current.repo
-    if (!repo.trakt.available && PersonForTest.page == null || vm.kidsActive) {
+    if (vm.kidsActive) {
         Credit(label, names.joinToString(", "))
         return
     }
@@ -301,7 +282,7 @@ fun CastNames(vm: LibraryViewModel, label: String, names: List<String>) {
 fun rememberScores(key: Any?, type: String, imdb: suspend () -> String?): String? {
     val repo = LocalContext.current.repo
     val v by produceState<String?>(null, key) {
-        if (key == null) return@produceState
+        if (key == null || app.falak.player.data.PeopleClient.testing) return@produceState
         value = withContext(Dispatchers.IO) {
             val id = runCatching { imdb() }.getOrNull() ?: return@withContext null
             coroutineScope {
@@ -318,36 +299,36 @@ fun scoresLine(imdb: String?, trakt: Trakt.Score?): String? =
     listOfNotNull(imdb?.let { "IMDb $it" }, trakt?.let { "Trakt ${it.percent}%" }).joinToString("  ·  ").ifEmpty { null }
 
 /**
- * Search by an actor's name (8.29): the people Trakt finds for what is typed, as a row over the
- * search results. Empty while there's nothing (or no Trakt).
+ * Search by an actor's name (8.29): the actors and directors found for what is typed, as a row with
+ * the search results. Empty while there's nothing.
  */
 @Composable
-fun rememberPeopleFound(query: String): List<Trakt.Person> {
+fun rememberPeopleFound(query: String): List<People.Person> {
     val repo = LocalContext.current.repo
     val q = query.trim()
-    val found by produceState(emptyList<Trakt.Person>(), q) {
+    val found by produceState(emptyList<People.Person>(), q) {
         value = emptyList()
-        if (q.length < 3 || !repo.trakt.available) return@produceState
+        if (q.length < 3) return@produceState
         kotlinx.coroutines.delay(450) // (while typing, only the last word is asked for)
-        value = withContext(Dispatchers.IO) { repo.trakt.searchPeople(q) }.orEmpty()
-            // Only people whose name has what was typed (Trakt also answers with near names).
+        value = withContext(Dispatchers.IO) { repo.people.search(q) }.orEmpty()
+            // Only people whose name has what was typed (the search also answers with near names).
             .filter { p -> q.split(' ').filter { it.isNotBlank() }.all { w -> app.falak.player.data.TitleMatch.norm(p.name).contains(app.falak.player.data.TitleMatch.norm(w)) } }
     }
     return found
 }
 
 @Composable
-fun PeopleShelf(vm: LibraryViewModel, people: List<Trakt.Person>) {
+fun PeopleShelf(vm: LibraryViewModel, people: List<People.Person>) {
     if (people.isEmpty()) return
     Box(Modifier.padding(horizontal = pageMargin() - 4.dp)) {
         Shelf("People", count = people.size.toString()) {
-            items(people, key = { "p:" + it.slug }) { p -> PersonCard(p) { vm.openPerson(p.name, p) } }
+            items(people, key = { "p:" + it.id }) { p -> PersonCard(p) { vm.openPerson(p.name, p) } }
         }
     }
 }
 
 @Composable
-private fun PersonCard(p: Trakt.Person, onClick: () -> Unit) {
+private fun PersonCard(p: People.Person, onClick: () -> Unit) {
     val tv = isTv()
     val size = if (tv) 112.dp else 92.dp
     Column(Modifier.widthIn(max = size + 12.dp).padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {

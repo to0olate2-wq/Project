@@ -1,6 +1,6 @@
 package app.falak.player.screens
 
-import app.falak.player.data.Trakt
+import app.falak.player.data.People
 import app.falak.player.data.TitleMatch
 import app.falak.player.ui.LibraryViewModel
 import app.falak.player.ui.PersonForTest
@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * An actor's page (8.29): reached from the cast of a series' page. Trakt's answers are stood in for
+ * An actor's page (8.29): reached from the cast of a series' page. Wikidata's answers are stood in for
  * (PersonForTest): two of their films are in the sample playlist, the rest are not.
  */
 abstract class PersonShots : TitlePageShots() {
@@ -21,21 +21,21 @@ abstract class PersonShots : TitlePageShots() {
         val mine = vm.index.movies.take(2)
         val films = mine.map { ch ->
             val (name, year) = TitleMatch.clean(ch.name)
-            Trakt.Title("movie", name, year, "tt01" + ch.id.filter { it.isDigit() }.padStart(5, '0'), "", "Captain Ros")
+            People.Title("movie", name, year, "tt01" + ch.id.filter { it.isDigit() }.padStart(5, '0'), "")
         } + listOf(
-            Trakt.Title("movie", "The Long Pier", 2019, "tt0900001", "", "Harbour master"),
-            Trakt.Title("movie", "Salt and Iron", 2016, "tt0900002", "", "Ines"),
+            People.Title("movie", "The Long Pier", 2019, "tt0900001", ""),
+            People.Title("movie", "Salt and Iron", 2016, "tt0900002", ""),
         )
-        val series = listOf(Trakt.Title("series", "Northern Lights", 2021, "tt0900003", "", "Mara"))
+        val series = listOf(People.Title("series", "Northern Lights", 2021, "tt0900003", ""))
         val page = PersonPage(
-            person = Trakt.Person("Mara Lindqvist", "mara-lindqvist", "", ""),
-            about = Trakt.About(
+            person = People.Person("Mara Lindqvist", "Q900001"),
+            about = People.About(
+                name = "Mara Lindqvist", line = "Swedish actress", born = "1984-03-02", died = "", place = "Gothenburg", photo = "", wiki = "",
                 bio = "Mara Lindqvist is a Swedish actor known for coastal dramas and quiet, stubborn characters. She trained in Gothenburg and worked in theatre for ten years before her first film.",
-                born = "1984-03-02", died = "", place = "Gothenburg, Sweden", photo = "", job = "Acting",
             ),
             films = films,
             series = series,
-            yours = Trakt.inLibrary(films + series, vm.index.movies + vm.index.series),
+            yours = People.inLibrary(films + series, vm.index.movies + vm.index.series),
         )
         check(page.yours.size == 2) { "The two sample films weren't found in the playlist: ${page.yours}" }
         PersonForTest.page = page

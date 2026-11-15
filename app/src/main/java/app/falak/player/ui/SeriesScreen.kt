@@ -145,7 +145,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
             info?.cast?.takeIf { it.isNotBlank() }?.let { cast ->
                 item(key = "credits") {
                     Column(Modifier.padding(horizontal = pageMargin()).padding(top = 16.dp).widthIn(max = 760.dp)) {
-                        CastNames(vm, "Cast", app.falak.player.data.Trakt.castNames(cast))
+                        CastNames(vm, "Cast", app.falak.player.data.People.castNames(cast))
                     }
                 }
             }

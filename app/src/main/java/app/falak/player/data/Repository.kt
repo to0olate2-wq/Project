@@ -382,11 +382,15 @@ class Repository(private val context: Context) {
     /** Trakt (8.29): people, ratings, and this device's account (see TraktClient). */
     val trakt = TraktClient(http, { _state.value.settings }, { f -> updateSettings(f) })
 
+    /** Actors and directors (8.29): Wikidata, no key (see People). */
+    val people = PeopleClient(http)
+
     /** The IMDb rating Cinemeta gives a title ("8.7"), for this session; null when it has none. */
     private val imdbRatings = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun imdbRating(imdb: String, type: String): String? {
         imdbRatings[imdb]?.let { return it.ifEmpty { null } }
+        if (PeopleClient.testing) return null
         val url = "https://v3-cinemeta.strem.io/meta/" + (if (type == "series") "series" else "movie") + "/$imdb.json"
         val r = try {
             http.newCall(okhttp3.Request.Builder().url(url).header("User-Agent", "ThePlayer").build()).execute().use { r ->

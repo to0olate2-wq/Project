@@ -45,9 +45,9 @@ object AppChanges {
         ),
         Change(
             "8.29",
-            "Actors, ratings and Trakt",
+            "Actors and ratings",
             "Tap an actor on a film's or series' page to see what they played in, with what your playlist has first; " +
-                "search finds actors by name too. Pages show IMDb and Trakt ratings. Settings → Trakt connects your account.",
+                "search finds actors by name too. Film and series pages show their IMDb rating.",
             keys = listOf("Search"),
         ),
         Change(
