@@ -172,7 +172,9 @@ class PlayerActivity : ComponentActivity() {
     private var castingTo: String? = null
     private val castListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
         override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
-        override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) = castNow()
+        override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
+            castNow()
+        }
         override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) = toast("Couldn't connect to the Chromecast")
         override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
         override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) = castEnded()
