@@ -14,8 +14,9 @@ import kotlinx.serialization.json.Json
  */
 @Serializable
 data class BackupFile(
-    val app: String = APP,
-    val kind: String = KIND,
+    // No default that passes: a file without them ("{}") isn't a backup.
+    val app: String = "",
+    val kind: String = "",
     val v: Int = 1,
     /** When it was made (epoch ms). */
     val made: Long = 0,
@@ -39,7 +40,7 @@ object Backup {
         val snap = SyncMerge.snapshot(SyncMerge.touchAll(s, now), device)
             // (Not a device: restoring it doesn't add one to the linked devices.)
             .copy(deviceId = "", kids = null)
-        return json.encodeToString(BackupFile.serializer(), BackupFile(made = now, version = version, device = device, snapshot = snap))
+        return json.encodeToString(BackupFile.serializer(), BackupFile(app = BackupFile.APP, kind = BackupFile.KIND, made = now, version = version, device = device, snapshot = snap))
     }
 
     /** Reads a backup file; throws IllegalArgumentException with a plain reason when it isn't one. */
