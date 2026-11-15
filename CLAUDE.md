@@ -216,8 +216,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   credits bring the Up next card at that point (or "Skip credits" after the last episode). Arabic or other
   non-Latin names find nothing sure on Cinemeta (its search answers with unrelated English titles): no button.
   `SkipSegmentsLiveTest.providerTitlesAreFound` checks real names against the real services.
-- **Home button in the player (8.27, the owner asked):** `homeButton` at the start of the player's top bar (a
-  house; "Home" written on a TV), `goHome()`: the progress is kept, a live channel goes to the mini player as with
+- **Home button in the player (8.27, the owner asked; phones only since 8.28, the owner: "remove from TV"):**
+  `homeButton` at the start of the player's top bar (a house), `goHome()`: the progress is kept, a live channel goes to the mini player as with
   Back, then MainActivity gets `Notifier.EXTRA_OPEN = "HOME"` → `vm.navigate("HOME")` (Library, Home, the add-on
   portal's page closed).
 - **Welcome, the guide, what changed (8.27; the owner: "first time installing the app, a welcome screen and
@@ -234,6 +234,21 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   feature changes how it works or where it is.** Settings → "Help and about": "Show the guide again" and "What
   changed in this version" (`vm.changesAgain`). `seenVersion` and `tourDue` are `DEVICE_SETTINGS`. Under
   Robolectric `Guide.auto` is false (nothing starts by itself); `GuideScreens.kt` turns it on.
+- **8.28 (the owner picked five from a list):** (1) **Backup file**, `data/Backup.kt`: `BackupFile` = a
+  `SyncSnapshot` of everything (stamped now, `deviceId` "" so no peer is added, no kids part) with app/kind/version;
+  restore = `SyncMerge.merge` (what changed here since stays). Settings → Devices & phone remote: "Save a backup
+  file" / "Restore from a backup file" (CreateDocument / OpenDocument; a TV without a file picker is told to link a
+  phone). Passwords are in the file (the owner's sync rule: everything goes). (2) **Torrents on mobile data:**
+  `onMobileData` (metered network) → asked first in AddonsUi's `play` unless `Settings.torrentOnData`; Settings →
+  Playback "Ask before torrents use mobile data" (GitHub version). (3) **Stream info:** Player ("Play with") window
+  → "Stream info": `player/StreamInfo.kt` lines, ticking each second; dropped frames from an `AnalyticsListener`.
+  (4) **Screen lock (phones):** `lockButton` at the left edge, middle; `lockScreen()` puts a shield over everything
+  (touches and Back only show "Tap to unlock" for 3 s). (5) **Chromecast (phones):** `cast/Cast.kt` (`CastSetup` in
+  the manifest, kept by R8; `Cast.context` null without Google Play services, so no button), `CastLinks.castable`
+  (no 127.0.0.1 links: torrents, live buffer; downloads stay; Xtream live .ts → .m3u8). Our own picker
+  (`showCastPicker`, MediaRouter). While casting, `playCurrent` sends each next item to the Chromecast; ending the
+  session plays here again. Provider headers/User-Agent are not sent: some providers refuse the Chromecast.
+  Tests: `BackupTest`, `StreamInfoTest`, `CastLinksTest`, `PhoneLockScreens`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

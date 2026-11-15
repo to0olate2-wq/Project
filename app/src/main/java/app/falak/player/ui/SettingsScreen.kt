@@ -64,6 +64,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.falak.player.BuildConfig
+import app.falak.player.repo
+import kotlinx.coroutines.launch
 import app.falak.player.data.AppState
 import app.falak.player.data.guideSourceName
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -618,6 +620,15 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
                 s.autoNextEpisode,
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
+        }
+        if (app.falak.player.torrent.Torrents.available) {
+            item {
+                SwitchRow(
+                    "Ask before torrents use mobile data",
+                    "A film from a torrent link can use several gigabytes. Off: it starts on mobile data without asking.",
+                    !s.torrentOnData,
+                ) { vm.updateSettings { it.copy(torrentOnData = !it.torrentOnData) } }
+            }
         }
         item {
             SwitchRow(
@@ -1226,6 +1237,92 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         SettingsPage.DEVICES -> {
+        // A backup file (8.28): everything that syncs, kept wherever the person likes (Files, Drive…).
+        item {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            var note by remember { mutableStateOf<String?>(null) }
+            var asking by remember { mutableStateOf<String?>(null) }
+            val save = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                scope.launch {
+                    note = try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val text = ctx.repo.backupText(app.falak.player.sync.deviceName(ctx), BuildConfig.VERSION_NAME)
+                            ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } ?: throw java.io.IOException("can't write there")
+                        }
+                        "Saved. Keep the file private: it holds your playlists' passwords."
+                    } catch (e: Exception) {
+                        "Couldn't save it (${e.message ?: "no answer"})."
+                    }
+                }
+            }
+            val open = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                scope.launch {
+                    asking = try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            ctx.contentResolver.openInputStream(uri)?.use { String(it.readBytes(), Charsets.UTF_8) } ?: throw java.io.IOException("can't read it")
+                        }
+                    } catch (e: Exception) {
+                        note = "Couldn't read it (${e.message ?: "no answer"})."
+                        null
+                    }
+                }
+            }
+            // (A TV often has no file picker: linking a phone is its way.)
+            val noPicker = "This device can't open a file picker. On a TV, link your phone in Your devices instead."
+            Column {
+                ClickRow("Save a backup file", "Playlists with their logins, favorites, lists, where you left films, add-ons and settings", focusAt("backup")) {
+                    try {
+                        save.launch(app.falak.player.data.Backup.fileName(System.currentTimeMillis()))
+                    } catch (e: android.content.ActivityNotFoundException) {
+                        note = noPicker
+                    }
+                }
+                ClickRow("Restore from a backup file", "Brings back what the file has; what you changed here since stays", focusAt("restore")) {
+                    try {
+                        open.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*"))
+                    } catch (e: android.content.ActivityNotFoundException) {
+                        note = noPicker
+                    }
+                }
+                note?.let { Text(it, fontFamily = Sans, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) }
+            }
+            asking?.let { text ->
+                val what = remember(text) {
+                    runCatching { app.falak.player.data.Backup.read(text) }.fold(
+                        onSuccess = { b ->
+                            val day = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(b.made))
+                            "${app.falak.player.data.Backup.summary(b)}, saved on $day" + (if (b.device.isNotBlank()) " on ${b.device}" else "") + "."
+                        },
+                        onFailure = { null },
+                    )
+                }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { asking = null },
+                    title = { Text(if (what != null) "Restore this backup?" else "Not a backup file") },
+                    text = { Text(what ?: "This isn't a backup file of The Player.") },
+                    confirmButton = {
+                        if (what != null) {
+                            TextButton(onClick = {
+                                asking = null
+                                note = try {
+                                    "Restored: " + ctx.repo.restoreBackup(text) + "."
+                                } catch (e: IllegalArgumentException) {
+                                    e.message
+                                }
+                            }) { Text("Restore") }
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { asking = null }) { Text(if (what != null) "Cancel" else "Close") } },
+                )
+            }
+        }
         item {
             ClickRow(
                 "Your devices",

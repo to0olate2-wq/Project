@@ -1769,3 +1769,22 @@ class PhoneLiveBarScreens : ScreenshotBase() {
         shoot("phone-65-player-live-bar")
     }
 }
+
+/** 8.28: the phone's screen lock, and Player → Stream info. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneLockScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE_LAND)
+    fun phoneLock() {
+        playerSteps(tv = false) { player, shoot ->
+            shoot("phone-player-lock-button")
+            check(player.lockForTest()) { "The screen didn't lock" }
+            settle()
+            shoot("phone-player-locked")
+            val info = player.streamInfoForTest()
+            settle()
+            shoot("phone-player-stream-info")
+            check("Playing with" in info && "Link" in info) { "Stream info says: $info" }
+        }
+    }
+}

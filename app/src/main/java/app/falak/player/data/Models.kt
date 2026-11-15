@@ -479,6 +479,8 @@ data class Settings(
     val skipLookup: Boolean = true,
     /** Live TV: channels that didn't work are left out of the rows and lists for a week (see DeadChannels). */
     val hideDead: Boolean = true,
+    /** Torrent links may start on mobile data without asking (8.28; off: asked each time, see AddonsUi). */
+    val torrentOnData: Boolean = false,
     /** The kind of add-on link picked last ("Torrentio|1080p|t"): what one-tap Play looks for (Addons.pickLink). */
     val addonPick: String = "",
     /** The add-ons' portal (8.23): My list, newest first. Synced like other settings. */

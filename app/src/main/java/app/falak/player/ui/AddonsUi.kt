@@ -116,18 +116,47 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
         vm.noteAddonPlay(m)
         vm.addonSubtitles(m.streamsFor ?: m.open?.id.orEmpty(), (s.subs + m.subs).distinctBy { it.url })
     }
+    // A torrent on mobile data (8.28): asked first, unless "don't ask again" was chosen.
+    var onData by remember { mutableStateOf<AddonStream?>(null) }
     val play = { s: AddonStream ->
         // The kind of link chosen (add-on, quality, torrent or not): what one-tap Play looks for next time.
         val kind = Addons.linkKind(s)
         if (state.settings.addonPick != kind) vm.updateSettings { it.copy(addonPick = kind) }
         if (s.torrent != null && s.url.isEmpty()) {
             // A torrent link: got ready first (its window says how it is going), then played like any link.
-            m.prepareTorrent(context, s)
+            if (!state.settings.torrentOnData && onMobileData(context)) onData = s else m.prepareTorrent(context, s)
         } else {
             val ch = m.channelFor(s)
             starting(s)
             onPlay(listOf(ch), ch)
         }
+    }
+    onData?.let { s ->
+        var always by remember { mutableStateOf(false) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onData = null },
+            title = { Text("You're on mobile data") },
+            text = {
+                Column {
+                    Text("A film from a torrent link can use several gigabytes, and shares a little of it back while it plays. Play it anyway?")
+                    Row(
+                        Modifier.padding(top = 12.dp).clickable { always = !always },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.Checkbox(checked = always, onCheckedChange = { always = it })
+                        Text("Don't ask again")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onData = null
+                    if (always) vm.updateSettings { it.copy(torrentOnData = true) }
+                    m.prepareTorrent(context, s)
+                }) { Text("Play") }
+            },
+            dismissButton = { TextButton(onClick = { onData = null }) { Text("Cancel") } },
+        )
     }
     // One-tap Play of an episode (Resume, Next episode): its links were asked for, the best one plays
     // as soon as they are here. (None that plays: its links window stays, saying so.)
@@ -245,6 +274,11 @@ internal fun LibraryViewModel.addAddon(a: Addon) {
     addons.known[a.url] = a
     updateSettings { s -> if (a.url in s.addons) s else s.copy(addons = s.addons + a.url) }
 }
+
+/** On a network that costs by the gigabyte (mobile data, a phone's hotspot): Android says so. */
+internal fun onMobileData(context: android.content.Context): Boolean = runCatching {
+    context.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered ?: false
+}.getOrDefault(false)
 
 /** My list of the add-ons' portal: in, or out again. */
 internal fun LibraryViewModel.toggleAddonSaved(item: AddonItem) = updateSettings { s ->

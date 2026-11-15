@@ -154,6 +154,40 @@ class PlayerActivity : ComponentActivity() {
     /** The star before the name at the top of the controls: Favorites. */
     private lateinit var favButton: TextView
     private lateinit var homeButton: TextView
+    // 8.28: the screen lock (phones), Chromecast (phones).
+    private lateinit var lockButton: TextView
+    private lateinit var castButton: TextView
+    private var locked = false
+    private var lockShield: FrameLayout? = null
+    private var unlockPill: TextView? = null
+    private val hideUnlockPill = object : Runnable {
+        override fun run() {
+            unlockPill?.visibility = View.GONE
+        }
+    }
+    private var cast: com.google.android.gms.cast.framework.CastContext? = null
+    /** The item this phone itself last started (casting can move on without it). */
+    private var playingHere = -1
+    /** The Chromecast playing what this player had ("Living room TV"), or null. */
+    private var castingTo: String? = null
+    private val castListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
+        override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
+        override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) = castNow()
+        override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) = toast("Couldn't connect to the Chromecast")
+        override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
+        override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) = castEnded()
+        override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {}
+        override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) = markCasting(session)
+        override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
+        override fun onSessionSuspended(session: com.google.android.gms.cast.framework.CastSession, reason: Int) {}
+    }
+    /** Frames the picture dropped since this item started (Stream info). */
+    private var droppedFrames = 0
+    private val statsListener = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+        override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+            this@PlayerActivity.droppedFrames += droppedFrames
+        }
+    }
 
     /** The top of the controls: ☆, what's playing (and what's on now); phones also the setting icons. */
     private lateinit var topBar: LinearLayout
@@ -547,11 +581,22 @@ class PlayerActivity : ComponentActivity() {
         // Add what's playing to Favorites without leaving the player: the star before its name.
         favButton = pill("", R.drawable.ic_pl_star_outline) { queue.getOrNull(index)?.let { toggleFavorite(it) } }
             .apply { visibility = View.GONE }
-        // Straight to the app's Home from anything playing (8.27, the owner asked): a TV says so on
-        // the button, a phone shows the house only.
-        homeButton = pill(if (tvLayout) "Home" else "", R.drawable.ic_pl_home) { goHome() }.apply {
+        // Straight to the app's Home from anything playing (8.27, the owner asked): phones only (8.28:
+        // the owner had it taken off the TV, where Back does it).
+        homeButton = pill("", R.drawable.ic_pl_home) { goHome() }.apply {
             tag = "Home"
             contentDescription = "Home"
+        }
+        // Phones (8.28): lock the screen while watching (a pocket, a child's hands), and Chromecast.
+        lockButton = pill("", R.drawable.ic_pl_lock) { lockScreen() }.apply {
+            tag = "Lock the screen"
+            contentDescription = "Lock the screen"
+        }
+        if (!tvLayout) cast = app.falak.player.cast.Cast.context(this)
+        castButton = pill("", R.drawable.ic_pl_cast) { castClicked() }.apply {
+            tag = "Cast"
+            contentDescription = "Cast to a Chromecast"
+            visibility = if (cast != null) View.VISIBLE else View.GONE
         }
         tracksButton = pill("Audio and subtitles", R.drawable.ic_pl_subtitles) { showTracksPanel() }.apply { visibility = View.GONE }
         aspectButton = pill("Picture size  ·  " + aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
@@ -847,6 +892,11 @@ class PlayerActivity : ComponentActivity() {
             this,
             object : androidx.activity.OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    // Locked: Back does nothing but say how to unlock.
+                    if (locked) {
+                        showUnlockPill()
+                        return
+                    }
                     if (liveBeforeStartOver != null) {
                         backToLive()
                         return
@@ -882,6 +932,11 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         handingOff = false
+        cast?.let { c ->
+            runCatching { c.sessionManager.addSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) }
+            // Already casting (from before): this player stays quiet.
+            c.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let { markCasting(it) }
+        }
         // Back from Listen mode: the picture again, from where the sound got to.
         if (listening) {
             listening = false
@@ -922,6 +977,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        cast?.let { c -> runCatching { c.sessionManager.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) } }
         if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
         prayerJob?.cancel()
@@ -1100,6 +1156,7 @@ class PlayerActivity : ComponentActivity() {
                 .build(),
         )
         val p = builder.build()
+        p.addAnalyticsListener(statsListener)
         // Language preferences from Settings.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().apply {
             if (s.audioLang.isNotEmpty()) setPreferredAudioLanguage(s.audioLang)
@@ -1231,6 +1288,8 @@ class PlayerActivity : ComponentActivity() {
                 val e = choices[which]
                 if (e != engine || e == Engine.EXTERNAL) switchEngine(e)
             }
+            // What is playing, in figures (8.28).
+            .setNeutralButton("Stream info") { _, _ -> showStreamInfo() }
             .setNegativeButton("Close", null)
             .show()
     }
@@ -1241,6 +1300,10 @@ class PlayerActivity : ComponentActivity() {
         releaseShift()
         // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
         deleteWatchedCopies(except = ch.id)
+        droppedFrames = 0
+        // Casting: the next channel or episode goes to the Chromecast, not here.
+        if (castingTo != null && castNow()) return
+        playingHere = index
         showLoading(ch)
         loadSkips(ch)
         serviceStarting(ch)
@@ -3030,7 +3093,7 @@ class PlayerActivity : ComponentActivity() {
         gravity = Gravity.CENTER_VERTICAL
         clipToPadding = false
         clipChildren = false
-        addView(homeButton, pillParams())
+        if (!tvLayout) addView(homeButton, pillParams())
         addView(favButton, pillParams())
         titleView = TextView(this@PlayerActivity).apply {
             setTextColor(Color.WHITE)
@@ -3042,6 +3105,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(6), 0, dp(6), 0)
         }
         addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (!tvLayout) addView(castButton, pillParams())
         if (!tvLayout) for (b in settingIcons()) addView(b, pillParams())
     }
 
@@ -3095,6 +3159,13 @@ class PlayerActivity : ComponentActivity() {
                     .apply { bottomMargin = -pad },
             )
             controls.addView(topBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+            // Phones: the lock at the left edge, half way down (where a thumb is).
+            if (!tvLayout) {
+                controls.addView(
+                    lockButton,
+                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(18) },
+                )
+            }
             playerView.setControllerVisibilityListener(
                 PlayerView.ControllerVisibilityListener { visibility -> if (visibility == View.VISIBLE) onControlsShown() },
             )
@@ -5510,6 +5581,232 @@ class PlayerActivity : ComponentActivity() {
      * Mini player). This player lets go of the stream first, as many providers allow one
      * connection at a time.
      */
+    // ---- the screen lock (phones, 8.28) ----
+
+    /** Touches do nothing until the lock is pressed again (Back too); the picture and sound go on. */
+    private fun lockScreen() {
+        if (locked) return
+        locked = true
+        playerView.hideController()
+        playerView.useController = false
+        val shield = FrameLayout(this).apply {
+            isClickable = true
+            setOnClickListener { showUnlockPill() }
+        }
+        val pill = pill("Tap to unlock", R.drawable.ic_pl_lock_open) { unlockScreen() }
+        shield.addView(pill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(18) })
+        root.addView(shield, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        lockShield = shield
+        unlockPill = pill
+        showUnlockPill()
+    }
+
+    /** Screen tests: the lock and the stream info window, as if pressed. */
+    internal fun lockForTest(): Boolean {
+        lockScreen()
+        return locked && lockShield != null
+    }
+
+    internal fun streamInfoForTest(): String {
+        unlockScreen()
+        showStreamInfo()
+        return streamInfoText().toString()
+    }
+
+    private fun showUnlockPill() {
+        val pill = unlockPill ?: return
+        pill.visibility = View.VISIBLE
+        handler.removeCallbacks(hideUnlockPill)
+        handler.postDelayed(hideUnlockPill, 3_000)
+    }
+
+    private fun unlockScreen() {
+        handler.removeCallbacks(hideUnlockPill)
+        lockShield?.let { root.removeView(it) }
+        lockShield = null
+        unlockPill = null
+        locked = false
+        playerView.useController = true
+        playerView.showController()
+    }
+
+    // ---- stream info (8.28) ----
+
+    /** Player → Stream info: what is playing, in figures, kept up to date each second. */
+    private fun showStreamInfo() {
+        val text = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 16f else 15f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
+            setLineSpacing(0f, 1.3f)
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+        }
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Stream info")
+            .setView(text)
+            .setNegativeButton("Close", null)
+            .create()
+        val tick = object : Runnable {
+            override fun run() {
+                text.text = streamInfoText()
+                if (dialog.isShowing) handler.postDelayed(this, 1_000)
+            }
+        }
+        dialog.setOnShowListener { handler.post(tick) }
+        dialog.setOnDismissListener { handler.removeCallbacks(tick) }
+        dialog.show()
+    }
+
+    private fun streamInfoText(): CharSequence {
+        val ch = queue.getOrNull(index)
+        val p = player
+        val v = exo?.videoFormat
+        val a = exo?.audioFormat
+        val size = p?.videoSize
+        val lines = app.falak.player.player.StreamInfo.lines(
+            engine = engine.short,
+            width = v?.width?.takeIf { it > 0 } ?: size?.width ?: 0,
+            height = v?.height?.takeIf { it > 0 } ?: size?.height ?: 0,
+            fps = v?.frameRate?.takeIf { it > 0f } ?: vlc?.frameRate() ?: -1f,
+            videoMime = v?.sampleMimeType,
+            declaredBps = listOfNotNull(v?.peakBitrate, v?.averageBitrate, v?.bitrate).firstOrNull { it > 0 }?.toLong() ?: 0L,
+            audioMime = a?.sampleMimeType,
+            channels = a?.channelCount ?: 0,
+            sampleRate = a?.sampleRate ?: 0,
+            audioLang = a?.language,
+            incomingBps = if (rateSamples.size >= 2) rateBps else 0L,
+            bufferedMs = p?.let { (it.bufferedPosition - it.currentPosition).coerceAtLeast(0) } ?: 0L,
+            dropped = droppedFrames,
+            link = app.falak.player.player.StreamInfo.linkKind(currentUrl.ifEmpty { ch?.url.orEmpty() }),
+        )
+        val out = SpannableStringBuilder()
+        ch?.let { out.append(it.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE).append("\n") }
+        for ((label, value) in lines) {
+            val start = out.length
+            out.append(label).append("   ")
+            out.setSpan(ForegroundColorSpan(0x99FFFFFF.toInt()), start, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            out.append(value).append("\n")
+        }
+        return out.trimEnd()
+    }
+
+    // ---- Chromecast (phones, 8.28) ----
+
+    private fun castClicked() {
+        val c = cast ?: return
+        val session = c.sessionManager.currentCastSession
+        if (session != null && session.isConnected) {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Playing on ${session.castDevice?.friendlyName ?: "a Chromecast"}")
+                .setPositiveButton("Stop casting") { _, _ -> c.sessionManager.endCurrentSession(true) }
+                .setNegativeButton("Close", null)
+                .show()
+            return
+        }
+        showCastPicker(c)
+    }
+
+    /** The Chromecasts on this Wi-Fi, found as the window is open; picking one starts casting (castListener). */
+    private fun showCastPicker(c: com.google.android.gms.cast.framework.CastContext) {
+        val selector = c.mergedSelector ?: return
+        val router = androidx.mediarouter.media.MediaRouter.getInstance(this)
+        val themed = android.view.ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val names = android.widget.ArrayAdapter<String>(themed, android.R.layout.simple_list_item_1)
+        var routes: List<androidx.mediarouter.media.MediaRouter.RouteInfo> = emptyList()
+        val status = TextView(themed).apply {
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+            text = "Looking for Chromecasts on your Wi-Fi…"
+        }
+        val list = android.widget.ListView(themed).apply { adapter = names }
+        val box = LinearLayout(themed).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(status)
+            addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        fun refresh() {
+            routes = router.routes.filter { !it.isDefault && it.isEnabled && it.matchesSelector(selector) }
+            names.clear()
+            names.addAll(routes.map { it.name })
+            status.text = if (routes.isEmpty()) "Looking for Chromecasts on your Wi-Fi…" else "Cast to:"
+        }
+        val found = object : androidx.mediarouter.media.MediaRouter.Callback() {
+            override fun onRouteAdded(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) = refresh()
+            override fun onRouteRemoved(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) = refresh()
+            override fun onRouteChanged(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) = refresh()
+        }
+        router.addCallback(selector, found, androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
+        refresh()
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Cast")
+            .setView(box)
+            .setNegativeButton("Close", null)
+            .create()
+        list.setOnItemClickListener { _, _, which, _ ->
+            routes.getOrNull(which)?.let { router.selectRoute(it) }
+            dialog.dismiss()
+        }
+        dialog.setOnDismissListener { router.removeCallback(found) }
+        dialog.show()
+    }
+
+    private fun markCasting(session: com.google.android.gms.cast.framework.CastSession) {
+        castingTo = session.castDevice?.friendlyName ?: "a Chromecast"
+        castButton.setColorFilterTint(true)
+        player?.pause()
+        showMessage("Playing on $castingTo")
+    }
+
+    /**
+     * Sends what is playing to the Chromecast (its own link: the TV plays it from the provider).
+     * False when it can't go (a torrent, a download, the app's own link): it plays here as before.
+     */
+    private fun castNow(): Boolean {
+        val session = cast?.sessionManager?.currentCastSession ?: return false
+        val client = session.remoteMediaClient ?: return false
+        val ch = queue.getOrNull(index) ?: return false
+        val url = app.falak.player.cast.CastLinks.castable(ch.url)
+        if (url == null || app.falak.player.OfflineCenter.fileFor(ch.id) != null) {
+            toast("This one can't go to a Chromecast: it plays here (torrent links and downloads stay on this phone).")
+            return false
+        }
+        val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+        val meta = com.google.android.gms.cast.MediaMetadata(
+            if (live) com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_GENERIC else com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE,
+        ).apply {
+            putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, ch.name)
+            if (ch.logo.startsWith("http")) addImage(com.google.android.gms.common.images.WebImage(android.net.Uri.parse(ch.logo)))
+        }
+        val info = com.google.android.gms.cast.MediaInfo.Builder(url)
+            .setStreamType(if (live) com.google.android.gms.cast.MediaInfo.STREAM_TYPE_LIVE else com.google.android.gms.cast.MediaInfo.STREAM_TYPE_BUFFERED)
+            .setContentType(app.falak.player.cast.CastLinks.contentType(url))
+            .setMetadata(meta)
+            .build()
+        val from = if (live) 0L else (player?.currentPosition ?: resumePositionMs.takeIf { it > 0 } ?: 0L)
+        client.load(
+            com.google.android.gms.cast.MediaLoadRequestData.Builder().setMediaInfo(info).setAutoplay(true).setCurrentTime(from).build(),
+        ).setResultCallback { r ->
+            if (!r.status.isSuccess) toast("The Chromecast couldn't play it (a provider may only allow its own app or player)")
+        }
+        hideLoading()
+        updateTopBar()
+        markCasting(session)
+        return true
+    }
+
+    /** Casting stopped: the picture comes back here, where it was. */
+    private fun castEnded() {
+        if (castingTo == null) return
+        castingTo = null
+        castButton.setColorFilterTint(false)
+        hideMessage()
+        // Moved on to another channel or episode while casting: that one starts here.
+        if (playingHere != index) playCurrent(false) else player?.play()
+    }
+
+    private fun TextView.setColorFilterTint(on: Boolean) {
+        compoundDrawablesRelative.firstOrNull()?.setTint(if (on) 0xFFFF4F2E.toInt() else Color.WHITE)
+    }
+
     /**
      * The Home button: out of the player onto the app's Home, whichever page it was opened from
      * (a film's page, the add-ons' portal, the guide). A live channel carries on in the mini
