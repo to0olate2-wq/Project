@@ -16,7 +16,7 @@ object AppChanges {
         Change(
             "8.27",
             "A Home button while you watch",
-            "At the top of the player, the house takes you straight back to Home, from live TV, films and series.",
+            "On a phone, the house at the top of the player takes you straight back to Home, from live TV, films and series.",
         ),
         Change(
             "8.27",
@@ -29,6 +29,19 @@ object AppChanges {
             "A guide to the app",
             "Settings → Help and about shows the guide to the main buttons again, and what changed in this version.",
             keys = listOf("Settings", "More"),
+        ),
+        Change(
+            "8.28",
+            "Keep everything in a backup file",
+            "Settings → Devices & phone remote: save your playlists, favorites, lists and settings to a file, " +
+                "and restore them on a new phone. The file holds your playlists' passwords: keep it private.",
+            keys = listOf("Settings", "More"),
+        ),
+        Change(
+            "8.28",
+            "Lock the screen, and Chromecast",
+            "On a phone, the lock on the left of the player stops touches while you watch. " +
+                "The cast button at the top sends a channel or film to a Chromecast on your Wi-Fi.",
         ),
     )
 

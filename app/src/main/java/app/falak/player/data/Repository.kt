@@ -174,6 +174,23 @@ class Repository(private val context: Context) {
         return SyncMerge.snapshot(_state.value, device)
     }
 
+    /** A backup file's text (Settings → Devices → Save a backup file; see Backup). */
+    fun backupText(device: String, version: String): String = Backup.make(_state.value, device, version, System.currentTimeMillis())
+
+    /** Restores a backup file; returns what came back ("2 playlists, 14 favorites"). Throws IllegalArgumentException when it isn't one. */
+    fun restoreBackup(text: String): String {
+        val b = Backup.read(text)
+        var gone: List<String> = emptyList()
+        // Stamped as merged, so linked devices take it on too.
+        update(stamp = false) { s ->
+            val (next, removed) = Backup.restore(s, b, System.currentTimeMillis())
+            gone = removed
+            next
+        }
+        gone.forEach { deleteCaches(it) }
+        return Backup.summary(b)
+    }
+
     /** Takes in what another linked device sent. Returns true when something here changed. */
     fun mergeSync(theirs: SyncSnapshot): Boolean {
         var changed = false

@@ -47,6 +47,10 @@
         android:enableOnBackInvokedCallback="false"
         android:largeHeap="true"
         android:supportsRtl="true">
+        <!-- Chromecast (8.28): the cast library's options (cast/Cast.kt). -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="app.falak.player.cast.CastSetup" />
 
         <activity
             android:name=".ui.MainActivity"

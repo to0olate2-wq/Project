@@ -28,3 +28,6 @@
 # The Play version is built without the library.
 -keep class org.libtorrent4j.** { *; }
 -dontwarn org.libtorrent4j.**
+
+# Chromecast: the cast library finds its options class by the name in the manifest.
+-keep class app.falak.player.cast.CastSetup { *; }

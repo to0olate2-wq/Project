@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.27"
+        versionName = "8.28"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -189,6 +189,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     // QR code for "Your devices" (scan with a phone to open the sharing page).
     implementation("com.google.zxing:core:3.5.3")
+    // Chromecast (8.28): Google's cast library, and the media router it finds Chromecasts with.
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    implementation("androidx.mediarouter:mediarouter:1.7.0")
 
     // Torrent links from add-ons (8.16): libtorrent through libtorrent4j (MIT). In the GitHub version only;
     // the Play version compiles against it but ships without it (and never calls it: BuildConfig.TORRENTS).
