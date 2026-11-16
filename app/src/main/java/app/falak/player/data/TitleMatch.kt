@@ -58,8 +58,64 @@ object TitleMatch {
 
     /** Letters and digits only, lower case, without accents ("Amélie" = "amelie", "&" = "and"). */
     fun norm(s: String): String {
-        val plain = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
-        return plain.replace("&", " and ").replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+        // Plain English letters (most names): done by hand, many times quicker (8.29).
+        if (s.all { it.code < 128 }) {
+            // Words of letters and digits; "&" is the word "and"; anything else only parts words.
+            val b = StringBuilder(s.length + 4)
+            var gap = false
+            for (c in s) {
+                when {
+                    c in 'a'..'z' || c in '0'..'9' || c in 'A'..'Z' -> {
+                        if (gap && b.isNotEmpty()) b.append(' ')
+                        gap = false
+                        b.append(c.lowercaseChar())
+                    }
+                    c == '&' -> {
+                        if (b.isNotEmpty()) b.append(' ')
+                        b.append("and")
+                        gap = true
+                    }
+                    else -> gap = true
+                }
+            }
+            return b.toString()
+        }
+        val plain = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD).replace(MARKS, "")
+        return plain.replace("&", " and ").replace(NOT_LETTERS, " ").trim()
+    }
+
+    // (Made once: a playlist's names are cleaned by the ten thousand, 8.29.)
+    private val MARKS = Regex("\\p{Mn}+")
+    private val NOT_LETTERS = Regex("[^\\p{L}\\p{N}]+")
+    private val BRACKETED = Regex("\\[[^\\]]*\\]")
+    private val SPACES = Regex("\\s+")
+    private val TAGS = setOf(
+        "4k", "8k", "uhd", "fhd", "hd", "sd", "hevc", "x265", "x264", "h264", "h265", "h.264", "h.265", "2160p", "1080p", "720p", "480p",
+        "multi", "multisub", "sub", "subs", "dub", "dubbed", "vf", "vostfr", "vost", "hdr", "hdr10", "dv", "imax", "remastered", "extended",
+    )
+
+    /** Its last word is a tag like "4K" or "(HDR)" (checked before the slower TRAIL_TAG pattern). */
+    private fun endsWithTag(s: String): Boolean {
+        var end = s.length
+        while (end > 0 && (s[end - 1].isWhitespace() || s[end - 1] == ')' || s[end - 1] == ']')) end--
+        var start = end
+        while (start > 0 && (s[start - 1].isLetterOrDigit() || s[start - 1] == '.')) start--
+        if (end <= start) return false
+        val word = s.substring(start, end).lowercase()
+        return word in TAGS || word.substringAfterLast('.') in TAGS
+    }
+    private val yearPatterns = java.util.concurrent.ConcurrentHashMap<Int, Pair<Regex, Regex>>()
+
+    /** This year, asked of the calendar once an hour at most (asking it costs more than cleaning a name). */
+    private var yearNow = 0
+    private var yearAsked = 0L
+    fun currentYear(): Int {
+        val now = System.currentTimeMillis()
+        if (now - yearAsked > 3_600_000L) {
+            yearNow = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            yearAsked = now
+        }
+        return yearNow
     }
 
     // Tags providers put round names.
@@ -71,24 +127,27 @@ object TitleMatch {
     )
 
     /** "EN - The Matrix (1999) 4K" → ("The Matrix", 1999); "|AR| Breaking Bad" → ("Breaking Bad", null). */
-    fun clean(raw: String, thisYear: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)): Pair<String, Int?> {
+    fun clean(raw: String, thisYear: Int = currentYear()): Pair<String, Int?> {
         var s = raw.trim()
         repeat(3) {
             s = s.replace(LEAD_BRACKET, "")
             s = s.replace(LEAD_CODE, "")
         }
-        repeat(4) { s = s.replace(TRAIL_TAG, "") }
+        repeat(4) { if (endsWithTag(s)) s = s.replace(TRAIL_TAG, "") }
         val year = Trending.yearIn(s, thisYear)
         if (year != null) {
             val y = year.toString()
             // The year and its brackets go; a name that is only a year ("1917") stays.
-            val without = s.replace(Regex("\\s*[(\\[]\\s*$y\\s*[)\\]]"), "").let { t ->
-                if (t != s) t else s.replace(Regex("(?<=\\S)\\s+$y\\b"), "")
+            val (inBrackets, after) = yearPatterns.getOrPut(year) {
+                Regex("\\s*[(\\[]\\s*$y\\s*[)\\]]") to Regex("(?<=\\S)\\s+$y\\b")
+            }
+            val without = s.replace(inBrackets, "").let { t ->
+                if (t != s) t else s.replace(after, "")
             }
             if (norm(without).isNotEmpty()) s = without
         }
-        repeat(4) { s = s.replace(TRAIL_TAG, "") }
-        s = s.replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("\\s+"), " ").trim().trim('-', '|', ':', '•', '·').trim()
+        repeat(4) { if (endsWithTag(s)) s = s.replace(TRAIL_TAG, "") }
+        s = s.replace(BRACKETED, " ").replace(SPACES, " ").trim().trim('-', '|', ':', '•', '·').trim()
         return s to year
     }
 }

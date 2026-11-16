@@ -58,4 +58,30 @@ class PeopleTimingLiveTest {
             )
         }
     }
+
+    /** 8.30: the app's own way (the films started early, answers kept on the device). */
+    @Test
+    fun theAppsWay() {
+        assumeTrue(System.getenv("LIVE_CHECKS") != null)
+        PeopleClient.testing = false
+        val dir = java.nio.file.Files.createTempDirectory("people").toFile()
+        try {
+            for (round in listOf("first time", "app opened again (kept on the device)")) {
+                val c = PeopleClient(http, dir)
+                for (name in listOf("Denzel Washington", "يسرا", "Cate Blanchett")) {
+                    val t0 = System.nanoTime()
+                    val p = c.find(name)!!
+                    val t1 = System.nanoTime()
+                    val works = c.credits(p.id)!!
+                    val t2 = System.nanoTime()
+                    c.about(p.id)
+                    val t3 = System.nanoTime()
+                    println("APP $round, $name: who ${(t1 - t0) / 1_000_000} ms, films ${(t2 - t0) / 1_000_000} ms (${works.first.size}), story ${(t3 - t0) / 1_000_000} ms")
+                }
+            }
+        } finally {
+            PeopleClient.testing = true
+            dir.deleteRecursively()
+        }
+    }
 }
