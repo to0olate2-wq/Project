@@ -215,24 +215,36 @@ object People {
     // ---- your playlist ----
 
     /**
-     * Which of [titles] the playlist has: each matched to a film or series of [library] by its name
-     * once cleaned ("EN - The Matrix (1999) 4K") or its Arabic name, and, where both are known, the
-     * year (±1).
+     * The playlist's films and series by their cleaned names ("EN - The Matrix (1999) 4K" → "the matrix"),
+     * made once for a playlist (cleaning 60,000 names takes a second or more on a phone) and kept
+     * while it doesn't change (PeopleClient.names).
      */
-    fun inLibrary(titles: List<Title>, library: List<Channel>): List<Pair<Title, Channel>> {
-        if (titles.isEmpty() || library.isEmpty()) return emptyList()
-        val byName = HashMap<String, ArrayList<Pair<Channel, Int?>>>()
-        for (ch in library) {
-            val (name, year) = TitleMatch.clean(ch.name)
-            val key = TitleMatch.norm(name)
-            if (key.isNotEmpty()) byName.getOrPut(key) { ArrayList() } += ch to year
+    class Names(library: List<Channel>) {
+        internal val byName = HashMap<String, ArrayList<Pair<Channel, Int?>>>()
+
+        init {
+            val year = TitleMatch.currentYear()
+            for (ch in library) {
+                if (ch.kind != Kind.MOVIE && ch.kind != Kind.SERIES) continue
+                val (name, y) = TitleMatch.clean(ch.name, year)
+                val key = TitleMatch.norm(name)
+                if (key.isNotEmpty()) byName.getOrPut(key) { ArrayList(1) } += ch to y
+            }
         }
+    }
+
+    /**
+     * Which of [titles] the playlist has: each matched to a film or series by its name once cleaned or
+     * its Arabic name, and, where both are known, the year (±1).
+     */
+    fun inLibrary(titles: List<Title>, names: Names): List<Pair<Title, Channel>> {
+        if (titles.isEmpty() || names.byName.isEmpty()) return emptyList()
         val out = ArrayList<Pair<Title, Channel>>()
         val used = HashSet<String>()
         for (t in titles) {
             val wantKind = if (t.type == "series") Kind.SERIES else Kind.MOVIE
             val candidates = listOf(t.name, t.altName).filter { it.isNotBlank() }
-                .flatMap { byName[TitleMatch.norm(it)].orEmpty() }
+                .flatMap { names.byName[TitleMatch.norm(it)].orEmpty() }
                 .filter { it.first.kind == wantKind && it.first.id !in used }
             val hit = candidates.firstOrNull { (_, y) -> y != null && t.year != null && kotlin.math.abs(y - t.year) <= 1 }
                 ?: candidates.firstOrNull { (_, y) -> y == null }
@@ -242,6 +254,9 @@ object People {
         }
         return out
     }
+
+    fun inLibrary(titles: List<Title>, library: List<Channel>): List<Pair<Title, Channel>> =
+        if (titles.isEmpty() || library.isEmpty()) emptyList() else inLibrary(titles, Names(library))
 
     /** "Keanu Reeves, Laurence Fishburne ,Carrie-Anne Moss" → the names (a provider's cast line). */
     fun castNames(line: String, max: Int = 12): List<String> =

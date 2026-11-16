@@ -383,7 +383,7 @@ class Repository(private val context: Context) {
     val trakt = TraktClient(http, { _state.value.settings }, { f -> updateSettings(f) })
 
     /** Actors and directors (8.29): Wikidata, no key (see People). */
-    val people = PeopleClient(http)
+    val people = PeopleClient(http, File(context.cacheDir, "people"))
 
     /** The IMDb rating Cinemeta gives a title ("8.7"), for this session; null when it has none. */
     private val imdbRatings = java.util.concurrent.ConcurrentHashMap<String, String>()

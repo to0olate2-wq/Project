@@ -261,6 +261,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   them with an IMDb number; names: en, else **mul** (since 2024 many items have no English label, only "mul"), Arabic
   as `altName`; series by kind (P31) or episode/season counts; posters `images.metahub.space/poster/small/tt…/img`.
   Checked live 8.29 (`PeopleLiveTest`, `[only …]`): Keanu Reeves 81 films, Adel Imam in Arabic, Nolan.
+  **Quicker (8.30; the owner: "it took time to load"):** measured (`PeopleTimingLiveTest`): the network was 1.7–2.4 s
+  from CI (5 requests, 3 in a row) and matching the playlist cleaned every film's name each time (1–2 s for 60,000
+  on a desktop, more on a phone). Now: `TitleMatch.norm` does plain-English names by hand and `clean` checks a
+  name ends with a tag before its slow pattern (same results as before on 300,000 made-up names, checked);
+  `People.Names` = the playlist's cleaned names made once per `vm.index` (`repo.people.names`, ~0.3 s for 60,000
+  on a desktop, then ~1 ms per actor); `PeopleClient.find` starts the likeliest one's films and page while the
+  actor check runs (`once` keeps one request per thing); answers kept in `cacheDir/people` for 7 days (600 files;
+  an old one is used when offline); `CastNames` → `warm` looks up a page's first 3 actors after 0.8 s (not on
+  mobile data, not in kids mode); `PersonScreen` shows who first, then story and films, then "In your playlist".
+  Live: first time ~0.8–1 s from CI, kept ~5 ms.
   `ui/PersonScreen.kt` (`Screen.PERSON`, `vm.openPerson/closePerson`, `PersonOpen.from`): `CastNames` (chips; text
   in kids mode); photo, line, born, story, "In your playlist" (`People.inLibrary`: cleaned name or Arabic name +
   year ±1), Films, Series (others open with add-ons that bring links, returnTo PERSON; Back from a title opened

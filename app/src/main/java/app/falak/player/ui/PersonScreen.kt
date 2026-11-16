@@ -65,12 +65,11 @@ data class PersonPage(
     val yours: List<Pair<People.Title, Channel>>,
 )
 
-sealed interface PersonLoad {
-    data object Loading : PersonLoad
-    data class Ready(val page: PersonPage) : PersonLoad
-    data object NotFound : PersonLoad
-    data object NoAnswer : PersonLoad
-}
+/** Who the page is about: found, not found, or no answer (offline). */
+private data class Who(val person: People.Person? = null, val notFound: Boolean = false, val failed: Boolean = false)
+
+/** Their films and series, or no answer. */
+private data class Works(val films: List<People.Title>, val series: List<People.Title>, val failed: Boolean = false)
 
 /** Screen tests: the page as if Wikidata had answered. */
 object PersonForTest {
@@ -89,24 +88,43 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
     BackHandler { vm.closePerson() }
     var tries by remember { mutableIntStateOf(0) }
     val index = vm.index
-    val load by produceState<PersonLoad>(PersonLoad.Loading, open, tries, index) {
-        PersonForTest.page?.let {
-            value = PersonLoad.Ready(it)
-            return@produceState
+    val test = PersonForTest.page
+    // In stages (8.30): who it is (with their photo), then their story and their films as each
+    // comes, then what of theirs your playlist has; each shown as soon as it's here.
+    // (A state kept from the actor shown before is set back first: these run again for each one.)
+    val who by produceState(Who(test?.person ?: open.found), open, tries) {
+        val known = test?.person ?: open.found
+        value = Who(known)
+        if (known != null) return@produceState
+        val p = withContext(Dispatchers.IO) { repo.people.find(open.name) }
+        value = when {
+            p == null -> Who(failed = true)
+            p === app.falak.player.data.PeopleClient.NOT_FOUND -> Who(notFound = true)
+            else -> Who(p)
         }
-        value = PersonLoad.Loading
-        value = withContext(Dispatchers.IO) {
-            val p = open.found ?: run {
-                val found = repo.people.search(open.name) ?: return@withContext PersonLoad.NoAnswer
-                People.pick(found, open.name) ?: return@withContext PersonLoad.NotFound
-            }
-            coroutineScope {
-                val about = async { repo.people.about(p.id) }
-                val (films, series) = repo.people.credits(p.id) ?: return@coroutineScope PersonLoad.NoAnswer
-                val yours = People.inLibrary(films + series, index.movies + index.series)
-                PersonLoad.Ready(PersonPage(p, about.await(), films, series, yours))
-            }
+    }
+    val person = who.person
+    val about by produceState(test?.about, person) {
+        value = test?.about
+        if (test != null || person == null) return@produceState
+        value = withContext(Dispatchers.IO) { repo.people.about(person.id) }
+    }
+    val works by produceState(test?.let { Works(it.films, it.series) }, person, tries) {
+        value = test?.let { Works(it.films, it.series) }
+        if (test != null || person == null) return@produceState
+        val c = withContext(Dispatchers.IO) { repo.people.credits(person.id) }
+        value = if (c == null) Works(emptyList(), emptyList(), failed = true) else Works(c.first, c.second)
+    }
+    val yoursFound by produceState(test?.yours, works, index) {
+        value = test?.yours
+        val w = works
+        if (test != null || w == null || w.failed) return@produceState
+        value = withContext(Dispatchers.Default) {
+            People.inLibrary(w.films + w.series, repo.people.names(index) { index.movies + index.series })
         }
+    }
+    val page = person?.let { p ->
+        works?.takeIf { !it.failed }?.let { w -> PersonPage(p, about, w.films, w.series, yoursFound.orEmpty()) }
     }
     // Titles that aren't in the playlist open with the add-ons that bring links.
     val links = state.settings.addons
@@ -121,20 +139,25 @@ fun PersonScreen(vm: LibraryViewModel, state: AppState) {
                 PageHeader(open.name, onBack = { vm.closePerson() })
             }
         }
-        when (val l = load) {
-            PersonLoad.Loading -> item(key = "wait") {
-                BusyLine(Modifier.padding(horizontal = pageMargin(), vertical = 24.dp).widthIn(max = 420.dp).fillMaxWidth())
-            }
-            PersonLoad.NotFound -> item(key = "none") { PersonNote("Nothing is known about “${open.name}” yet.") }
-            PersonLoad.NoAnswer -> item(key = "fail") {
+        when {
+            who.notFound -> item(key = "none") { PersonNote("Nothing is known about “${open.name}” yet.") }
+            who.failed || works?.failed == true -> item(key = "fail") {
                 Column(Modifier.padding(horizontal = pageMargin())) {
                     PersonNote("Couldn't get their page. Check the internet and try again.", padded = false)
                     GhostButton("Try again") { tries++ }
                 }
             }
-            is PersonLoad.Ready -> {
-                val page = l.page
-                item(key = "about") { PersonHead(page, tv) }
+            person == null -> item(key = "wait") {
+                BusyLine(Modifier.padding(horizontal = pageMargin(), vertical = 24.dp).widthIn(max = 420.dp).fillMaxWidth())
+            }
+            page == null -> {
+                item(key = "about") { PersonHead(person, about, tv) }
+                item(key = "wait") {
+                    BusyLine(Modifier.padding(horizontal = pageMargin(), vertical = 16.dp).widthIn(max = 420.dp).fillMaxWidth())
+                }
+            }
+            else -> {
+                item(key = "about") { PersonHead(person, about, tv) }
                 val firstKey = when {
                     page.yours.isNotEmpty() -> "yours"
                     page.films.isNotEmpty() -> "films"
@@ -216,15 +239,14 @@ private fun People.Title.asCard() = Channel(
 )
 
 @Composable
-private fun PersonHead(page: PersonPage, tv: Boolean) {
-    val a = page.about
-    val photo = a?.photo?.ifBlank { null } ?: page.person.photo
+private fun PersonHead(person: People.Person, a: People.About?, tv: Boolean) {
+    val photo = a?.photo?.ifBlank { null } ?: person.photo
     Row(Modifier.padding(horizontal = pageMargin()).padding(top = 4.dp, bottom = 18.dp).widthIn(max = 900.dp)) {
         Box(
             Modifier.size(if (tv) 132.dp else 104.dp).clip(CircleShape).background(Ink3),
             contentAlignment = Alignment.Center,
         ) {
-            LogoOr(photo, null, ContentScale.Crop, Modifier.fillMaxSize()) { Initials(page.person.name, 30.sp) }
+            LogoOr(photo, null, ContentScale.Crop, Modifier.fillMaxSize()) { Initials(person.name, 30.sp) }
         }
         Spacer(Modifier.size(18.dp))
         Column(Modifier.weight(1f)) {
@@ -261,6 +283,17 @@ private fun PersonNote(text: String, padded: Boolean = true) {
 @Composable
 fun CastNames(vm: LibraryViewModel, label: String, names: List<String>) {
     if (names.isEmpty()) return
+    // The first actors are looked up while the page is read (8.30): tapping one opens at once.
+    val context = LocalContext.current
+    val repo = context.repo
+    val index = vm.index
+    LaunchedEffect(names, index) {
+        // (Not on mobile data: a few hundred kB each time.)
+        if (!vm.kidsActive && !onMobileData(context)) {
+            kotlinx.coroutines.delay(800) // (after the page's own pictures and details)
+            repo.people.warm(names, index) { index.movies + index.series }
+        }
+    }
     if (vm.kidsActive) {
         Credit(label, names.joinToString(", "))
         return

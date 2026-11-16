@@ -103,6 +103,25 @@ class PeopleTest {
     }
 
     @Test
+    fun namesTidiedTheQuickWay() {
+        // 8.30: plain English names are tidied by hand; the same words as before.
+        assertEquals("tom and jerry", TitleMatch.norm(" Tom & Jerry "))
+        assertEquals("and co", TitleMatch.norm("&Co"))
+        assertEquals("r and and b", TitleMatch.norm("R&&B"))
+        assertEquals("spider man no way home 2021", TitleMatch.norm("Spider-Man: No Way Home (2021)"))
+        assertEquals("amelie", TitleMatch.norm("Amélie"))
+        assertEquals("", TitleMatch.norm(" -:() "))
+        // Tags at the end go, a word that only ends like one stays.
+        assertEquals("The Matrix" to 1999, TitleMatch.clean("EN - The Matrix (1999) 4K", 2026))
+        assertEquals("Film." to null, TitleMatch.clean("Film.HD", 2026))
+        assertEquals("Shadow4k" to null, TitleMatch.clean("Shadow4k", 2026))
+        // The playlist's names are made once and give the same matches.
+        val lib = listOf(Channel("m1", "EN - The Matrix (1999) 4K", "A", "u", kind = Kind.MOVIE), Channel("l1", "The Matrix", "Live", "u", kind = Kind.LIVE))
+        val names = People.Names(lib)
+        assertEquals(listOf("m1"), People.inLibrary(listOf(People.Title("movie", "The Matrix", 1999, "tt0133093", "")), names).map { it.second.id })
+    }
+
+    @Test
     fun aProvidersCastLine() {
         assertEquals(listOf("Keanu Reeves", "Laurence Fishburne", "Carrie-Anne Moss"), People.castNames("Keanu Reeves, Laurence Fishburne ,Carrie-Anne Moss,"))
         assertEquals(listOf("عادل إمام", "يسرا"), People.castNames("عادل إمام، يسرا"))
