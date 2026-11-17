@@ -363,6 +363,13 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   create_link tv_archive "auto /media/<id>.mpg"). Needs past programmes in the guide. **Portal → Chromecast:**
   `PortalLinks.ours/real` ask the portal's own link before casting (`castNow` async, `castBypass` = play here
   when it fails). The portal may refuse a Chromecast (another IP, no MAG User-Agent). Tests: `PortalTest`, `TvHomeRowTest`.
+- **Save to gallery (8.36, phones only; the owner: "save only to gallery, no need for share"), `record/GallerySave.kt`:**
+  long press a saved recording (phones) → Save to gallery / Delete. The .ts is put in an MP4 as it is by Media3's
+  Transformer (`media3-transformer`, same 1.5.1; nothing re-encoded unless the sound can't go in MP4) in
+  `getExternalFilesDir/gallery-<id>.mp4`, then copied to Movies/The Player (Android 10+: MediaStore, IS_PENDING;
+  7–9: the folder itself + `WRITE_EXTERNAL_STORAGE` maxSdk 28, asked by the page). Transformer fails → the .ts is
+  copied. Progress in `GallerySave.state` (`GalleryLine` on the Recordings page, a toast when done). Needs ~2× the
+  file's size free for a moment. Tests: `GallerySaveTest`, `PhoneGallerySaveScreens`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
