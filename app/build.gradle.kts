@@ -169,6 +169,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     // Save to gallery (8.36): recordings put in an MP4 as they are.
     implementation("androidx.media3:media3-transformer:$media3")
+    implementation("androidx.media3:media3-muxer:$media3") // InAppMuxer (8.37)
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     // Listen mode: play/pause on the lock screen and in the notification.
     implementation("androidx.media3:media3-session:$media3")
