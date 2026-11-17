@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.35"
+        versionName = "8.36"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -167,6 +167,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+    // Save to gallery (8.36): recordings put in an MP4 as they are.
+    implementation("androidx.media3:media3-transformer:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     // Listen mode: play/pause on the lock screen and in the notification.
     implementation("androidx.media3:media3-session:$media3")

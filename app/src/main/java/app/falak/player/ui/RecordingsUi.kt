@@ -164,6 +164,35 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
     val tv = isTv()
     val shell = LocalShell.current
     var confirm by remember { mutableStateOf<Recording?>(null) }
+    // Phones (8.36): a long press on a saved one offers Save to gallery and Delete.
+    var options by remember { mutableStateOf<Recording?>(null) }
+    val gallery by app.falak.player.record.GallerySave.state.collectAsState()
+    val context = LocalContext.current
+    var waitingFor by remember { mutableStateOf<Recording?>(null) }
+    val askStorage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val r = waitingFor
+        waitingFor = null
+        if (r != null) {
+            if (granted) {
+                app.falak.player.record.GallerySave.start(context, r)
+            } else {
+                android.widget.Toast.makeText(context, "Saving to the gallery needs the storage permission", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val saveToGallery: (Recording) -> Unit = { r ->
+        val perm = android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        if (app.falak.player.record.GallerySave.needsPermission &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, perm) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            waitingFor = r
+            askStorage.launch(perm)
+        } else {
+            app.falak.player.record.GallerySave.start(context, r)
+        }
+    }
     var confirmAll by remember { mutableStateOf(false) }
     var stopRule by remember { mutableStateOf<SeriesRule?>(null) }
     // Which kind the chips show: everything, or only what's recording, planned, saved, or the series.
@@ -238,6 +267,9 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
                 else -> 2
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                gallery?.takeIf { !tv }?.let { job ->
+                    item(key = "gallery") { GalleryLine(job) }
+                }
                 if (shows(RecFilter.NOW)) {
                     items(now, key = { "now:" + it.id }) { r ->
                         RecordingNowCard(r, tv, onWatch = { play(r) }, onStop = { RecordCenter.stop(r.id) })
@@ -249,7 +281,7 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
                             Kicker("Saved", color = Muted)
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                if (tv) "Hold OK on one to delete it" else "Long-press one to delete it",
+                                if (tv) "Hold OK on one to delete it" else "Long-press one to save it to your gallery or delete it",
                                 fontFamily = Sans,
                                 fontSize = 12.sp,
                                 color = Faint,
@@ -263,6 +295,7 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
                                     r,
                                     onPlay = if (r.state == RecState.DONE) ({ play(r) }) else null,
                                     onDelete = { confirm = r },
+                                    onHold = if (!tv && r.state == RecState.DONE) ({ options = r }) else ({ confirm = r }),
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -299,6 +332,40 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Keep") } },
         )
     }
+    options?.let { r ->
+        AlertDialog(
+            onDismissRequest = { options = null },
+            title = { Text(r.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    Text(
+                        "${r.channelName} · ${OfflineCenter.sizeLabel(r.size)}",
+                        fontFamily = Sans,
+                        fontSize = 13.sp,
+                        color = Muted,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    TagChip("Save to gallery", false) {
+                        options = null
+                        saveToGallery(r)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "A copy goes to Movies › The Player on this phone. It stays there if you delete it here or remove the app.",
+                        fontFamily = Sans,
+                        fontSize = 12.sp,
+                        color = Faint,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    TagChip("Delete", false) {
+                        options = null
+                        confirm = r
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { options = null }) { Text("Close") } },
+        )
+    }
     stopRule?.let { rule ->
         AlertDialog(
             onDismissRequest = { stopRule = null },
@@ -316,6 +383,43 @@ fun RecordingsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channe
             confirm = "Delete all",
             onConfirm = { RecordCenter.deleteMany(done.map { it.id }) },
         ) { confirmAll = false }
+    }
+}
+
+/** Phones (8.36): a save to the gallery under way, done, or failed, at the top of the page. */
+@Composable
+private fun GalleryLine(job: app.falak.player.record.GallerySave.Job) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.fillMaxWidth().panel(shape).padding(12.dp)) {
+        Text(
+            when {
+                job.error != null -> "Couldn't save “${job.title}”"
+                job.done -> "“${job.title}” is in your gallery"
+                else -> "Saving “${job.title}” to your gallery… ${job.percent}%"
+            },
+            fontFamily = Sans,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            color = if (job.error != null) Amber else Paper,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (job.busy) {
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { job.percent / 100f },
+                modifier = Modifier.fillMaxWidth(),
+                color = Signal,
+                trackColor = Ink3,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("You can leave this page: it carries on.", fontFamily = Sans, fontSize = 12.sp, color = Faint)
+        } else {
+            val more = job.error ?: listOf("Movies › The Player", job.note).filter { it.isNotBlank() }.joinToString(". ")
+            Text(more, fontFamily = Sans, fontSize = 12.sp, color = Muted)
+            Spacer(Modifier.height(6.dp))
+            TagChip("OK", false) { app.falak.player.record.GallerySave.dismiss() }
+        }
     }
 }
 
@@ -408,14 +512,14 @@ private fun RecordingNowCard(r: Recording, tv: Boolean, onWatch: () -> Unit, onS
 /** A saved recording as a card: OK (a tap) plays it; holding it deletes. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun SavedCard(r: Recording, onPlay: (() -> Unit)?, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+private fun SavedCard(r: Recording, onPlay: (() -> Unit)?, onDelete: () -> Unit, onHold: () -> Unit = onDelete, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
     val failed = r.state == RecState.FAILED
     Column(
         modifier
             .focusRing(shape)
             .clip(shape)
-            .combinedClickable(onClick = { onPlay?.invoke() ?: onDelete() }, onLongClick = onDelete)
+            .combinedClickable(onClick = { onPlay?.invoke() ?: onDelete() }, onLongClick = onHold)
             .padding(4.dp),
     ) {
         RecordingTile(r, Modifier.fillMaxWidth()) {

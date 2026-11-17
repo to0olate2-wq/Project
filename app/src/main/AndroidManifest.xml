@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Save to gallery (8.36): Android 7–9 write the Movies folder themselves; 10 and later need nothing. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- "New in your playlist" alerts and programme reminders (asked once; Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Android TV: put part-watched films and episodes in the home screen's "Play next" row. -->

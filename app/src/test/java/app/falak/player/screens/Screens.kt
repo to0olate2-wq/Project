@@ -46,6 +46,7 @@ import app.falak.player.data.progressKey
 import app.falak.player.data.stableId
 import app.falak.player.record.RecState
 import app.falak.player.record.RecordBook
+import app.falak.player.record.GallerySave
 import app.falak.player.record.RecordCenter
 import app.falak.player.record.Recording
 import app.falak.player.record.SeriesRule
@@ -1810,6 +1811,22 @@ class PhoneShellScreens : ScreenshotBase() {
         // Back from a page opened from More goes back to More.
         vm.closePage()
         waitFor { vm.screen == Screen.MORE }
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneGallerySaveScreens : ScreenshotBase() {
+    // 8.36: a recording being saved to the gallery, then saved.
+    @Test @Config(qualifiers = PHONE)
+    fun phoneGallerySave() = mainScreens("phone", look = "sidebar", watching = false) { vm, shoot ->
+        RecordCenter.showForTest(sampleRecordings())
+        GallerySave.showForTest(GallerySave.Job("a", "World Today", percent = 42))
+        vm.screen = Screen.RECORDINGS
+        shoot("phone-65-recordings-saving")
+        GallerySave.showForTest(GallerySave.Job("a", "World Today", percent = 100, done = true))
+        shoot("phone-66-recordings-saved")
+        GallerySave.showForTest(null)
     }
 }
 

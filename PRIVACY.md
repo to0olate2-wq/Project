@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 17 November 2026 (version 8.35)_
+_Last updated: 17 November 2026 (version 8.36)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -44,7 +44,9 @@ The app keeps these in its private storage on your device:
   for the daily limit and bedtime;
 - Ramadan dates you moved by hand, and your voice search language;
 - the PIN for locked groups, if you set one;
-- your recordings and recording plans, downloaded films and episodes (in the app's own storage);
+- your recordings and recording plans, downloaded films and episodes (in the app's own storage;
+  a recording you save to the gallery is copied to your Movies › The Player folder, where it stays
+  after the app is removed);
 - live channels that failed to play recently, so lists can hide them for a week (this device only);
 - where you put the small player, and this device's sound timing;
 - answers from the public services below (actors, film lists, popular titles), kept for a few days
@@ -210,9 +212,11 @@ your TV guide. On Android TV it
 uses the TV provider permission to put part-watched films and episodes in the home screen's Play next
 row and your channels in the app's own row. On phones and tablets with *Listen mode* turned on (it's off unless you choose it), it uses the
 foreground service (media playback) and wake lock permissions so the sound can carry on with the
-screen off, shown by a notification with play and pause. The app asks for
-nothing else: no location, contacts, camera, microphone or storage access (backup files are saved
-only where you pick, through Android's own file window).
+screen off, shown by a notification with play and pause. On phones with
+Android 7, 8 or 9, *Save to gallery* asks for storage access the first time, only to put a copy of a
+recording in your Movies folder (Android 10 and later need no permission for that). The app asks for
+nothing else: no location, contacts, camera or microphone (backup files are saved only where you
+pick, through Android's own file window).
 
 ## Changes
 
