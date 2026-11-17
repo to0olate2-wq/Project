@@ -1,8 +1,6 @@
 package app.falak.player.data
 
 import androidx.test.core.app.ApplicationProvider
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -13,7 +11,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.net.InetSocketAddress
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.URI
 import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -63,36 +64,73 @@ class PortalTest {
 
     // ---- a portal on this machine ----
 
-    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    /** A small HTTP server (Android's test classes have no JDK one): path → handler. */
+    private class Fake {
+        class Ask(val uri: URI, val headers: Map<String, String>)
+
+        val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+        val port: Int get() = socket.localPort
+        val routes = LinkedHashMap<String, (Ask) -> String?>()
+
+        fun start() {
+            Thread {
+                while (!socket.isClosed) {
+                    val s = try { socket.accept() } catch (e: Exception) { break }
+                    Thread { answer(s) }.start()
+                }
+            }.apply { isDaemon = true }.start()
+        }
+
+        private fun answer(s: Socket) = s.use {
+            val reader = s.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+            val line = reader.readLine() ?: return@use
+            val headers = HashMap<String, String>()
+            while (true) {
+                val h = reader.readLine() ?: break
+                if (h.isEmpty()) break
+                headers[h.substringBefore(':').trim().lowercase()] = h.substringAfter(':').trim()
+            }
+            val uri = URI(line.split(' ')[1])
+            val handler = routes.entries.firstOrNull { uri.path.startsWith(it.key) }?.value
+            val body = handler?.invoke(Ask(uri, headers))
+            val b = (body ?: "").toByteArray()
+            val status = if (body == null) "404 Not Found" else "200 OK"
+            s.getOutputStream().apply {
+                write("HTTP/1.1 $status\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                write(b)
+                flush()
+            }
+        }
+
+        fun stop() = socket.close()
+    }
+
+    private val server = Fake()
     private val handshakes = AtomicInteger()
     private val links = AtomicInteger()
     @Volatile private var forgetOnce = false
     @Volatile private var sawMac = ""
 
     @After
-    fun stop() = server.stop(0)
+    fun stop() = server.stop()
 
     private fun start(): String {
-        val port = server.address.port
-        server.createContext("/stalker_portal/server/load.php") { ex -> api(ex, port) }
-        server.createContext("/stream/") { ex ->
-            val b = "PLAYING ${ex.requestURI.path}".toByteArray()
-            ex.sendResponseHeaders(200, b.size.toLong())
-            ex.responseBody.use { it.write(b) }
-        }
+        val port = server.port
+        server.routes["/stalker_portal/server/load.php"] = { ask -> api(ask, port) }
+        server.routes["/stream/"] = { ask -> "PLAYING ${ask.uri.rawPath}" }
         server.start()
         return "http://127.0.0.1:$port/stalker_portal/c/"
     }
 
-    private fun api(ex: HttpExchange, port: Int) {
-        val q = ex.requestURI.rawQuery.orEmpty().split('&').associate {
+    private fun api(ask: Fake.Ask, port: Int): String {
+        val q = ask.uri.rawQuery.orEmpty().split('&').associate {
             val kv = it.split('=', limit = 2)
             kv[0] to URLDecoder.decode(kv.getOrElse(1) { "" }, "UTF-8")
         }
-        sawMac = ex.requestHeaders.getFirst("Cookie").orEmpty()
-        val auth = ex.requestHeaders.getFirst("Authorization").orEmpty()
+        sawMac = ask.headers["cookie"].orEmpty()
+        val auth = ask.headers["authorization"].orEmpty()
         val action = q["action"]
-        val body = when {
+        return when {
             action == "handshake" -> {
                 handshakes.incrementAndGet()
                 """{"js":{"token":"TOKEN${handshakes.get()}"}}"""
@@ -129,9 +167,6 @@ class PortalTest {
             action == "get_main_info" -> """{"js":{"mac":"00:1A:79:00:00:01","phone":"December 31, 2026, 11:59 pm"}}"""
             else -> """{"js":null}"""
         }
-        val b = body.toByteArray()
-        ex.sendResponseHeaders(200, b.size.toLong())
-        ex.responseBody.use { it.write(b) }
     }
 
     @Test
@@ -194,13 +229,11 @@ class PortalTest {
 
     @Test
     fun saysPlainlyWhenTheMacIsRefused() {
-        server.createContext("/portal.php") { ex ->
-            val b = (if (ex.requestURI.rawQuery.orEmpty().contains("handshake")) """{"js":{"token":"T"}}""" else "Authorization failed.").toByteArray()
-            ex.sendResponseHeaders(200, b.size.toLong())
-            ex.responseBody.use { it.write(b) }
+        server.routes["/portal.php"] = { ask ->
+            if (ask.uri.rawQuery.orEmpty().contains("handshake")) """{"js":{"token":"T"}}""" else "Authorization failed."
         }
         server.start()
-        val api = PortalApi(OkHttpClient(), "http://127.0.0.1:${server.address.port}/c/", "00:1A:79:00:00:02")
+        val api = PortalApi(OkHttpClient(), "http://127.0.0.1:${server.port}/c/", "00:1A:79:00:00:02")
         val e = runCatching { api.check() }.exceptionOrNull()
         assertEquals(Portal.REFUSED, e?.message)
     }
