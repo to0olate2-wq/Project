@@ -153,7 +153,9 @@ class PeopleClient(private val http: OkHttpClient, private val dir: File? = null
         similars[imdb]?.let { return@once it }
         val (src, people) = People.parseSimilarPeople(sparql(People.similarPeopleQuery(imdb)) ?: return@once null) ?: return@once emptyList()
         if (people.isEmpty()) return@once emptyList()
-        val list = People.parseSimilar(sparql(People.similarQuery(src, people)) ?: return@once null)
+        val scores = People.parseScores(sparql(People.similarQuery(src, people)) ?: return@once null)
+        if (scores.isEmpty()) return@once emptyList()
+        val list = People.similarTitles(scores, sparql(People.titlesQuery(scores.map { it.first })) ?: return@once null)
         similars[imdb] = list
         list
     }

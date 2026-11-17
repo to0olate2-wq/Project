@@ -43,13 +43,14 @@ class DiscoverLiveTest {
             }
             val (src, people) = People.parseSimilarPeople(ask(People.similarPeopleQuery("tt0133093")))!!
             println("People of The Matrix ($src): $people")
-            ask(People.similarQuery(src, people))
-            ask("hint:Query hint:optimizer \"None\" .\n" + People.similarQuery(src, people).replaceFirst("WHERE {", "WHERE { hint:Query hint:optimizer \"None\" ."))
-            ask(People.similarQuery(src, people.filter { it.second > 1 }))
+            val scores = People.parseScores(ask(People.similarQuery(src, people)))
+            println("Scores ${scores.size}: ${scores.take(8)}")
+            ask(People.titlesQuery(scores.map { it.first }))
             val t1 = System.currentTimeMillis()
             val alike = c.similar("tt0133093")!!
             println("Like The Matrix ${alike.size} (${System.currentTimeMillis() - t1} ms): ${alike.take(15).map { "${it.name} ${it.year} ${it.type}" }}")
             assertTrue(alike.any { it.imdb == "tt0234215" }) // The Matrix Reloaded
+            assertTrue("too slow: ${System.currentTimeMillis() - t1} ms", System.currentTimeMillis() - t1 < 8_000)
             // A second film, and a series.
             val t3 = System.currentTimeMillis()
             val heat = c.similar("tt0113277")!! // Heat (1995)

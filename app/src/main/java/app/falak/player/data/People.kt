@@ -222,17 +222,27 @@ object People {
         return src to (crew + actors).map { it.first to it.second }
     }
 
-    /** — then what those people made, the most shared first. */
+    /**
+     * — then what those people made, the most shared first (the works only: asking for their names in
+     * the same question made Wikidata look at every title first, 13–18 s) —
+     */
     fun similarQuery(src: String, people: List<Pair<String, Int>>): String = """
-        SELECT ?w (SAMPLE(?score0) AS ?score) (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
+        SELECT ?w (SUM(?wt) AS ?score) WHERE {
+          VALUES (?p ?wt) { ${people.filter { QID.matches(it.first) }.joinToString(" ") { "(wd:${it.first} ${it.second})" }} }
+          { ?w wdt:P179 ?p . } UNION { ?w wdt:P57 ?p . } UNION { ?w wdt:P58 ?p . } UNION { ?w wdt:P161 ?p . }
+          FILTER(?w != wd:$src)
+        } GROUP BY ?w HAVING (SUM(?wt) >= 2) ORDER BY DESC(?score) LIMIT 150
+    """.trimIndent()
+
+    /** The works and how much they share, the most first. */
+    fun parseScores(text: String): List<Pair<String, Double>> =
+        rows(text).mapNotNull { r -> entity(r["w"])?.let { it to (value(r["score"]).toDoubleOrNull() ?: 0.0) } }
+
+    /** — and last, those works' names, years and kinds, as for an actor's titles. */
+    fun titlesQuery(ids: List<String>): String = """
+        SELECT ?w (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
                (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
-          {
-            SELECT ?w (SUM(?wt) AS ?score0) WHERE {
-              VALUES (?p ?wt) { ${people.filter { QID.matches(it.first) }.joinToString(" ") { "(wd:${it.first} ${it.second})" }} }
-              { ?w wdt:P179 ?p . } UNION { ?w wdt:P57 ?p . } UNION { ?w wdt:P58 ?p . } UNION { ?w wdt:P161 ?p . }
-              FILTER(?w != wd:$src)
-            } GROUP BY ?w ORDER BY DESC(?score0) LIMIT 200
-          }
+          VALUES ?w { ${ids.filter { QID.matches(it) }.joinToString(" ") { "wd:$it" }} }
           ?w wdt:P345 ?imdbId . FILTER(STRSTARTS(?imdbId, "tt"))
           OPTIONAL { ?w wdt:P31 ?kind . }
           OPTIONAL { ?w wdt:P577|wdt:P580 ?d . }
@@ -240,13 +250,17 @@ object People {
           OPTIONAL { ?w rdfs:label ?enName . FILTER(LANG(?enName) = "en") }
           OPTIONAL { ?w rdfs:label ?mulName . FILTER(LANG(?mulName) = "mul") }
           OPTIONAL { ?w rdfs:label ?arName . FILTER(LANG(?arName) = "ar") }
-        } GROUP BY ?w ORDER BY DESC(?score)
+        } GROUP BY ?w
     """.trimIndent()
 
-    /** The titles of [similarQuery], the most alike first (two shared people outrank one). */
-    fun parseSimilar(text: String): List<Title> {
-        val scored = rows(text).mapNotNull { r -> titleOf(r)?.let { it to (value(r["score"]).toDoubleOrNull() ?: 0.0) } }
-        return scored.filter { it.second >= 2.0 }.sortedByDescending { it.second }.map { it.first }.distinctBy { it.imdb }
+    /** The titles of [titlesQuery] in the order of [scores] (the most alike first). */
+    fun similarTitles(scores: List<Pair<String, Double>>, titlesText: String): List<Title> {
+        val byId = HashMap<String, Title>()
+        for (r in rows(titlesText)) {
+            val id = entity(r["w"]) ?: continue
+            titleOf(r)?.let { byId[id] = it }
+        }
+        return scores.mapNotNull { byId[it.first] }.distinctBy { it.imdb }
     }
 
     /** A Cinemeta list (its popular films or series) as titles. */
