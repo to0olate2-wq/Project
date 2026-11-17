@@ -86,7 +86,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
 
     val poster = info?.poster?.takeIf { it.isNotBlank() } ?: ch.logo
-    // IMDb and Trakt (8.29), once the page says the year: the film is looked up by its name.
+    // The IMDb rating (8.29), once the page says the year: the film is looked up by its name.
     val repo = context.repo
     val scores = rememberScores(if (vm.detailsLoading) null else ch.id + "|" + info?.year, "movie") {
         val (name, year) = app.falak.player.data.TitleMatch.clean(ch.name)

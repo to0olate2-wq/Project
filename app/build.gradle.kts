@@ -22,16 +22,12 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.30"
+        versionName = "8.31"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
             .takeIf { Regex("https://[A-Za-z0-9.-]+(/[A-Za-z0-9._/-]*)?").matches(it) }.orEmpty()
         buildConfigField("String", "STATS_URL", "\"$statsUrl\"")
-        // Trakt (8.29): the app's Trakt app (repository secrets, see build.yml); empty = no Trakt.
-        fun hexOrEmpty(name: String) = (System.getenv(name) ?: "").trim().takeIf { Regex("[0-9a-fA-F]{32,128}").matches(it) }.orEmpty()
-        buildConfigField("String", "TRAKT_ID", "\"${hexOrEmpty("TRAKT_CLIENT_ID")}\"")
-        buildConfigField("String", "TRAKT_SECRET", "\"${hexOrEmpty("TRAKT_CLIENT_SECRET")}\"")
         // TVs and phones are ARM; leaving out x86 keeps the download much smaller now that VLC is built in.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }

@@ -100,26 +100,30 @@ private class SettingsNav {
 }
 
 /** The rows of the list of pages (TV: coming back to one of these puts the remote on the list). */
-private val HUB_KEYS: Set<String> = SettingsPage.entries.filter { it.parent == null }.map { it.name }.toSet() + "PRAYER"
+private val HUB_KEYS: Set<String> = SettingsPage.entries.filter { it.parent == null }.map { it.name }.toSet()
 
 /** The pages of Settings, each opened from the list on its first page. */
 enum class SettingsPage(val title: String) {
-    APPEARANCE("Appearance"),
-    PLAYBACK("Picture & playback"),
-    RECORDINGS("Recordings & pause live TV"),
+    // Fewer, clearer groups (8.31; the owner: "arrange it in a proper smaller group").
+    APPEARANCE("Look & start"),
+    PLAYBACK("Player"),
     SOUND("Sound & subtitles"),
     PLAYLISTS("Playlists & TV guide"),
-    REMINDERS("Reminders & alerts"),
+    RECORDINGS("Recordings & reminders"),
     FAMILY("Profiles & parental control"),
-    DEVICES("Devices & phone remote"),
-    TRAKT("Trakt"),
+    DEVICES("Devices & backup"),
     ABOUT("Help and about"),
     SUBTITLE_STYLE("Subtitle style"),
+    REMINDERS("Reminders & alerts"),
     ;
 
     /** A page opened from another page (Back goes there), not from the list. */
     val parent: SettingsPage?
-        get() = if (this == SUBTITLE_STYLE) SOUND else null
+        get() = when (this) {
+            SUBTITLE_STYLE -> SOUND
+            REMINDERS -> RECORDINGS
+            else -> null
+        }
 }
 
 @Composable
@@ -135,6 +139,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     var editSubs by remember { mutableStateOf(false) }
     var removeSpeech by remember { mutableStateOf(false) }
     var serviceReport by remember { mutableStateOf(false) }
+    var connectionCheck by remember { mutableStateOf(false) }
     // Add-ons (GitHub version), with the playlists: adding one, and the one being removed.
     var addingAddon by remember { mutableStateOf(false) }
     var addonToRemove by remember { mutableStateOf<String?>(null) }
@@ -269,8 +274,8 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
                 HubRow(
                     { ThemeGlyph(Paper) },
-                    "Appearance",
-                    "$theme theme · Ambient screen ${if (s.ambient) "on" else "off"}",
+                    "Look & start",
+                    "$theme theme · ${if (s.appLook == "cinema") "Cinema" else "Spotlight"} look · Opens on ${if (s.startOn == "live") "Live TV" else "Home"}",
                     hubAt(SettingsPage.APPEARANCE.name),
                     selected = twoPane && (page == SettingsPage.APPEARANCE || page?.parent == SettingsPage.APPEARANCE),
                 ) { openPage(SettingsPage.APPEARANCE) }
@@ -280,31 +285,11 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 val picture = listOf("Fit", "Fill", "Zoom").getOrElse(s.aspect) { "Fit" }
                 HubRow(
                     { HubIcon(painterResource(R.drawable.ic_pl_player)) },
-                    "Picture & playback",
+                    "Player",
                     "$engine · Picture: $picture · ${if (s.autoNextEpisode) "Auto next episode" else "Next episode by hand"}",
                     hubAt(SettingsPage.PLAYBACK.name),
                     selected = twoPane && (page == SettingsPage.PLAYBACK || page?.parent == SettingsPage.PLAYBACK),
                 ) { openPage(SettingsPage.PLAYBACK) }
-            }
-            item {
-                val recs = app.falak.player.record.RecordCenter.book.collectAsState().value.recordings
-                val saved = recs.count { it.state == app.falak.player.record.RecState.DONE }
-                val planned = recs.count { it.state == app.falak.player.record.RecState.SCHEDULED || it.state == app.falak.player.record.RecState.RECORDING }
-                HubRow(
-                    { HubIcon(painterResource(R.drawable.ic_pl_record)) },
-                    "Recordings & pause live TV",
-                    listOf(
-                        if (s.liveBuffer == "on") "Pause & rewind on" else "Pause & rewind off",
-                        when (saved) {
-                            0 -> "No recordings"
-                            1 -> "1 recording"
-                            else -> "$saved recordings"
-                        },
-                        if (planned > 0) "$planned planned" else null,
-                    ).filterNotNull().joinToString(" · "),
-                    hubAt(SettingsPage.RECORDINGS.name),
-                    selected = twoPane && (page == SettingsPage.RECORDINGS || page?.parent == SettingsPage.RECORDINGS),
-                ) { openPage(SettingsPage.RECORDINGS) }
             }
             item {
                 val night = when (s.nightSound) {
@@ -343,21 +328,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 ) { openPage(SettingsPage.PLAYLISTS) }
             }
             item {
-                val reminders = state.reminders.count { it.start > System.currentTimeMillis() }
+                val recs = app.falak.player.record.RecordCenter.book.collectAsState().value.recordings
+                val saved = recs.count { it.state == app.falak.player.record.RecState.DONE }
+                val planned = recs.count { it.state == app.falak.player.record.RecState.SCHEDULED || it.state == app.falak.player.record.RecState.RECORDING }
                 HubRow(
-                    { HubIcon(rememberVectorPainter(Icons.Outlined.Notifications)) },
-                    "Reminders & alerts",
+                    { HubIcon(painterResource(R.drawable.ic_pl_record)) },
+                    "Recordings & reminders",
                     listOf(
-                        when (reminders) {
-                            0 -> "No reminders"
-                            1 -> "1 reminder"
-                            else -> "$reminders reminders"
+                        if (s.liveBuffer == "on") "Pause & rewind on" else "Pause & rewind off",
+                        when (saved) {
+                            0 -> "No recordings"
+                            1 -> "1 recording"
+                            else -> "$saved recordings"
                         },
-                        if (state.alertWords.isEmpty()) "No alert words" else "Alerts: " + state.alertWords.joinToString(", "),
-                    ).joinToString(" · "),
-                    hubAt(SettingsPage.REMINDERS.name),
-                    selected = twoPane && (page == SettingsPage.REMINDERS || page?.parent == SettingsPage.REMINDERS),
-                ) { openPage(SettingsPage.REMINDERS) }
+                        if (planned > 0) "$planned planned" else null,
+                        state.reminders.count { it.start > System.currentTimeMillis() }.let { n -> if (n > 0) "$n reminder" + (if (n > 1) "s" else "") else null },
+                    ).filterNotNull().joinToString(" · "),
+                    hubAt(SettingsPage.RECORDINGS.name),
+                    selected = twoPane && (page == SettingsPage.RECORDINGS || page?.parent == SettingsPage.RECORDINGS),
+                ) { openPage(SettingsPage.RECORDINGS) }
             }
             item { HubGap() }
             item {
@@ -377,7 +366,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 val linked = state.sync.key.isNotEmpty()
                 HubRow(
                     { PhoneGlyph(Paper) },
-                    "Devices & phone remote",
+                    "Devices & backup",
                     (if (linked && s.syncOn) "Sync on" else "Sync off") + " · " + when (state.remotes.size) {
                         0 -> "No phone paired"
                         1 -> "1 phone paired"
@@ -386,28 +375,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     hubAt(SettingsPage.DEVICES.name),
                     selected = twoPane && (page == SettingsPage.DEVICES || page?.parent == SettingsPage.DEVICES),
                 ) { openPage(SettingsPage.DEVICES) }
-            }
-            item {
-                // Trakt (8.29): ratings and actors for everyone; your account to mark what you watch.
-                HubRow(
-                    { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Person, null, tint = Paper) },
-                    "Trakt",
-                    if (s.traktAccess.isNotEmpty()) "Connected" + (s.traktUser.ifBlank { null }?.let { " as $it" } ?: "") else "Not connected",
-                    hubAt(SettingsPage.TRAKT.name),
-                    selected = twoPane && page == SettingsPage.TRAKT,
-                ) { openPage(SettingsPage.TRAKT) }
-            }
-            item {
-                HubRow(
-                    { CrescentIcon(Paper, 18.dp) },
-                    "Prayer times",
-                    when (s.prayerMode) {
-                        "remind" -> "On: a reminder at each prayer"
-                        "pause" -> "On: a reminder, and the player pauses"
-                        else -> "Off"
-                    },
-                    hubAt("PRAYER"),
-                ) { go("PRAYER") { vm.screen = Screen.PRAYER } }
             }
             item { HubGap() }
             item {
@@ -521,6 +488,54 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 focusAt("homeRows"),
             ) { homeRowsOpen = true }
         }
+        item {
+            SwitchRow(
+                "Ambient screen",
+                "A slideshow with the clock after 5 minutes idle, or 90 seconds with a video paused",
+                s.ambient,
+            ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
+        }
+        if (!tvLayout) {
+            item {
+                SwitchRow(
+                    "Turn with the phone",
+                    if (s.turnWithPhone) "Every page turns when you turn the phone, even with rotation locked in the phone's settings"
+                    else "Pages follow the phone's own rotation setting (the player turns as set in it)",
+                    s.turnWithPhone,
+                ) { vm.updateSettings { it.copy(turnWithPhone = !it.turnWithPhone) } }
+            }
+        }
+        item { SectionTitle("When the app opens") }
+        item {
+            SwitchRow("Open last playlist on start", null, s.openLast, focusAt("openLast")) {
+                vm.updateSettings { it.copy(openLast = !it.openLast) }
+            }
+        }
+        item {
+            SwitchRow(
+                "Start with the last channel",
+                "When the app was fully closed, it opens playing the channel you watched last",
+                s.startLastChannel,
+            ) {
+                vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Open on", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "The page a playlist opens on, on this device. Live TV suits you if you mostly watch channels.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    TagChip("Home", s.startOn != "live") { vm.updateSettings { it.copy(startOn = "home") } }
+                    TagChip("Live TV", s.startOn == "live") { vm.updateSettings { it.copy(startOn = "live") } }
+                }
+            }
+        }
+
         if (tvLayout) {
             item {
                 val allowed = remember(page, resumed) { app.falak.player.record.StartWithTv.allowed(appContext) }
@@ -557,27 +572,10 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 }
             }
         }
-        item {
-            SwitchRow(
-                "Ambient screen",
-                "A slideshow with the clock after 5 minutes idle, or 90 seconds with a video paused",
-                s.ambient,
-            ) { vm.updateSettings { it.copy(ambient = !it.ambient) } }
-        }
-        if (!tvLayout) {
-            item {
-                SwitchRow(
-                    "Turn with the phone",
-                    if (s.turnWithPhone) "Every page turns when you turn the phone, even with rotation locked in the phone's settings"
-                    else "Pages follow the phone's own rotation setting (the player turns as set in it)",
-                    s.turnWithPhone,
-                ) { vm.updateSettings { it.copy(turnWithPhone = !it.turnWithPhone) } }
-            }
-        }
         }
 
         SettingsPage.PLAYBACK -> {
-        item { SectionTitle("Player", first = true) }
+        item { SectionTitle("Which player", first = true) }
         item { PlayerChoice(vm, s.player, focusAt("first")) }
 
         item { SectionTitle("Picture") }
@@ -626,22 +624,13 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
-        item { SectionTitle("Playback") }
+        item { SectionTitle("Watching") }
         item {
             SwitchRow(
                 "Play the next episode automatically",
                 "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
                 s.autoNextEpisode,
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
-        }
-        if (app.falak.player.torrent.Torrents.available) {
-            item {
-                SwitchRow(
-                    "Ask before torrents use mobile data",
-                    "A film from a torrent link can use several gigabytes. Off: it starts on mobile data without asking.",
-                    !s.torrentOnData,
-                ) { vm.updateSettings { it.copy(torrentOnData = !it.torrentOnData) } }
-            }
         }
         item {
             SwitchRow(
@@ -652,16 +641,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     "(Stremio's free list). Nothing about you is sent. Not every title is in the list.",
                 s.skipLookup,
             ) { vm.updateSettings { it.copy(skipLookup = !it.skipLookup) } }
-        }
-        item {
-            SwitchRow("Larger buffer", "Fewer pauses on slow connections; channels start a little slower", s.bigBuffer) {
-                vm.updateSettings { it.copy(bigBuffer = !it.bigBuffer) }
-            }
-        }
-        item {
-            SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
-                vm.updateSettings { it.copy(preferHls = !it.preferHls) }
-            }
         }
         item {
             SwitchRow(
@@ -690,6 +669,33 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                         "with play and pause on the lock screen. Coming back brings the picture back.",
                     s.listenMode,
                 ) { vm.updateSettings { it.copy(listenMode = !it.listenMode) } }
+            }
+        }
+        item { SectionTitle("Connection") }
+        item {
+            ClickRow(
+                "Check the connection",
+                "How fast your internet is, and whether your provider answers, and how quickly. Try it when channels stutter.",
+                focusAt("connection"),
+            ) { connectionCheck = true }
+        }
+        item {
+            SwitchRow("Larger buffer", "Fewer pauses on slow connections; channels start a little slower", s.bigBuffer) {
+                vm.updateSettings { it.copy(bigBuffer = !it.bigBuffer) }
+            }
+        }
+        item {
+            SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
+                vm.updateSettings { it.copy(preferHls = !it.preferHls) }
+            }
+        }
+        if (app.falak.player.torrent.Torrents.available) {
+            item {
+                SwitchRow(
+                    "Ask before torrents use mobile data",
+                    "A film from a torrent link can use several gigabytes. Off: it starts on mobile data without asking.",
+                    !s.torrentOnData,
+                ) { vm.updateSettings { it.copy(torrentOnData = !it.torrentOnData) } }
             }
         }
         }
@@ -776,10 +782,39 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             if (!onTime) {
                 ClickRow(
                     "Allow alarms & reminders",
-                    "So planned recordings start on time while the app is closed",
+                    "So planned recordings and reminders start on time while the app is closed",
                     focusAt("alarms"),
                 ) { askForAlarms(appContext) }
             }
+        }
+        item { SectionTitle("Reminders") }
+        item {
+            val reminders = state.reminders.count { it.start > System.currentTimeMillis() }
+            ClickRow(
+                "Reminders & alerts",
+                listOf(
+                    when (reminders) {
+                        0 -> "No reminders"
+                        1 -> "1 reminder"
+                        else -> "$reminders reminders"
+                    },
+                    if (state.alertWords.isEmpty()) "no alert words" else "alerts: " + state.alertWords.joinToString(", "),
+                ).joinToString(" · "),
+                focusAt(SettingsPage.REMINDERS.name),
+                arrow = true,
+            ) { openPage(SettingsPage.REMINDERS) }
+        }
+        item {
+            ClickRow(
+                "Prayer times",
+                when (s.prayerMode) {
+                    "remind" -> "On: a reminder at each prayer"
+                    "pause" -> "On: a reminder, and the player pauses"
+                    else -> "Off"
+                },
+                focusAt("PRAYER"),
+                arrow = true,
+            ) { go("PRAYER") { vm.screen = Screen.PRAYER } }
         }
         }
 
@@ -929,38 +964,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         SettingsPage.PLAYLISTS -> {
-        item { SectionTitle("When the app opens", first = true) }
-        item {
-            SwitchRow("Open last playlist on start", null, s.openLast, focusAt("first")) {
-                vm.updateSettings { it.copy(openLast = !it.openLast) }
-            }
-        }
-        item {
-            SwitchRow(
-                "Start with the last channel",
-                "When the app was fully closed, it opens playing the channel you watched last",
-                s.startLastChannel,
-            ) {
-                vm.updateSettings { it.copy(startLastChannel = !it.startLastChannel) }
-            }
-        }
-        item {
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
-                Text("Open on", style = MaterialTheme.typography.bodyLarge, color = Paper)
-                Text(
-                    "The page a playlist opens on, on this device. Live TV suits you if you mostly watch channels.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                ChipFlow {
-                    TagChip("Home", s.startOn != "live") { vm.updateSettings { it.copy(startOn = "home") } }
-                    TagChip("Live TV", s.startOn == "live") { vm.updateSettings { it.copy(startOn = "live") } }
-                }
-            }
-        }
-
-        item { SectionTitle("Tidy channel list") }
+        item { SectionTitle("Channel list", first = true) }
         item {
             SwitchRow(
                 "Clean channel names",
@@ -1503,10 +1507,6 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
         }
 
-        SettingsPage.TRAKT -> {
-        item { SectionTitle("Trakt", first = true) }
-        item { TraktSettings(vm, s, focusAt("first")) }
-        }
         SettingsPage.ABOUT -> {
         // The guide to the main buttons, and what changed in this version (8.27): shown over the lists.
         item {
@@ -1639,6 +1639,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
 
     if (addAlertWord) {
         AlertWordDialog(onDismiss = { addAlertWord = false }) { w -> if (!vm.hasAlertWord(w)) vm.toggleAlertWord(w) }
+    }
+    if (connectionCheck) {
+        ConnectionCheckDialog(vm, state, p) { connectionCheck = false }
     }
     if (serviceReport && p != null) {
         ServiceReportDialog(p) { serviceReport = false }
@@ -2451,113 +2454,4 @@ private fun EditPinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (Strin
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
-}
-
-
-/**
- * Settings → Trakt (8.29): connect this device to a Trakt account with a code (typed on
- * trakt.tv/activate, on a phone or computer), what it does, and disconnecting.
- */
-@Composable
-private fun TraktSettings(vm: LibraryViewModel, s: app.falak.player.data.Settings, modifier: Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val repo = context.repo
-    val scope = rememberCoroutineScope()
-    var code by remember { mutableStateOf<app.falak.player.data.Trakt.DeviceCode?>(null) }
-    var note by remember { mutableStateOf<String?>(null) }
-    Column {
-        Text(
-            "Connect your Trakt account to mark the films and episodes you watch on Trakt, and to see your Trakt watchlist " +
-                "with your add-ons. Trakt lets only the people added to this app connect (16 at most), and a free Trakt account " +
-                "connects one outside app at a time.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Muted,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-        )
-        when {
-            !repo.trakt.available -> Text(
-                "Trakt isn't set up in this version yet.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Paper,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
-            )
-            s.traktAccess.isNotEmpty() -> {
-                ClickRow("Connected" + (s.traktUser.ifBlank { null }?.let { " as $it" } ?: ""), "Disconnect this device from Trakt", modifier) {
-                    scope.launch {
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.disconnect() }
-                        note = "Disconnected."
-                    }
-                }
-                SwitchRow(
-                    "Mark what I watch on Trakt",
-                    "Films and episodes you watch past 80% show as watched on Trakt (as they play: also 'watching now')",
-                    s.traktScrobble,
-                ) { vm.updateSettings { it.copy(traktScrobble = !it.traktScrobble) } }
-            }
-            else -> ClickRow("Connect your Trakt account", "You'll get a code to type on trakt.tv/activate", modifier) {
-                note = null
-                scope.launch {
-                    val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.startConnecting() }
-                    if (d == null) note = "Couldn't reach Trakt. Check the internet and try again." else code = d
-                }
-            }
-        }
-        note?.let { Text(it, fontFamily = Sans, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) }
-    }
-    code?.let { d ->
-        // Asked again every few seconds until the code is typed (or it runs out).
-        LaunchedEffect(d) {
-            var wait = d.interval * 1000L
-            val until = System.currentTimeMillis() + d.expiresIn * 1000L
-            while (System.currentTimeMillis() < until) {
-                kotlinx.coroutines.delay(wait)
-                when (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.trakt.checkConnecting(d) }) {
-                    app.falak.player.data.TraktClient.Waiting.CONNECTED -> {
-                        code = null
-                        note = "Connected."
-                        return@LaunchedEffect
-                    }
-                    app.falak.player.data.TraktClient.Waiting.SLOW_DOWN -> wait += 1000L
-                    app.falak.player.data.TraktClient.Waiting.WAITING -> {}
-                    app.falak.player.data.TraktClient.Waiting.REFUSED -> {
-                        code = null
-                        note = "Trakt said no: the code was turned down, or this account isn't one of the people added to the app."
-                        return@LaunchedEffect
-                    }
-                    else -> {
-                        code = null
-                        note = "The code ran out or didn't work. Try again."
-                        return@LaunchedEffect
-                    }
-                }
-            }
-            code = null
-            note = "The code ran out. Try again."
-        }
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { code = null },
-            title = { Text("Connect Trakt") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("On your phone or computer, open", style = MaterialTheme.typography.bodyMedium)
-                    Text(d.url.removePrefix("https://"), style = MaterialTheme.typography.titleMedium, color = Paper, modifier = Modifier.padding(vertical = 4.dp))
-                    Text("and type this code:", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        d.userCode,
-                        fontFamily = Sans,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 32.sp,
-                        letterSpacing = 4.sp,
-                        color = Paper,
-                        modifier = Modifier.padding(vertical = 12.dp),
-                    )
-                    qrBitmap(d.url, 360)?.let { qr ->
-                        androidx.compose.foundation.Image(qr, "Code for ${d.url}", Modifier.size(150.dp))
-                    }
-                    Text("This page carries on by itself once it's typed.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.padding(top = 8.dp))
-                }
-            },
-            confirmButton = { TextButton(onClick = { code = null }) { Text("Cancel") } },
-        )
-    }
 }

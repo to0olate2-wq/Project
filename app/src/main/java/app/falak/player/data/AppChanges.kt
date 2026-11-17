@@ -33,7 +33,7 @@ object AppChanges {
         Change(
             "8.28",
             "Keep everything in a backup file",
-            "Settings → Devices & phone remote: save your playlists, favorites, lists and settings to a file, " +
+            "Settings → Devices & backup: save your playlists, favorites, lists and settings to a file, " +
                 "and restore them on a new phone. The file holds your playlists' passwords: keep it private.",
             keys = listOf("Settings", "More"),
         ),
@@ -54,6 +54,19 @@ object AppChanges {
             "8.29",
             "Sound timing",
             "Sound out of step with the picture? In the player, Player → Sound timing moves it earlier or later.",
+        ),
+        Change(
+            "8.31",
+            "Settings in fewer groups",
+            "Settings now has eight groups: Look & start, Player, Sound & subtitles, Playlists & TV guide, " +
+                "Recordings & reminders, Profiles & parental control, Devices & backup, and Help and about.",
+            keys = listOf("Settings", "More"),
+        ),
+        Change(
+            "8.31",
+            "Frozen streams restart by themselves",
+            "When a channel or film stops moving, the app reconnects on its own. Settings → Player → Check the connection " +
+                "measures your internet and your provider. On a series' page, press and hold an episode to mark it watched.",
         ),
     )
 

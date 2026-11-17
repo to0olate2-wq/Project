@@ -116,24 +116,6 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
         }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
-    // Your Trakt watchlist (8.29), with My list when an account is connected: read as My list opens.
-    val trakt = context.repo.trakt
-    val traktList = remember { androidx.compose.runtime.mutableStateListOf<AddonItem>() }
-    androidx.compose.runtime.LaunchedEffect(m.tab, trakt.connected) {
-        if (!trakt.connected || m.tab != AddonsModel.Tab.MINE) return@LaunchedEffect
-        val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { trakt.watchlist() } ?: return@LaunchedEffect
-        traktList.clear()
-        traktList += found.map { AddonItem(Addons.STANDARD_LISTS, it.imdb, it.type, it.name, it.poster, it.year?.toString().orEmpty()) }
-    }
-    /** In or out of My list, and of the Trakt watchlist when connected. */
-    val toggleList = { item: AddonItem ->
-        val local = state.settings.addonSaved.any { it.type == item.type && it.id == item.id }
-        val onTrakt = traktList.any { it.type == item.type && it.id == item.id }
-        val on = !(local || onTrakt)
-        if (local || on) vm.toggleAddonSaved(item)
-        if (!on) traktList.removeAll { it.type == item.type && it.id == item.id }
-        if (trakt.connected && Regex("tt\\d{5,}").matches(item.id)) Thread { trakt.setWatchlist(item.id, item.type, on) }.start()
-    }
     // What the player needs to know as a link starts: the title goes first in Continue watching, and
     // the subtitles the add-ons have for it (the link's own first) are there for its subtitles list.
     val starting = { s: AddonStream ->
@@ -212,10 +194,10 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     if (open != null) {
         AddonDetails(
             vm, m, open,
-            saved = saved.any { it.type == open.type && it.id == open.id } || traktList.any { it.type == open.type && it.id == open.id },
+            saved = saved.any { it.type == open.type && it.id == open.id },
             left = watch.firstOrNull { it.type == open.type && it.id == open.id },
             pick = state.settings.addonPick,
-            onList = { toggleList(open.copy(name = m.meta?.name?.ifBlank { null } ?: open.name, poster = m.meta?.poster?.ifBlank { null } ?: open.poster)) },
+            onList = { vm.toggleAddonSaved(open.copy(name = m.meta?.name?.ifBlank { null } ?: open.name, poster = m.meta?.poster?.ifBlank { null } ?: open.poster)) },
             onBack = closeItem,
             onPlay = play,
         )
@@ -246,7 +228,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                 } else {
                     if (wide) PortalTabs(m.tab) { m.tab = it }
                     if (m.tab == AddonsModel.Tab.MINE) {
-                        PortalMine(saved + traktList.filter { t -> saved.none { it.type == t.type && it.id == t.id } }) { m.openItem(it) }
+                        PortalMine(saved) { m.openItem(it) }
                     } else {
                         // Add-ons that only find links (Torrentio and the like) need lists to pick films from:
                         // the standard ones are a tap away (still the owner's choice: nothing is added by itself).
@@ -767,7 +749,7 @@ private fun AddonDetails(
     val meta = m.meta
     val tv = isTv()
     val series = item.type == "series"
-    // IMDb and Trakt (8.29) for a title known by its IMDb number.
+    // The IMDb rating (8.29) for a title known by its IMDb number.
     val scores = rememberScores(item.id.takeIf { Regex("tt\\d{5,}").matches(it) }, if (series) "series" else "movie") { item.id }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = pageMargin()), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "head") {

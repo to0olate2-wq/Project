@@ -379,9 +379,6 @@ class Repository(private val context: Context) {
 
     fun updateSettings(transform: (Settings) -> Settings) = update { it.copy(settings = transform(it.settings)) }
 
-    /** Trakt (8.29): people, ratings, and this device's account (see TraktClient). */
-    val trakt = TraktClient(http, { _state.value.settings }, { f -> updateSettings(f) })
-
     /** Actors and directors (8.29): Wikidata, no key (see People). */
     val people = PeopleClient(http, File(context.cacheDir, "people"))
 
