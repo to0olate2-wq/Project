@@ -218,8 +218,9 @@ fun rememberBecause(vm: LibraryViewModel, state: AppState, me: String, kind: Kin
             }
             .firstOrNull { kind == null || it.kind == kind }
     }
-    val result by produceState<Pair<Channel, List<Channel>>?>(null, source?.id, index, excluded) {
-        val src = source ?: run {
+    val result by produceState<Pair<Channel, List<Channel>>?>(null, source?.id, index, excluded, vm.kidsActive) {
+        // Kids mode: nothing is asked of Wikidata (8.35, as the privacy policy says).
+        val src = source?.takeIf { !vm.kidsActive } ?: run {
             value = null
             return@produceState
         }
@@ -236,10 +237,26 @@ fun rememberBecause(vm: LibraryViewModel, state: AppState, me: String, kind: Kin
 /** "Because you watched The Matrix" (the name without the provider's tags and year). */
 fun becauseTitle(ch: Channel): String = "Because you watched " + Versions.title(ch.name).first
 
-/** A film's or series' other copies (8.34): chips under its buttons; choosing one opens it. */
+/**
+ * The groups that mustn't be reached from here (8.35): locked ones (until the PIN is given),
+ * hidden ones, and in kids mode every group not chosen for kids, as the lists leave them out.
+ */
 @Composable
-fun VersionChips(vm: LibraryViewModel, ch: Channel, onPick: (Channel) -> Unit) {
-    val copies = remember(ch.id, vm.index) { vm.index.copiesOf(ch) }
+fun rememberExcluded(vm: LibraryViewModel, state: AppState): Set<String> {
+    val locked = rememberLockedGroups(vm, state)
+    val index = vm.index
+    val id = vm.playlist?.id
+    return remember(locked, state.settings.hiddenGroups, state.settings.kidsMode, state.settings.kidsGroups, vm.kidsActive, id, index) {
+        val hidden = id?.let { state.settings.hiddenGroups[it] }.orEmpty().toHashSet()
+        hidden.addAll(vm.kidsHidden(state.settings, index))
+        locked + hidden
+    }
+}
+
+/** A film's or series' other copies (8.34): chips under its buttons; choosing one opens it. Never one in [excluded]. */
+@Composable
+fun VersionChips(vm: LibraryViewModel, ch: Channel, excluded: Set<String>, onPick: (Channel) -> Unit) {
+    val copies = remember(ch.id, vm.index, excluded) { vm.index.copiesOf(ch).filter { it.id == ch.id || it.group !in excluded } }
     if (copies.size < 2) return
     val labels = remember(copies) { Versions.labels(copies) }
     Column(Modifier.padding(top = 14.dp)) {

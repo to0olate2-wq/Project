@@ -222,8 +222,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         value = withContext(Dispatchers.Default) {
             val allowed: (Channel) -> Boolean = { ch -> excluded.isEmpty() || ch.group !in excluded }
             val out = when {
+                // (Each film or series once, as the other lists show them: 8.35.)
                 q.isNotEmpty() && (section == Section.HOME || kind != null) ->
-                    index.search.find(q) { ch -> (kind == null || ch.kind == kind) && allowed(ch) }
+                    app.falak.player.data.Versions.oneEach(index.search.find(q) { ch -> (kind == null || ch.kind == kind) && allowed(ch) }, index.titleKeys)
                 q.isNotEmpty() -> SearchIndex.rank(base, q, allowed)
                 else -> {
                     val src = when (group) {

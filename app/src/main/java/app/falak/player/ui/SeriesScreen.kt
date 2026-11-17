@@ -77,6 +77,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val playFocus = remember { FocusRequester() }
     val tv = isTv()
 
+    val excluded = rememberExcluded(vm, state)
     BackHandler { vm.leaveTitle() }
     // The IMDb rating (8.29), once the page is read: the series is looked up by its name.
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -144,7 +145,7 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                         Text(next.name, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                     }
                     // 8.34: the same series listed again (another language or quality).
-                    VersionChips(vm, show) { other -> vm.openSeries(other) }
+                    VersionChips(vm, show, excluded) { other -> vm.openSeries(other) }
                 }
             }
             info?.cast?.takeIf { it.isNotBlank() }?.let { cast ->

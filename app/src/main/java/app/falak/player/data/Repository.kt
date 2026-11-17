@@ -138,6 +138,9 @@ class Repository(private val context: Context) {
     /** A page the player asked to open when it closed ("MOVIES", "SETTINGS"…), for the main screen. */
     @Volatile var pendingNav: String? = null
 
+    /** Writes the Android TV home screen's row (8.35, [TvHomeRow]); set by MainActivity, called as the app goes to the background. */
+    @Volatile var tvRow: (() -> Unit)? = null
+
     /** With [pendingNav]: the item that was playing, to go back to when leaving that page. */
     @Volatile var pendingReturnIndex: Int? = null
 

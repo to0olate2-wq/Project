@@ -217,6 +217,39 @@ object Portal {
         return Regex("(\\d+)").find(name)?.groupValues?.get(1)?.toIntOrNull() ?: fallback
     }
 
+    /**
+     * A channel's archive depth in days (8.35, catch-up): 0 when the portal doesn't mark it
+     * (`tv_archive`, or `enable_tv_archive` / `archive` on some). `tv_archive_duration` is hours on
+     * many portals (168 = a week) and days on others: more than 31 or a whole number of days in
+     * hours (24, 48…) reads as hours. Marked without a depth: one day. At most 31.
+     */
+    fun archiveDays(o: JsonObject): Int {
+        if (listOf("tv_archive", "enable_tv_archive", "archive").none { o.str(it).trim().lowercase() in setOf("1", "true") }) return 0
+        val depth = o.str("tv_archive_duration").trim().toDoubleOrNull() ?: 0.0
+        val days = when {
+            depth.isNaN() || depth <= 0 -> 1
+            depth > 31 || depth % 24 == 0.0 -> kotlin.math.ceil(depth / 24).toInt()
+            else -> kotlin.math.ceil(depth).toInt()
+        }
+        return days.coerceIn(1, 31)
+    }
+
+    /** What a portal's archive link asks for: "channel id@programme start in seconds". */
+    fun archiveCmd(channelId: String, startSec: Long): String = "$channelId@$startSec"
+
+    /**
+     * The programme in a day's archive list (`get_simple_data_table`) that starts at [startSec]
+     * (within 90 s; the nearest): its id, and false when the portal says it wasn't recorded.
+     */
+    fun archiveEntry(items: List<JsonObject>, startSec: Long): Pair<String, Boolean>? {
+        val best = items.mapNotNull { o ->
+            val s = o.str("start_timestamp").toLongOrNull() ?: return@mapNotNull null
+            val id = o.str("id").trim()
+            if (id.isEmpty() || kotlin.math.abs(s - startSec) > 90) null else Triple(id, kotlin.math.abs(s - startSec), o.str("mark_archive").trim() != "0")
+        }.minByOrNull { it.second } ?: return null
+        return best.first to best.third
+    }
+
     /** An end date as portals write it ("2026-12-31 23:59:59", "December 31, 2026, 11:59 pm"…) → epoch ms. */
     fun endDate(s: String): Long? {
         val t = s.trim()
@@ -426,6 +459,8 @@ class PortalApi(
                     logo = picture(o.str("logo"), root),
                     tvgId = o.str("xmltv_id"),
                     kind = Kind.LIVE,
+                    catchupDays = archiveDays(o),
+                    catchupType = if (archiveDays(o) > 0) "stb" else "",
                 ))
             }
         }
@@ -587,6 +622,7 @@ class PortalApi(
 
     /** The link to play now (they last a short while): asked of the portal for each play. */
     fun playLink(module: String, cmd: String, series: Int): String {
+        if (module == "tv_archive") return archiveLink(cmd.substringBefore('@'), cmd.substringAfter('@').toLongOrNull() ?: 0L)
         val js = call(
             "type" to module, "action" to "create_link", "cmd" to cmd, "series" to (if (series > 0) series.toString() else ""),
             "forced_storage" to "undefined", "disable_ad" to "0", "download" to "0", "force_ch_link_check" to "0",
@@ -604,6 +640,39 @@ class PortalApi(
                 },
             )
         }
+    }
+
+    /**
+     * A recorded programme (8.35, catch-up): the day's archive list of channel [chId] gives the
+     * programme's id (the portal's date may be a day off ours: the days around are tried too), then
+     * `create_link` of type tv_archive with "auto /media/<id>.mpg", as set-top boxes ask.
+     */
+    fun archiveLink(chId: String, startSec: Long): String {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val days = listOf(0L, -1L, 1L).map { fmt.format(java.util.Date(startSec * 1000 + it * 86_400_000L)) }.distinct()
+        var found: Pair<String, Boolean>? = null
+        loop@ for (day in days) {
+            for (p in 1..8) {
+                val page = Portal.page(call("type" to "epg", "action" to "get_simple_data_table", "ch_id" to chId, "date" to day, "p" to p.toString()))
+                val hit = Portal.archiveEntry(page.items, startSec)
+                if (hit != null) {
+                    found = hit
+                    break@loop
+                }
+                if (page.items.isEmpty() || p >= page.pages) break
+            }
+        }
+        val (id, recorded) = found ?: throw IOException("The portal has no recording of this programme")
+        if (!recorded) throw IOException("The portal didn't record this programme")
+        val js = call(
+            "type" to "tv_archive", "action" to "create_link", "cmd" to "auto /media/$id.mpg", "series" to "",
+            "forced_storage" to "", "disable_ad" to "0", "download" to "0",
+        ) as? JsonObject
+        with(Portal) {
+            val url = cmdUrl(js?.str("url").orEmpty()).ifEmpty { cmdUrl(js?.str("cmd").orEmpty()) }
+            if (url.isNotEmpty()) return url
+        }
+        throw IOException("The portal gave no link for this recording")
     }
 
     /** "Still here": some portals stop a stream after a few minutes without it. */

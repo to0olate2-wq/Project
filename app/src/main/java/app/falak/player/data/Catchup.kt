@@ -30,6 +30,8 @@ object Catchup {
         val durSec = ((prog.stop - prog.start) / 1000).coerceAtLeast(60)
         val type = ch.catchupType
 
+        // A MAC portal (8.35): its link server asks the portal for the recording at play time.
+        if (type == "stb") return portalArchive(ch.url, ch.id, start)
         if (type == "xc" || type.startsWith("xtream") || type.startsWith("xstream") || type.isEmpty()) {
             xtream(ch.url, start, durSec, serverTz)?.let { return it }
         }
@@ -77,6 +79,19 @@ object Catchup {
         }
         return if (query.isEmpty()) replaced else "$replaced?$query"
     }
+
+    /**
+     * A portal channel's link ("…/<playlist>/itv/0/<cmd>.<ext>", [PortalLinks.link]) turned into the
+     * link of its recording at [start]: module tv_archive, command "channel id@start in seconds".
+     */
+    fun portalArchive(liveUrl: String, channelId: String, start: Long): String? {
+        val m = PORTAL_LIVE.find(liveUrl) ?: return null
+        val sid = channelId.substringBefore('~').removePrefix("l")
+        if (sid.isEmpty()) return null
+        return "${m.groupValues[1]}/tv_archive/0/${PortalLinks.encode(Portal.archiveCmd(sid, start / 1000))}.ts"
+    }
+
+    private val PORTAL_LIVE = Regex("^(http://127\\.0\\.0\\.1:\\d+/[^/]+/[^/]+)/itv/\\d+/[^/]+$")
 
     private fun joinQuery(url: String, q: String): String = url + (if ('?' in url) "&" else "?") + q
 
