@@ -151,7 +151,9 @@ class PeopleClient(private val http: OkHttpClient, private val dir: File? = null
     /** Films and series most like [imdb] (Wikidata). Null: no answer. */
     fun similar(imdb: String): List<People.Title>? = once("s|$imdb") {
         similars[imdb]?.let { return@once it }
-        val list = People.parseSimilar(sparql(People.similarQuery(imdb)) ?: return@once null)
+        val (src, people) = People.parseSimilarPeople(sparql(People.similarPeopleQuery(imdb)) ?: return@once null) ?: return@once emptyList()
+        if (people.isEmpty()) return@once emptyList()
+        val list = People.parseSimilar(sparql(People.similarQuery(src, people)) ?: return@once null)
         similars[imdb] = list
         list
     }
