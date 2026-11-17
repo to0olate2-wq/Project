@@ -9,8 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 
 /**
  * Actors and directors (8.29; the owner: tap an actor "to see what shows they have", and find them by
- * name). From Wikidata, the free database behind Wikipedia: no key, nothing to set up (Trakt, the
- * first plan, now lets only 16 people use an app without its review). What is asked and how the
+ * name). From Wikidata, the free database behind Wikipedia: no key, nothing to set up. What is asked and how the
  * answers are read; PeopleClient asks.
  *
  * - Find: wikidata.org's search (wbsearchentities), then one query keeping the people who played in or

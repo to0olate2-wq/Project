@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import app.falak.player.data.done
 import app.falak.player.data.mine
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
@@ -76,8 +78,9 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
     val tv = isTv()
 
     BackHandler { vm.leaveTitle() }
-    // IMDb and Trakt (8.29), once the page is read: the series is looked up by its name.
-    val repo = androidx.compose.ui.platform.LocalContext.current.repo
+    // The IMDb rating (8.29), once the page is read: the series is looked up by its name.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repo = context.repo
     val scores = rememberScores(if (info == null) null else show.id + "|" + info.year, "series") {
         val (name, year) = app.falak.player.data.TitleMatch.clean(show.name)
         repo.imdbFor("series", name, year ?: info?.year?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toInt() } ?: repo.providerYears["s" + show.seriesId])
@@ -193,7 +196,16 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     }
                     items(season.episodes, key = { it.id }) { ep ->
                         Box(column) {
-                            EpisodeRow(vm, ep, state.progress[progressKey(me, ep.id)], upNext = last != null && ep.id == next?.id) { onPlay(all, ep) }
+                            val w = state.progress[progressKey(me, ep.id)]
+                            EpisodeRow(
+                                vm, ep, w, upNext = last != null && ep.id == next?.id,
+                                onLongClick = {
+                                    // Hold OK or long-press: watched, or not watched again (8.31).
+                                    val mark = w?.done != true
+                                    vm.setWatched(ep, show.seriesId, mark)
+                                    android.widget.Toast.makeText(context, if (mark) "Marked as watched" else "Marked as not watched", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                            ) { onPlay(all, ep) }
                         }
                     }
                 }
@@ -203,7 +215,8 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
 }
 
 @Composable
-private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, upNext: Boolean = false, onClick: () -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, upNext: Boolean = false, onLongClick: () -> Unit = {}, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
     Row(
@@ -212,7 +225,7 @@ private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, upNex
             .padding(vertical = 3.dp)
             .focusRing(shape)
             .panel(shape)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -233,7 +246,9 @@ private fun EpisodeRow(vm: LibraryViewModel, ep: Channel, watched: Watch?, upNex
             if (upNext) Kicker("Up next")
             Text(ep.name, style = MaterialTheme.typography.bodyLarge, color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (ep.info.isNotBlank()) Text(ep.info, style = MaterialTheme.typography.bodySmall, color = Muted)
-            if (watched != null && watched.dur > 0) {
+            if (watched?.done == true) {
+                Text("✓ Watched", style = MaterialTheme.typography.bodySmall, color = Signal, modifier = Modifier.padding(top = 2.dp))
+            } else if (watched != null && watched.dur > 0) {
                 LinearProgressIndicator(
                     progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
                     color = Signal,

@@ -456,13 +456,6 @@ data class Settings(
      * soundbar that makes the sound late wants it earlier). This device's: it depends on its speakers.
      */
     val audioDelayMs: Int = 0,
-    /** Trakt (8.29): this device's connection to a Trakt account (see TraktClient); "" = none. */
-    val traktAccess: String = "",
-    val traktRefresh: String = "",
-    val traktUntil: Long = 0L,
-    val traktUser: String = "",
-    /** Mark films and episodes watched on Trakt as they play (when connected). */
-    val traktScrobble: Boolean = true,
     /** How far back live TV can be rewound, in minutes (the buffer is cleared when the channel changes). */
     val liveBufferMinutes: Int = 30,
     /** Recordings: where they're saved ("" = this device, else the folder on a USB drive or memory card). */
@@ -521,6 +514,13 @@ data class Watch(
     /** When it was last watched (for syncing with other devices); 0 on entries saved before 5.0. */
     val at: Long = 0,
 )
+
+/**
+ * Watched to the end (8.31): kept with its position at its length, so a series' page knows what was
+ * seen and "Next episode" follows it (it used to be forgotten). Not in Continue watching, and it plays
+ * from the start again. Also what a long press on an episode marks.
+ */
+val Watch.done: Boolean get() = dur > 0 && pos >= dur
 
 @Serializable
 data class AppState(

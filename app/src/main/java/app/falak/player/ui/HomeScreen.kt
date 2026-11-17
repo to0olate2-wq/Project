@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.falak.player.data.done
 import app.falak.player.data.mine
 import app.falak.player.data.Habits
 import androidx.compose.runtime.produceState
@@ -103,7 +104,7 @@ fun HomeContent(
 
     val continueWatching = remember(state.progress, index, me, locked) {
         state.progress.entries.toList().asReversed()
-            .filter { it.key.startsWith("$me|") }
+            .filter { it.key.startsWith("$me|") && !it.value.done }
             .mapNotNull { (key, w) ->
                 val id = key.substringAfter('|')
                 index.byId[id] ?: if (w.url.isNotBlank()) {

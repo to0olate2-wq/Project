@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import app.falak.player.PrayerAlerts
 import app.falak.player.ProgramAlerts
+import app.falak.player.data.done
 import app.falak.player.data.ProgramAlert
 import app.falak.player.player.TrackMatch
 import app.falak.player.player.TrackMemory
@@ -950,6 +951,8 @@ class PlayerActivity : ComponentActivity() {
         if (::playerView.isInitialized) initPlayer()
         handler.removeCallbacks(rateTick)
         handler.postDelayed(rateTick, 1_000)
+        handler.removeCallbacks(freezeTick)
+        if (!FREEZE_OFF) handler.postDelayed(freezeTick, 2_000)
         prayerJob?.cancel()
         prayerJob = lifecycleScope.launch { app.falak.player.PrayerAlerts.current.collect { onPrayer(it) } }
         // A reminder for the channel already playing needs no card.
@@ -979,8 +982,6 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // (Leaving the player: Trakt is told where it got to.)
-        if (isFinishing) traktStop() else traktUpdate()
         cast?.let { c -> runCatching { c.sessionManager.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) } }
         if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
@@ -989,6 +990,7 @@ class PlayerActivity : ComponentActivity() {
         // Two-screen mode ends when the player leaves the screen.
         if (dual != null) endDual(keepSecond = false, replay = false)
         handler.removeCallbacks(rateTick)
+        handler.removeCallbacks(freezeTick)
         if (repo.kidsActive) app.falak.player.data.KidsClock.flush(this)
         // The service report's figures so far, to the file (off the main thread).
         flushWatched()
@@ -1422,7 +1424,7 @@ class PlayerActivity : ComponentActivity() {
             val video = ch.id.removePrefix("addon:")
             repo.state.value.settings.addonWatch.firstOrNull { it.videoId == video }?.pos?.takeIf { it > 0 }
         } else {
-            repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.pos }
+            repo.currentPlaylist?.let { pl -> repo.state.value.progress[progressKey(repo.state.value.mine(pl.id), ch.id)]?.takeUnless { it.done }?.pos }
         }
         val resume = when {
             ch.kind == Kind.LIVE -> C.TIME_UNSET
@@ -1500,8 +1502,6 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private val listener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) = traktUpdate()
-
         override fun onPlayerError(error: PlaybackException) {
             val p = player ?: return
             if (exo != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
@@ -2293,7 +2293,12 @@ class PlayerActivity : ComponentActivity() {
         val show = repo.currentSeries
         val meta = metaFor(ch)
         val key = progressKey(repo.state.value.mine(pl.id), ch.id)
-        val kept = if (finished || pos < 30_000) 0 else pos
+        // Finished: kept as watched (8.31, see Watch.done); barely started: forgotten.
+        val kept = when {
+            finished -> dur
+            pos < 30_000 -> 0
+            else -> pos
+        }
         repo.saveProgress(key, kept, dur, meta, show?.seriesId.orEmpty())
         // Its saved copy goes once the player leaves it (Downloads → Delete when watched).
         if (finished && repo.state.value.settings.downloadDeleteWatched && app.falak.player.OfflineCenter.fileFor(ch.id) != null) {
@@ -2306,7 +2311,7 @@ class PlayerActivity : ComponentActivity() {
         val group = if (show != null && ch.kind == Kind.SERIES) show.group else ch.group
         val onHome = !repo.kidsActive && group !in repo.excludedGroups &&
             group !in s.lockedGroups[pl.id].orEmpty() && !app.falak.player.data.ADULT_GROUP.containsMatchIn(group)
-        app.falak.player.data.WatchNext.update(this, key, meta, kept, dur, onHome && !ch.id.startsWith("rec:"))
+        app.falak.player.data.WatchNext.update(this, key, meta, if (finished) 0 else kept, dur, onHome && !ch.id.startsWith("rec:"))
         if (finished && ch.kind == Kind.SERIES) {
             // Watched to the end: the next episode waits in Continue watching (and on the TV's
             // Play next row), and the show is followed for new episodes.
@@ -2759,7 +2764,7 @@ class PlayerActivity : ComponentActivity() {
         val s = repo.state.value.settings
         val ch = queue.getOrNull(index) ?: return
         if (s.osApiKey.isBlank()) {
-            toast("Add your free OpenSubtitles API key in Settings → Online subtitles")
+            toast("Add your free OpenSubtitles API key in Settings → Sound & subtitles")
             return
         }
         val show = repo.currentSeries
@@ -3360,22 +3365,15 @@ class PlayerActivity : ComponentActivity() {
         if (skipsFor == ch.id) return
         skipsJob?.cancel()
         skips = emptyList()
-        // (Trakt: the one before is done; this one is told once its IMDb number is known.)
-        traktStop()
         skipsFor = ch.id
         val lookup = repo.state.value.settings.skipLookup
-        if ((!lookup && !repo.trakt.connected) || ch.id.startsWith("cu:")) return
+        if (!lookup || ch.id.startsWith("cu:")) return
         val addon = ch.id.startsWith("addon:")
         if (!addon && ch.kind != Kind.MOVIE && ch.kind != Kind.SERIES) return
         val show = if (!addon && ch.kind == Kind.SERIES) (repo.currentSeries?.name ?: episodeShow(ch.name)) else null
         val label = if (!addon && ch.kind == Kind.SERIES) episodeLabel(ch) else ""
         skipsJob = lifecycleScope.launch {
             val video = if (addon) ch.id.removePrefix("addon:") else withContext(Dispatchers.IO) { providerVideoId(ch, show, label) }
-            if (video != null && skipsFor == ch.id) {
-                traktVideo = video
-                traktUpdate()
-            }
-            if (!lookup) return@launch
             val url = video?.let { app.falak.player.data.SkipSegments.url(it) } ?: return@launch
             val found = try {
                 withContext(Dispatchers.IO) {
@@ -3391,52 +3389,6 @@ class PlayerActivity : ComponentActivity() {
             }
             if (skipsFor == ch.id) skips = found
         }
-    }
-
-    // ---- Trakt (8.29): what plays is marked on the account, if one is connected ----
-
-    /** The film or episode playing, as Trakt knows it ("tt0133093" / "tt0903747:1:2"); null: not known. */
-    private var traktVideo: String? = null
-    /** What Trakt was told last about it: "", "start", "pause". */
-    private var traktSaid = ""
-
-    private fun traktProgress(): Double {
-        val p = player ?: return 0.0
-        val d = p.duration
-        return if (d > 0) p.currentPosition * 100.0 / d else 0.0
-    }
-
-    private fun traktSend(action: String, video: String, progress: Double) {
-        if (!repo.trakt.connected) return
-        // (Its own thread: the last "stop" is sent as the player closes, after its coroutines are gone.)
-        val trakt = repo.trakt
-        Thread { trakt.scrobble(action, video, progress) }.start()
-    }
-
-    /** Playing: "start"; paused: "pause"; at the end: done ("stop", marked watched). */
-    private fun traktUpdate() {
-        val video = traktVideo ?: return
-        val p = player ?: return
-        if (castingTo != null) return
-        when {
-            p.playbackState == Player.STATE_ENDED -> traktStop()
-            p.isPlaying && traktSaid != "start" -> {
-                traktSaid = "start"
-                traktSend("start", video, traktProgress())
-            }
-            !p.isPlaying && traktSaid == "start" && p.playbackState == Player.STATE_READY -> {
-                traktSaid = "pause"
-                traktSend("pause", video, traktProgress())
-            }
-        }
-    }
-
-    /** Leaving it (another one, the player closed): Trakt keeps where it got to; past 80% it's watched. */
-    private fun traktStop() {
-        val video = traktVideo ?: return
-        if (traktSaid.isNotEmpty()) traktSend("stop", video, if (player?.playbackState == Player.STATE_ENDED) 100.0 else traktProgress())
-        traktVideo = null
-        traktSaid = ""
     }
 
     /** "tt0133093" for a provider's film, "tt0903747:1:2" for its episode; null when the title isn't surely known. */
@@ -4695,6 +4647,65 @@ class PlayerActivity : ComponentActivity() {
         handler.removeCallbacks(hideDualHint)
     }
 
+    // ---- a stream that freezes is started again (8.31, see FreezeRule) ----
+
+    private val freezeRule = app.falak.player.player.FreezeRule()
+    /** (Screen tests: their stand-in players never move; nothing is started again there.) */
+    private val FREEZE_OFF = android.os.Build.FINGERPRINT == "robolectric"
+    private val freezeTick = object : Runnable {
+        override fun run() {
+            checkFrozen()
+            handler.postDelayed(this, 2_000)
+        }
+    }
+
+    private fun checkFrozen() {
+        val p = player ?: return
+        val ch = queue.getOrNull(index) ?: return
+        val state = p.playbackState
+        // A torrent waits for its pieces (its own window says how it's going): not a freeze.
+        val torrent = ch.id.startsWith("addon:") && currentUrl.contains("127.0.0.1")
+        val watching = p.playWhenReady && castingTo == null && dual == null && !torrent &&
+            state != Player.STATE_IDLE && state != Player.STATE_ENDED
+        val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && liveBeforeStartOver == null
+        val action = freezeRule.step(
+            now = android.os.SystemClock.elapsedRealtime(),
+            itemId = ch.id,
+            watching = watching,
+            buffering = state == Player.STATE_BUFFERING,
+            ready = state == Player.STATE_READY,
+            playing = p.isPlaying,
+            position = p.currentPosition,
+            moves = exo != null,
+            started = wasReady,
+            live = live,
+        )
+        when (action) {
+            app.falak.player.player.FreezeRule.Action.RESTART -> {
+                FreezeWatch.note("stuck: started again")
+                showMessage("Reconnecting…")
+                retried = false
+                if (live) {
+                    handler.post { playCurrent(showInfo = false) }
+                } else if (exo != null) {
+                    // A film or episode: opened again where it was.
+                    val at = p.currentPosition
+                    p.stop()
+                    p.prepare()
+                    p.seekTo(at)
+                    p.playWhenReady = true
+                }
+            }
+            app.falak.player.player.FreezeRule.Action.GIVE_UP -> {
+                FreezeWatch.note("stuck: gave up")
+                val what = if (ch.kind == Kind.LIVE) "channel" else "video"
+                val hint = if (engine != Engine.VLC) "\nTry another channel, or the ${engine.short} button below → VLC" else "\nTry another channel"
+                showMessage("This $what keeps freezing$hint")
+            }
+            app.falak.player.player.FreezeRule.Action.NONE -> {}
+        }
+    }
+
     // ---- a lighter version when the stream keeps stalling (merged duplicates) ----
 
     private var wasReady = false
@@ -5510,7 +5521,7 @@ class PlayerActivity : ComponentActivity() {
         if (late < 150) return "Auto captions: in time with the speech"
         val behind = String.format(java.util.Locale.US, "%.1f", late / 1000)
         return "Auto captions: about $behind s behind the speech" +
-            if (exoSynced) "" else " (Settings → Subtitle style: In time with the speech)"
+            if (exoSynced) "" else " (Settings → Sound & subtitles → Subtitle style: In time with the speech)"
     }
 
     /** The panel's sample while nothing is said: its words, and whether it's auto captions'; null: none. */

@@ -291,7 +291,7 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
                         onDelete = { deleting = pr },
                     )
                 }
-                if (s.kidsMode) ProfileRow("Kids", Amber, "Kids mode (Settings → Kids profile)", kids = true)
+                if (s.kidsMode) ProfileRow("Kids", Amber, "Kids mode (Settings → Profiles & parental control)", kids = true)
                 Spacer(Modifier.height(12.dp))
                 if (state.profiles.size < MAX_PROFILES) PaperButton("Add a profile") { naming = "+" }
                 Spacer(Modifier.height(24.dp))

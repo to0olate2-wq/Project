@@ -49,7 +49,7 @@ object RemoteBridge {
  * The phone remote: a page on the home network (http://<tv>:8766) that a paired phone uses as a
  * remote control and keyboard: arrows and OK, channel up/down, play/pause, search typed on the
  * phone, and the playlist's channels, films and series to start on the TV with a tap. Phones pair
- * once by scanning the QR code in Settings → Phone remote; after that the page works whenever the
+ * once by scanning the QR code in Settings → Devices & backup; after that the page works whenever the
  * app is open on the TV. Nothing goes beyond the home network.
  */
 class RemoteServer(private val context: Context, private val repo: Repository) {
@@ -60,7 +60,7 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
     private val device = deviceName(context)
     private val random = SecureRandom()
 
-    /** The code shown on the TV while Settings → Phone remote is open (null: no new phones). */
+    /** The code shown on the TV while Settings → Devices & backup is open (null: no new phones). */
     @Volatile var pairCode: String? = null
         private set
 
@@ -104,7 +104,7 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
         server = null
     }
 
-    /** Settings → Phone remote opened: a fresh code for pairing a phone. */
+    /** Settings → Devices & backup opened: a fresh code for pairing a phone. */
     fun openPairing(): String {
         val code = String.format(java.util.Locale.US, "%06d", random.nextInt(1_000_000))
         wrongCodes.set(0)
@@ -157,7 +157,7 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
         val token = req.headers["x-remote"]?.takeIf { it.isNotBlank() } ?: req.cookie(COOKIE)
         val hash = token?.let { hash(it) }
         if (hash == null || repo.state.value.remotes.none { it.hash == hash }) {
-            error(out, 403, "Pair this phone first: on the TV, open Settings → Phone remote")
+            error(out, 403, "Pair this phone first: on the TV, open Settings → Devices & backup")
             return
         }
         repo.touchRemote(hash)
@@ -190,7 +190,7 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
     private fun pair(req: MiniHttp.Request, out: OutputStream) {
         if (wrongCodes.get() >= MAX_WRONG) return error(out, 429, "Too many wrong codes. Close and reopen Phone remote on the TV.")
         val o = body(req) ?: return error(out, 400, "Bad request")
-        val code = pairCode ?: return error(out, 403, "On the TV, open Settings → Phone remote to pair a phone")
+        val code = pairCode ?: return error(out, 403, "On the TV, open Settings → Devices & backup to pair a phone")
         if (o.str("code") != code) {
             wrongCodes.incrementAndGet()
             return error(out, 403, "Wrong code")

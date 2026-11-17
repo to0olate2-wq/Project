@@ -276,18 +276,28 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   year ±1), Films, Series (others open with add-ons that bring links, returnTo PERSON; Back from a title opened
   there comes back: `titleFromPerson` / `leaveTitle`). Search: "People" row (`rememberPeopleFound`, after the
   titles, names must contain every typed word). Add-on pages read cast from `cast`/`director` or Cinemeta's `links`.
-  (3) **Ratings**: `rememberScores` → "IMDb 8.7" (Cinemeta, `repo.imdbRating`) + "Trakt 87%" when there's a Trakt
-  key, on film/series pages (provider titles via `imdbFor`) and add-on pages. Nothing asked in screen tests.
-  (4) **Trakt (optional)**, `data/Trakt.kt` + `data/TraktClient.kt`: only with the owner's Trakt app (repository
-  secret `TRAKT_CLIENT_ID` → `BuildConfig.TRAKT_ID`; the screens job gets it as `TRAKT_LIVE_ID`). Since Oct 2026:
-  apps are made at developer.trakt.tv (Trakt account + linked GitHub), **no client secret** (sent only if
-  `TRAKT_CLIENT_SECRET` exists), sign-in calls on `auth.trakt.tv`, redirect `http://localhost`; a Development app lets
-  only its owner + 16 invited people connect (Production access needs Trakt's review). The owner hasn't made one
-  (8.29): Settings → Trakt says it isn't set up. With it: device code (trakt.tv/activate, QR), keys in
-  `Settings.trakt*` (`DEVICE_SETTINGS`), the player scrobbles (`traktUpdate`/`traktStop`), My list ↔ watchlist.
-  Never tried against a real Trakt account.
-  Tests: `PeopleTest`, `TraktTest` (both run on the sandbox), `SoundTimingTest`, `AddonsTest`, `PersonScreens.kt`
-  (`PersonForTest`), `PeopleLiveTest`, `TraktLiveTest`.
+  (3) **Ratings**: `rememberScores` → "IMDb 8.7" (Cinemeta, `repo.imdbRating`) on film/series pages (provider titles
+  via `imdbFor`) and add-on pages. Nothing asked in screen tests.
+  (4) **Trakt was removed in 8.31** (the owner: "I will not rely on it"): no code, settings, secrets or tests left.
+  Don't bring it back unless he asks. Old `Settings.trakt*` fields in saved files are ignored (`ignoreUnknownKeys`).
+  Tests: `PeopleTest` (runs on the sandbox), `SoundTimingTest`, `AddonsTest`, `PersonScreens.kt` (`PersonForTest`),
+  `PeopleLiveTest`.
+- **8.31 (the owner picked 1, 2, 11 + remove Trakt + tidy Settings + look for faults):**
+  (1) **Settings in eight groups** (`SettingsPage`, hub in SettingsScreen.kt): Look & start (APPEARANCE, ends with
+  "When the app opens": open last playlist, last channel, Open on, Open when the TV starts), Player (PLAYBACK:
+  Watching, then Connection), Sound & subtitles (SOUND; Subtitle style is its sub-page), Playlists & TV guide,
+  Recordings & reminders (RECORDINGS; Reminders & alerts is its sub-page, Prayer times a row there; `parent`),
+  Profiles & parental control (FAMILY), Devices & backup (DEVICES), Help and about. Hints elsewhere ("Settings → …")
+  use these names. (2) **Frozen streams restart**, `player/FreezeRule.kt` (pure, `FreezeRuleTest`): the player ticks
+  every 2 s (`freezeTick`, `checkFrozen`; off under Robolectric, `FREEZE_OFF`); stuck while it should play = live
+  12 s, a film 20 s, nothing shown yet 20 s/30 s → "Reconnecting…" (live: `playCurrent`; films: prepare again at the
+  same place), at most 3 in 3 min, then "keeps freezing". Not for torrents, casting or two screens.
+  (3) **Check the connection**, `data/ConnectionCheck.kt` (`ConnectionCheckTest`) + `ui/ConnectionUi.kt`: Settings →
+  Player → Connection: the internet (Cloudflare's speed file, 25 MB, 5 MB on mobile data), the provider (Xtream
+  `player_api.php` or the M3U link) and a channel (the last one watched), each time-limited; a plain verdict.
+  (4) **Watched**: `Watch.done` (pos ≥ dur) = finished; finished titles are now KEPT in progress (were removed,
+  so a series' page forgot them) and left out of Continue watching / resume. Series page: long press an episode
+  → `vm.setWatched` (✓ Watched on the row, toast).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

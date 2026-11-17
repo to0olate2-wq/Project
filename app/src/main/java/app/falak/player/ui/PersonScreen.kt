@@ -40,7 +40,6 @@ import app.falak.player.data.AppState
 import app.falak.player.data.Channel
 import app.falak.player.data.Kind
 import app.falak.player.data.People
-import app.falak.player.data.Trakt
 import app.falak.player.data.mine
 import app.falak.player.data.progressKey
 import app.falak.player.repo
@@ -307,7 +306,7 @@ fun CastNames(vm: LibraryViewModel, label: String, names: List<String>) {
 }
 
 /**
- * "IMDb 8.7  ·  Trakt 87%" for a film or series (8.29), asked for once its IMDb number is known
+ * "IMDb 8.7" for a film or series (8.29), asked for once its IMDb number is known
  * ([imdb] runs off the main thread: a provider's title is looked up by name, see TitleMatch).
  * Null while asking, or when neither has it.
  */
@@ -318,18 +317,12 @@ fun rememberScores(key: Any?, type: String, imdb: suspend () -> String?): String
         if (key == null || app.falak.player.data.PeopleClient.testing) return@produceState
         value = withContext(Dispatchers.IO) {
             val id = runCatching { imdb() }.getOrNull() ?: return@withContext null
-            coroutineScope {
-                val i = async { repo.imdbRating(id, type) }
-                val t = async { repo.trakt.score(id, type) }
-                scoresLine(i.await(), t.await())
-            }
+            repo.imdbRating(id, type)?.let { "IMDb $it" }
         }
     }
     return v
 }
 
-fun scoresLine(imdb: String?, trakt: Trakt.Score?): String? =
-    listOfNotNull(imdb?.let { "IMDb $it" }, trakt?.let { "Trakt ${it.percent}%" }).joinToString("  ·  ").ifEmpty { null }
 
 /**
  * Search by an actor's name (8.29): the actors and directors found for what is typed, as a row with

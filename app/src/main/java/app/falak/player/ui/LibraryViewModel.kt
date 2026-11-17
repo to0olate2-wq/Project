@@ -299,6 +299,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** A long press on an episode (8.31): marked watched, or not watched again. */
+    fun setWatched(ep: Channel, seriesId: String, watched: Boolean) {
+        val p = playlist ?: return
+        val key = progressKey(state.value.mine(p.id), ep.id)
+        if (watched) {
+            val length = state.value.progress[key]?.dur?.takeIf { it > 0 } ?: 1L
+            repo.saveProgress(key, length, length, ep, seriesId)
+        } else {
+            repo.saveProgress(key, 0, 0)
+        }
+    }
+
     fun clearProgress(ch: Channel) {
         val p = playlist ?: return
         repo.saveProgress(progressKey(state.value.mine(p.id), ch.id), 0, 0)

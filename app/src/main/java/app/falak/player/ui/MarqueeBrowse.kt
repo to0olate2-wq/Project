@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.falak.player.data.done
 import app.falak.player.data.ADULT_GROUP
 import app.falak.player.data.AppState
 import app.falak.player.data.Channel
@@ -388,7 +389,7 @@ fun MarqueeBrowse(
     val featured = rememberMarqueeFeatured(vm, section, excluded)
     val continueOfKind = remember(state.progress, index, me, excluded, kind) {
         state.progress.entries.toList().asReversed()
-            .filter { it.key.startsWith("$me|") }
+            .filter { it.key.startsWith("$me|") && !it.value.done }
             .mapNotNull { (key, w) ->
                 val id = key.substringAfter('|')
                 index.byId[id] ?: if (w.url.isNotBlank()) Channel(id = id, name = w.title, group = "", url = w.url, logo = w.image, kind = w.kind) else null

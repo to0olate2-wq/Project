@@ -293,7 +293,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
                             PaperButton("Show all channels with a guide") { vm.group = null }
                         }
                         else -> Text(
-                            "No guide information yet. Add guide sources in Settings → TV guide.",
+                            "No guide information yet. Add guide sources in Settings → Playlists & TV guide.",
                             color = Muted,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )

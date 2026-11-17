@@ -338,7 +338,7 @@ fun GuideFixDialog(vm: LibraryViewModel, ch: Channel, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 if (all.isEmpty()) {
                     Text(
-                        "No guide is loaded yet. Wait for the guide to finish loading, or add guide sources in Settings → TV guide.",
+                        "No guide is loaded yet. Wait for the guide to finish loading, or add guide sources in Settings → Playlists & TV guide.",
                         color = Faint,
                     )
                 } else {
