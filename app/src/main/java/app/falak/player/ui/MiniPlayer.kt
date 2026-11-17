@@ -4,8 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -43,9 +41,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -178,21 +175,17 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
     // TVs: OK held on it = moving it with the arrows, until OK or Back.
     var moving by remember { mutableStateOf(false) }
     var okDown by remember { mutableStateOf(false) }
-    var heightPx by remember { mutableStateOf(0) }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // The room it can move in (px), as the last layout found it (the layout below places it).
+    val span = remember { FloatArray(2) }
     val margin = with(density) { (if (tv) 24.dp else 12.dp).toPx() }
-    val widthPx = with(density) { miniWidth.toPx() }
-    val spanX = (constraints.maxWidth - widthPx - 2 * margin).coerceAtLeast(0f)
-    val spanY = (constraints.maxHeight - heightPx - 2 * margin).coerceAtLeast(0f)
     val step = with(density) { 48.dp.toPx() }
     fun moveBy(dx: Float, dy: Float) {
-        spot = MiniSpot.moved(spot.first, dx, spanX) to MiniSpot.moved(spot.second, dy, spanY)
+        spot = MiniSpot.moved(spot.first, dx, span[0]) to MiniSpot.moved(spot.second, dy, span[1])
     }
     fun keep() = MiniSpot.save(context, spot.first, spot.second)
+    Layout(modifier = Modifier.fillMaxSize(), content = {
     Column(
         Modifier
-            .offset { IntOffset((margin + spot.first * spanX).roundToInt(), (margin + spot.second * spanY).roundToInt()) }
-            .onSizeChanged { heightPx = it.height }
             .width(miniWidth)
             .clip(shape)
             .background(Color(0xF5141210))
@@ -268,7 +261,7 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
                         }
                 } else {
                     // Phones: dragged anywhere; a tap still opens it.
-                    Modifier.pointerInput(spanX, spanY) {
+                    Modifier.pointerInput(Unit) {
                         detectDragGestures(
                             onDragEnd = { keep() },
                             onDragCancel = { keep() },
@@ -339,5 +332,13 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
             )
         }
     }
+    }) { measurables, constraints ->
+        // Placed here (not by an offset) so its own size is known on the very first frame.
+        val p = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        span[0] = (constraints.maxWidth - p.width - 2 * margin).coerceAtLeast(0f)
+        span[1] = (constraints.maxHeight - p.height - 2 * margin).coerceAtLeast(0f)
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            p.place((margin + spot.first * span[0]).roundToInt(), (margin + spot.second * span[1]).roundToInt())
+        }
     }
 }

@@ -299,7 +299,7 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   so a series' page forgot them) and left out of Continue watching / resume. Series page: long press an episode
   → `vm.setWatched` (✓ Watched on the row, toast).
 - **The mini player moves (8.32, the owner: "free to move anywhere in the app"), `ui/MiniPlayer.kt`:** drawn over
-  every page (MainActivity) inside a `BoxWithConstraints`; `MiniSpot` keeps its place as fractions of the free room
+  every page (MainActivity) placed by its own `Layout` (its size known on the first frame); `MiniSpot` keeps its place as fractions of the free room
   (SharedPreferences "mini_player", this device's; bottom right at first). Phones: drag (a tap still opens it).
   TVs: hold OK on it (key repeat) → arrows move it 48 dp, OK or Back = done; a short OK opens it, Back closes it
   (all in `onPreviewKeyEvent`, so `clickable` never sees OK). Test: `MiniSpotTest`.
