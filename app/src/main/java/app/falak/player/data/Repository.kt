@@ -610,9 +610,22 @@ class Repository(private val context: Context) {
     }
 
     fun addProfile(name: String): Profile {
-        val p = Profile("p" + java.util.UUID.randomUUID().toString().take(8), name.trim().ifEmpty { "Profile" }, color = _state.value.profiles.size % PROFILE_COLORS)
+        val p = Profile(
+            "p" + java.util.UUID.randomUUID().toString().take(8), name.trim().ifEmpty { "Profile" },
+            color = _state.value.profiles.size % PROFILE_COLORS,
+            avatar = Avatars.random(Avatars.inUse(_state.value)),
+        )
         update { s -> s.copy(profiles = s.profiles + p) }
         return p
+    }
+
+    /** A profile's picture ("" = the main profile, [KIDS_PROFILE] = Kids). */
+    fun setAvatar(id: String, avatar: String) = update { s ->
+        when (id) {
+            "" -> s.copy(settings = s.settings.copy(mainAvatar = avatar))
+            KIDS_PROFILE -> s.copy(settings = s.settings.copy(kidsAvatar = avatar))
+            else -> s.copy(profiles = s.profiles.map { if (it.id == id) it.copy(avatar = avatar) else it })
+        }
     }
 
     fun renameProfile(id: String, name: String) = update { s ->

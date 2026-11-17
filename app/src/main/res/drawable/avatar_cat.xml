@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A profile picture (8.38): an original cartoon, made for The Player. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="96dp" android:height="96dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#E86F6F" android:pathData="M0,0 H100 V100 H0 Z" />
+    <path android:fillColor="#8A93A6" android:pathData="M20,48 L24,13 L46,30 Z" />
+    <path android:fillColor="#8A93A6" android:pathData="M80,48 L76,13 L54,30 Z" />
+    <path android:fillColor="#F4B6C2" android:pathData="M27,38 L28,22 L39,31 Z" />
+    <path android:fillColor="#F4B6C2" android:pathData="M73,38 L72,22 L61,31 Z" />
+    <path android:fillColor="#8A93A6" android:pathData="M17,57 a33,29 0 1,0 66,0 a33,29 0 1,0 -66,0 Z" />
+    <path android:fillColor="#C6F27A" android:pathData="M33,53 a5,6 0 1,0 10,0 a5,6 0 1,0 -10,0 Z" />
+    <path android:fillColor="#C6F27A" android:pathData="M57,53 a5,6 0 1,0 10,0 a5,6 0 1,0 -10,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M36.2,53 a1.8,5 0 1,0 3.6,0 a1.8,5 0 1,0 -3.6,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M60.2,53 a1.8,5 0 1,0 3.6,0 a1.8,5 0 1,0 -3.6,0 Z" />
+    <path android:fillColor="#F4A6B5" android:pathData="M47,62 L53,62 L50,66 Z" />
+    <path android:strokeColor="#2B2F3A" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M50,66 Q47,71 43,68" />
+    <path android:strokeColor="#2B2F3A" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M50,66 Q53,71 57,68" />
+    <path android:strokeColor="#EEEEEE" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M30,62 L13,59" />
+    <path android:strokeColor="#EEEEEE" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M30,66 L13,69" />
+    <path android:strokeColor="#EEEEEE" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M70,62 L87,59" />
+    <path android:strokeColor="#EEEEEE" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M70,66 L87,69" />
+</vector>

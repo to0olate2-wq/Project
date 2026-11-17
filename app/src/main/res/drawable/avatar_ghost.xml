@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A profile picture (8.38): an original cartoon, made for The Player. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="96dp" android:height="96dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#2B2F3A" android:pathData="M0,0 H100 V100 H0 Z" />
+    <path android:fillColor="#F5F5F7" android:pathData="M23,90 L23,46 Q23,18 50,18 Q77,18 77,46 L77,90 Q70,83 63.5,90 Q57,83 50,90 Q43,83 36.5,90 Q30,83 23,90 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M37,47 a4,6 0 1,0 8,0 a4,6 0 1,0 -8,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M55,47 a4,6 0 1,0 8,0 a4,6 0 1,0 -8,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M46,62 a4,5 0 1,0 8,0 a4,5 0 1,0 -8,0 Z" />
+    <path android:fillColor="#F4A6B5" android:pathData="M28.5,56 a4.5,2.6 0 1,0 9.0,0 a4.5,2.6 0 1,0 -9.0,0 Z" />
+    <path android:fillColor="#F4A6B5" android:pathData="M62.5,56 a4.5,2.6 0 1,0 9.0,0 a4.5,2.6 0 1,0 -9.0,0 Z" />
+</vector>

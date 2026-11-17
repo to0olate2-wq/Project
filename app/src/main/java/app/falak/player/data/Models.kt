@@ -391,6 +391,9 @@ data class Settings(
     val profilesOn: Boolean = false,
     /** The main profile's name in "Who's watching?". */
     val mainProfileName: String = "Me",
+    /** Profile pictures (8.38, [Avatars]): the main profile's and the Kids profile's ("" = not picked). */
+    val mainAvatar: String = "",
+    val kidsAvatar: String = "",
     /** Prayer time reminders: "off" (default), "remind" (a banner), "pause" (banner, and the player pauses). */
     val prayerMode: String = "off",
     /** Calculation method key ([PrayerTimes.Method]); "" = the usual one where the user is. */
@@ -633,7 +636,7 @@ const val PROFILE_COLORS = 6
 
 /** Someone else in the house: their own favorites, lists, recents and Continue watching. */
 @Serializable
-data class Profile(val id: String, val name: String, val color: Int = 0)
+data class Profile(val id: String, val name: String, val color: Int = 0, val avatar: String = "")
 
 /**
  * The key a playlist's personal data (favorites, lists, recents, Continue watching, last channel)

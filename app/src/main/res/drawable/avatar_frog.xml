@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A profile picture (8.38): an original cartoon, made for The Player. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="96dp" android:height="96dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#6FB7E8" android:pathData="M0,0 H100 V100 H0 Z" />
+    <path android:fillColor="#6CC24A" android:pathData="M19,34 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z" />
+    <path android:fillColor="#6CC24A" android:pathData="M55,34 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z" />
+    <path android:fillColor="#6CC24A" android:pathData="M13,61 a37,26 0 1,0 74,0 a37,26 0 1,0 -74,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M24,33 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M60,33 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M28,34 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
+    <path android:fillColor="#2B2F3A" android:pathData="M64,34 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
+    <path android:strokeColor="#2B2F3A" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M28,64 Q50,82 72,64" />
+    <path android:fillColor="#F4A6B5" android:pathData="M18.5,67 a4.5,2.6 0 1,0 9.0,0 a4.5,2.6 0 1,0 -9.0,0 Z" />
+    <path android:fillColor="#F4A6B5" android:pathData="M72.5,67 a4.5,2.6 0 1,0 9.0,0 a4.5,2.6 0 1,0 -9.0,0 Z" />
+</vector>

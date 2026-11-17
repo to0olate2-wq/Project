@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -207,26 +211,24 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
         // The portal (8.23; the owner: an add-on opens "in portal same as provider portal but of course no
         // live"): its own Home, Films, Series and My list, with its own menu, a bar under the page on a
         // phone held upright, words over it otherwise. The app's menu (the playlist's) is not drawn here.
-        val wide = isTv() || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
-        Column(Modifier.fillMaxSize()) {
-            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = pageMargin())) {
-                PageHeader(
-                    m.portalName(),
-                    onBack = leave,
-                    subtitle = when {
-                        links.isEmpty() -> null
-                        m.loading && m.addons.isEmpty() -> "Reading your add-ons…"
-                        // An add-on's own portal: where its lists come from.
-                        m.only != null -> m.rowsToShow().map { it.addon }.distinctBy { it.url }.filter { it.url != m.only }
-                            .joinToString(" · ") { it.name }.ifBlank { null }?.let { "Lists from $it" }
-                        else -> m.addons.joinToString(" · ") { it.name }.ifBlank { null }
-                    },
-                )
-                // Adding and removing add-ons is with the playlists (the Playlists page, Settings → Playlists).
-                if (links.isEmpty()) {
-                    AddonsIntro { adding = true }
-                } else {
-                    if (wide) PortalTabs(m.tab) { m.tab = it }
+        val config = androidx.compose.ui.platform.LocalConfiguration.current
+        val wide = isTv() || config.screenWidthDp >= 600
+        // Phones (8.38; the owner: "push buttons… to give extra space for what's important", "not
+        // necessarily the same way for both"): upright, a slim bar on top (back, name, search) and the
+        // pages' bar under it, both sliding away while you scroll down; on its side, a rail at the left
+        // with all of them and nothing over the page. The search box shows when the search is asked for.
+        val phone = isPhone() && links.isNotEmpty()
+        val side = phone && config.screenWidthDp > config.screenHeightDp
+        val chrome = remember { Chrome() }
+        var searchOpen by rememberSaveable { mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(m.tab) { chrome.show() }
+        val canSearch = m.canSearch && m.tab != AddonsModel.Tab.MINE
+        val toggleSearch = {
+            searchOpen = !searchOpen
+            if (!searchOpen && m.query.isNotEmpty()) m.search("")
+            chrome.show()
+        }
+        val body: @Composable () -> Unit = {
                     if (m.tab == AddonsModel.Tab.MINE) {
                         PortalMine(saved) { m.openItem(it) }
                     } else {
@@ -255,8 +257,55 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                                     )
                                 }
                             },
+                            searchShown = !phone || searchOpen || m.query.isNotEmpty(),
+                            focusSearch = phone && searchOpen,
+                            heroStyle = if (!phone) HeroStyle.CARD else if (side) HeroStyle.LOW else HeroStyle.TALL,
                         )
                     }
+        }
+        if (phone && side) {
+            Row(Modifier.fillMaxSize()) {
+                PortalRail(m.tab, canSearch, searchOpen || m.query.isNotEmpty(), onBack = leave, onSearch = toggleSearch) { m.tab = it }
+                Box(Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp, end = pageMargin())) { body() }
+            }
+        } else if (phone) {
+            Column(Modifier.fillMaxSize().nestedScroll(chrome.connection)) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !chrome.hidden || searchOpen,
+                    enter = androidx.compose.animation.expandVertically(),
+                    exit = androidx.compose.animation.shrinkVertically(),
+                ) {
+                    PortalTopBar(m.portalName(), canSearch, searchOpen || m.query.isNotEmpty(), onBack = leave, onSearch = toggleSearch)
+                }
+                Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = pageMargin())) { body() }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !chrome.hidden,
+                    enter = androidx.compose.animation.expandVertically(expandFrom = Alignment.Top),
+                    exit = androidx.compose.animation.shrinkVertically(shrinkTowards = Alignment.Top),
+                ) {
+                    PortalBar(m.tab) { m.tab = it }
+                }
+            }
+        } else Column(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = pageMargin())) {
+                PageHeader(
+                    m.portalName(),
+                    onBack = leave,
+                    subtitle = when {
+                        links.isEmpty() -> null
+                        m.loading && m.addons.isEmpty() -> "Reading your add-ons…"
+                        // An add-on's own portal: where its lists come from.
+                        m.only != null -> m.rowsToShow().map { it.addon }.distinctBy { it.url }.filter { it.url != m.only }
+                            .joinToString(" · ") { it.name }.ifBlank { null }?.let { "Lists from $it" }
+                        else -> m.addons.joinToString(" · ") { it.name }.ifBlank { null }
+                    },
+                )
+                // Adding and removing add-ons is with the playlists (the Playlists page, Settings → Playlists).
+                if (links.isEmpty()) {
+                    AddonsIntro { adding = true }
+                } else {
+                    if (wide) PortalTabs(m.tab) { m.tab = it }
+                    body()
                 }
             }
             if (!wide && links.isNotEmpty()) PortalBar(m.tab) { m.tab = it }
@@ -365,10 +414,21 @@ private fun AddonsBrowse(
     onReload: () -> Unit,
     listsNote: String? = null,
     onAddLists: () -> Unit = {},
+    /** Phones (8.38): the box only when the search is asked for (the bar's or the rail's magnifier). */
+    searchShown: Boolean = true,
+    focusSearch: Boolean = false,
+    heroStyle: HeroStyle = HeroStyle.CARD,
 ) {
     var text by rememberSaveable { mutableStateOf(m.query) }
+    val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(focusSearch) {
+        if (focusSearch) {
+            kotlinx.coroutines.delay(150)
+            runCatching { searchFocus.requestFocus() }
+        }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
-        if (m.canSearch) {
+        if (m.canSearch && searchShown) {
             item(key = "search") {
                 OutlinedTextField(
                     text,
@@ -388,7 +448,7 @@ private fun AddonsBrowse(
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { m.search(text) }),
-                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (heroStyle == HeroStyle.CARD) 2.dp else 8.dp, bottom = 4.dp).focusRequester(searchFocus),
                 )
             }
         }
@@ -415,7 +475,7 @@ private fun AddonsBrowse(
             val lead = rows.firstNotNullOfOrNull { m.rows[it.key]?.firstOrNull() }
             if (lead != null) {
                 item(key = "hero") {
-                    PortalHero(lead, saved.any { it.type == lead.type && it.id == lead.id }, onOpen = { m.openItem(lead) }, onList = { onList(lead) })
+                    PortalHero(lead, saved.any { it.type == lead.type && it.id == lead.id }, onOpen = { m.openItem(lead) }, onList = { onList(lead) }, style = heroStyle)
                 }
             }
             val going = watch.filter {
@@ -505,13 +565,56 @@ private fun AddonPoster(item: AddonItem, wide: Boolean = false, onClick: () -> U
     PosterCard(item.asChannel(), null, onClick = onClick, width = if (wide) null else if (isTv()) 132.dp else 112.dp)
 }
 
+/** How the portal's first title shows: a card (TV, tablets), its poster over the width (a phone upright), a low card (a phone on its side). */
+internal enum class HeroStyle { CARD, TALL, LOW }
+
 /** The portal's first title, large: its poster, what it is, and the way into it and into My list. */
 @Composable
-private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onList: () -> Unit) {
+private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onList: () -> Unit, style: HeroStyle = HeroStyle.CARD) {
     val tv = isTv()
     val shape = RoundedCornerShape(12.dp)
+    if (style == HeroStyle.TALL) {
+        // A phone upright (8.38): the poster across the width, the name and buttons over its foot.
+        Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).height(340.dp).clip(shape).background(Ink2)) {
+            LogoOr(item.poster, null, ContentScale.Crop, Modifier.fillMaxSize()) { Initials(item.name, 40.sp) }
+            Box(
+                Modifier.fillMaxSize().background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.35f to androidx.compose.ui.graphics.Color.Transparent,
+                        1f to Ink2,
+                    ),
+                ),
+            )
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(14.dp)) {
+                Kicker(if (item.type == "series") "Series" else "Film")
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    item.name,
+                    fontFamily = Serif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 26.sp,
+                    lineHeight = 30.sp,
+                    color = Paper,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val about = listOfNotNull(item.year.ifBlank { null }, item.rating.ifBlank { null }?.let { "★ $it" }).joinToString("  ·  ")
+                if (about.isNotEmpty()) Text(about, fontFamily = Sans, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.size(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PaperButton("Open", Icons.Filled.PlayArrow, Modifier.weight(1f), onClick = onOpen)
+                    GhostButton(if (saved) "In My list" else "My list", if (saved) Icons.Filled.Check else Icons.Filled.Add, Modifier.weight(1f), onClick = onList)
+                }
+            }
+        }
+        return
+    }
+    val high = when (style) {
+        HeroStyle.LOW -> 172.dp
+        else -> if (tv) 210.dp else 196.dp
+    }
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).height(if (tv) 210.dp else 196.dp).clip(shape).background(Ink2),
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).height(high).clip(shape).background(Ink2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(horizontal = if (tv) 18.dp else 14.dp, vertical = 14.dp)) {
@@ -524,7 +627,7 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
                 fontSize = if (tv) 28.sp else 23.sp,
                 lineHeight = if (tv) 33.sp else 28.sp,
                 color = Paper,
-                maxLines = 2,
+                maxLines = if (style == HeroStyle.LOW) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val about = listOfNotNull(item.year.ifBlank { null }, item.rating.ifBlank { null }?.let { "★ $it" }).joinToString("  ·  ")
@@ -541,7 +644,7 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
                 )
             }
         }
-        Box(Modifier.height(if (tv) 210.dp else 196.dp).aspectRatio(2f / 3f).background(Ink3), contentAlignment = Alignment.Center) {
+        Box(Modifier.height(high).aspectRatio(if (style == HeroStyle.LOW) 16f / 9f else 2f / 3f).background(Ink3), contentAlignment = Alignment.Center) {
             LogoOr(item.poster, null, ContentScale.Crop, Modifier.fillMaxSize()) { Initials(item.name, 22.sp) }
         }
     }
@@ -587,6 +690,83 @@ private fun PortalMine(saved: List<AddonItem>, onOpen: (AddonItem) -> Unit) {
         items(saved.size, key = { saved[it].type + "|" + saved[it].id }) { i ->
             val item = saved[i]
             AddonPoster(item, wide = true) { onOpen(item) }
+        }
+    }
+}
+
+/** A phone upright (8.38): back, the portal's name and the search, in one slim line. */
+@Composable
+private fun PortalTopBar(name: String, canSearch: Boolean, searching: Boolean, onBack: () -> Unit, onSearch: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).padding(start = 4.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
+        Text(
+            name,
+            fontFamily = Serif,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+            color = Paper,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (canSearch) {
+            IconButton(onClick = onSearch) {
+                Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = if (searching) "Close the search" else "Search", tint = Paper)
+            }
+        }
+    }
+}
+
+/**
+ * A phone on its side (8.38): the portal's pages, the search and Back in a rail at the left, so
+ * the whole height is the page's (the same 64 dp as the playlist's rail).
+ */
+@Composable
+private fun PortalRail(
+    tab: AddonsModel.Tab,
+    canSearch: Boolean,
+    searching: Boolean,
+    onBack: () -> Unit,
+    onSearch: () -> Unit,
+    onTab: (AddonsModel.Tab) -> Unit,
+) {
+    Column(
+        Modifier.width(64.dp).fillMaxHeight().background(Ink2).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper) }
+        Spacer(Modifier.weight(1f))
+        AddonsModel.Tab.entries.forEach { t ->
+            val picture = navIcon(
+                when (t) {
+                    AddonsModel.Tab.HOME -> Section.HOME
+                    AddonsModel.Tab.FILMS -> Section.MOVIES
+                    AddonsModel.Tab.SERIES -> Section.SERIES
+                    AddonsModel.Tab.MINE -> Section.FAVORITES
+                },
+            )
+            val on = t == tab
+            val shape = RoundedCornerShape(12.dp)
+            Box(
+                Modifier
+                    .padding(vertical = 3.dp)
+                    .size(48.dp)
+                    .clip(shape)
+                    .background(if (on) Signal.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { onTab(t) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(picture, contentDescription = t.label, tint = if (on) Signal else Muted, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        if (canSearch) {
+            IconButton(onClick = onSearch) {
+                Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = if (searching) "Close the search" else "Search", tint = if (searching) Signal else Paper)
+            }
         }
     }
 }
