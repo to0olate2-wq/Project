@@ -402,6 +402,9 @@ abstract class ScreenshotBase {
     /** A big playlist's way of naming groups ("UK | News", "AR | Kids"), for Live TV's folders. */
     protected var groupPrefixes = false
 
+    /** 8.34: a film listed three times, a collection, and matches in the sports channels' guide. */
+    protected var discoverSample = false
+
     private fun shownGroup(plain: String) = when {
         !groupPrefixes -> plain
         plain == "News" || plain == "Sports" -> "UK | $plain"
@@ -474,6 +477,18 @@ abstract class ScreenshotBase {
                     logo = "file://" + File(dir, "poster-$i.png").path, kind = Kind.MOVIE,
                     added = now - (2 + i * 6) * 86_400L, rating = ratings[i],
                 )
+            }
+            if (discoverSample) {
+                for ((n, extra) in listOf(
+                    Triple("4K - The Long Harbour", "4K Films", 0), Triple("MULTI-SUB | The Long Harbour", "Multi-sub", 0),
+                    Triple("Copper Valley 2", "Drama", 5), Triple("Copper Valley 3", "Drama", 5),
+                ).withIndex()) {
+                    val url = "http://127.0.0.1:1/movie/u/p/${100 + n}.mp4"
+                    out += Channel(
+                        id = stableId("${extra.first}|$url"), name = extra.first, group = extra.second, url = url,
+                        logo = "file://" + File(dir, "poster-${extra.third}.png").path, kind = Kind.MOVIE, added = now - 40 * 86_400L,
+                    )
+                }
             }
             val seriesRatings = listOf("8.2", "7.4", "7.9", "6.8")
             for ((i, title) in seriesTitles.withIndex()) {
@@ -560,7 +575,13 @@ abstract class ScreenshotBase {
                 t += len
                 k++
             }
-            ch.epgKey to list
+            val match = when {
+                !discoverSample -> null
+                ch.name == "Pulse Sports 1" || ch.name == "Pulse Sports 2" -> Program(now - 30 * 60_000L, now + 75 * 60_000L, "Harbour FC v City Rovers", "")
+                ch.name == "Arena Live" -> Program(now + 3 * 3_600_000L, now + 5 * 3_600_000L, "Northside v Valley United", "")
+                else -> null
+            }
+            ch.epgKey to if (match == null) list else (list.filter { it.stop <= match.start || it.start >= match.stop } + match).sortedBy { it.start }
         }
     }
 

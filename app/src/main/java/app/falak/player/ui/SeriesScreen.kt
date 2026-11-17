@@ -143,6 +143,8 @@ fun SeriesScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                     if (next != null && last != null) {
                         Text(next.name, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                     }
+                    // 8.34: the same series listed again (another language or quality).
+                    VersionChips(vm, show) { other -> vm.openSeries(other) }
                 }
             }
             info?.cast?.takeIf { it.isNotBlank() }?.let { cast ->

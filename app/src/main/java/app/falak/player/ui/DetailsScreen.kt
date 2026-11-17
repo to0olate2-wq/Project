@@ -131,6 +131,8 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                         DownloadActions(vm, ch)
                     }
                     DownloadProgress(ch)
+                    // 8.34: the same film listed again (another language or quality).
+                    VersionChips(vm, ch) { other -> vm.openDetails(other) }
                     if (watched != null && watched.dur > 0) {
                         LinearProgressIndicator(
                             progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
@@ -149,6 +151,23 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     Column(Modifier.padding(horizontal = pageMargin()).padding(top = 18.dp).widthIn(max = 760.dp)) {
                         cast?.let { CastNames(vm, "Cast", app.falak.player.data.People.castNames(it)) }
                         director?.let { CastNames(vm, "Director", app.falak.player.data.People.castNames(it, max = 3)) }
+                    }
+                }
+            }
+            // 8.34: the other films of its collection ("Toy Story 2" on Toy Story's page).
+            val collection = vm.index.collectionFor(ch)
+            if (collection != null) {
+                val same = vm.index.copiesOf(ch).mapTo(HashSet()) { it.id } + ch.id
+                val others = collection.films.filter { it.id !in same }
+                if (others.isNotEmpty()) {
+                    item(key = "collection") {
+                        Box(Modifier.padding(horizontal = pageMargin() - 4.dp)) {
+                            Shelf(collection.name + " collection") {
+                                items(others, key = { it.id }) { other ->
+                                    PosterCard(other, state.progress[progressKey(me, other.id)], onClick = { vm.openDetails(other) })
+                                }
+                            }
+                        }
                     }
                 }
             }

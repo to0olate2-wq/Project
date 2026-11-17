@@ -32,7 +32,28 @@ class LibraryIndex(
     private val searchHolder: Lazy<SearchIndex> = lazy { SearchIndex(all) },
     /** The names and logos chosen by hand this was built with (channel id -> the change). */
     val edits: Map<String, ChannelEdit> = emptyMap(),
+    /** Films and series listed more than once (8.34, see [Versions]): id → what its copies share. */
+    val titleKeys: Map<String, String> = emptyMap(),
 ) {
+    private val copyIds: Map<String, List<String>> by lazy { titleKeys.entries.groupBy({ it.value }, { it.key }) }
+
+    /** The other copies of a film or series (itself included, the playlist's order); empty when it has none. */
+    fun copiesOf(ch: Channel): List<Channel> =
+        titleKeys[ch.id]?.let { k -> copyIds[k].orEmpty().mapNotNull { byId[it] } }.orEmpty()
+
+    /** Collections of films found in their names (see [Collections]), made the first time they're asked for. */
+    val collections: List<Collections.Collection> by lazy { runCatching { Collections.find(movies) }.getOrDefault(emptyList()) }
+
+    private val collectionOf: Map<String, Collections.Collection> by lazy {
+        val out = HashMap<String, Collections.Collection>()
+        for (c in collections) for (f in c.films) out.putIfAbsent(f.id, c)
+        out
+    }
+
+    /** The collection a film is in (any of its copies). */
+    fun collectionFor(ch: Channel): Collections.Collection? =
+        collectionOf[ch.id] ?: copiesOf(ch).firstNotNullOfOrNull { collectionOf[it.id] }
+
     /** Search over every name, prepared on the first search (see [SearchIndex]). */
     val search: SearchIndex get() = searchHolder.value
 
@@ -43,8 +64,11 @@ class LibraryIndex(
     fun rearranged(a: Arrangement): LibraryIndex {
         if (a == arrangement) return this
         fun groups(kind: Kind) = arrange(plainGroups[kind].orEmpty(), kind, a)
-        fun list(kind: Kind, groups: Map<String, List<Channel>>) =
-            if (a.has(kind)) groups.values.flatten() else plainLists[kind].orEmpty()
+        fun list(kind: Kind, groups: Map<String, List<Channel>>) = oneEach(
+            kind,
+            if (a.has(kind)) groups.values.flatten() else plainLists[kind].orEmpty(),
+            titleKeys,
+        )
         val lg = groups(Kind.LIVE)
         val mg = groups(Kind.MOVIE)
         val sg = groups(Kind.SERIES)
@@ -55,7 +79,7 @@ class LibraryIndex(
             newMovies = newMovies, newSeries = newSeries, trending = trending,
             raw = raw, tidy = tidy, versions = versions,
             arrangement = a, plainGroups = plainGroups, plainLists = plainLists, searchHolder = searchHolder,
-            edits = edits,
+            edits = edits, titleKeys = titleKeys,
         )
     }
 
@@ -79,6 +103,10 @@ class LibraryIndex(
 
     companion object {
         val EMPTY = build(emptyList())
+
+        /** Lists of everything show each film and series once (live channels as they are). */
+        private fun oneEach(kind: Kind, list: List<Channel>, keys: Map<String, String>) =
+            if (kind == Kind.LIVE) list else Versions.oneEach(list, keys)
 
         fun build(
             list: List<Channel>,
@@ -109,8 +137,10 @@ class LibraryIndex(
             val movieGroups = arrange(plainMovies, Kind.MOVIE, arrangement)
             val seriesGroups = arrange(plainSeries, Kind.SERIES, arrangement)
             // A kind with an order chosen lists everything in that order ("All channels" too).
+            // Films and series the provider lists more than once: one of each in the lists of everything.
+            val keys = runCatching { Versions.keys(movies + series) }.getOrDefault(emptyMap())
             fun inOrder(kind: Kind, plain: List<Channel>, groups: Map<String, List<Channel>>) =
-                if (arrangement.has(kind)) groups.values.flatten() else plain
+                oneEach(kind, if (arrangement.has(kind)) groups.values.flatten() else plain, keys)
             return LibraryIndex(
                 all = shown,
                 // Merged-away channels stay findable (favorites, recents, the guide point at them).
@@ -121,14 +151,15 @@ class LibraryIndex(
                 liveGroups = liveGroups,
                 movieGroups = movieGroups,
                 seriesGroups = seriesGroups,
-                newMovies = movies.filter { it.added > 0 }.sortedByDescending { it.added }.take(40),
-                newSeries = series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }.take(40),
-                trending = Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000),
+                newMovies = Versions.oneEach(movies.filter { it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
+                newSeries = Versions.oneEach(series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
+                trending = Versions.oneEach(Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000), keys),
                 raw = list,
                 tidy = cleanNames to mergeDuplicates,
                 versions = tidy?.versions ?: emptyMap(),
                 arrangement = arrangement,
                 edits = edits,
+                titleKeys = keys,
                 plainGroups = mapOf(Kind.LIVE to plainLive, Kind.MOVIE to plainMovies, Kind.SERIES to plainSeries),
                 plainLists = mapOf(Kind.LIVE to live, Kind.MOVIE to movies, Kind.SERIES to series),
             )

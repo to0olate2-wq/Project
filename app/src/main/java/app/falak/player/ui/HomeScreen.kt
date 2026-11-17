@@ -182,6 +182,18 @@ fun HomeContent(
     val recordings = rememberRecordings()
     val hasRecordings = !vm.kidsActive && recordings.any { it.state == app.falak.player.record.RecState.DONE || it.state == app.falak.player.record.RecState.RECORDING }
     val rows = HomeRows.shown(state.settings)
+    // 8.34: the sports hub, groups pinned here, popular now and "Because you watched".
+    val sports = if ("sports" in rows && !vm.kidsActive) rememberSports(vm, epg, now, locked) else emptyList()
+    val pinned = remember(state.settings.homePins, index, locked, p.id) {
+        vm.pinnedGroups(state.settings).mapNotNull { (kind, g) ->
+            if (g in locked) return@mapNotNull null
+            val list = index.groupsOf(kind)[g]?.take(30).orEmpty()
+            if (list.isEmpty()) null else Triple(kind, g, list)
+        }
+    }
+    val popularFilms = if ("popular" in rows) rememberPopular(vm, Kind.MOVIE, locked) else emptyList()
+    val popularSeries = if ("popular" in rows) rememberPopular(vm, Kind.SERIES, locked) else emptyList()
+    val because = if ("because" in rows) rememberBecause(vm, state, me, null, locked) else null
 
     MarqueePage(vm, Section.HOME, hero, onPlay) {
         if (ramadan != null) {
@@ -219,6 +231,44 @@ fun HomeContent(
                 }
                 "recordings" -> if (hasRecordings) {
                     item(key = "recordings") { RecordingsShelf(vm, recordings, onPlay) }
+                }
+                "sports" -> if (sports.isNotEmpty()) {
+                    item(key = "sports") { SportsShelf(vm, state, sports, now, onPlay) }
+                }
+                "pinned" -> for ((kind, g, list) in pinned) {
+                    item(key = "pin:" + kind.name + "|" + g) {
+                        if (kind == Kind.LIVE) {
+                            LiveShelf(g, list, epg, now, onPlay, onLongPress = sheet) { seeAll(Section.LIVE, g, Sort.DEFAULT) }
+                        } else {
+                            Shelf(g, key = "pin:" + kind.name + "|" + g, onSeeAll = { seeAll(if (kind == Kind.MOVIE) Section.MOVIES else Section.SERIES, g, Sort.DEFAULT) }) {
+                                items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
+                            }
+                        }
+                    }
+                }
+                "popular" -> {
+                    if (popularFilms.isNotEmpty()) {
+                        item(key = "popularFilms") {
+                            Shelf("Popular films now") {
+                                items(popularFilms, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(popularFilms, ch) }, onLongClick = { sheet(ch) }) }
+                            }
+                        }
+                    }
+                    if (popularSeries.isNotEmpty()) {
+                        item(key = "popularSeries") {
+                            Shelf("Popular series now") {
+                                items(popularSeries, key = { it.id }) { ch -> PosterCard(ch, null, onClick = { openItem(popularSeries, ch) }, onLongClick = { sheet(ch) }) }
+                            }
+                        }
+                    }
+                }
+                "because" -> if (because != null) {
+                    item(key = "because") {
+                        val (src, list) = because
+                        Shelf(becauseTitle(src), key = "because") {
+                            items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { openItem(list, ch) }, onLongClick = { sheet(ch) }) }
+                        }
+                    }
                 }
                 "top" -> if (top.isNotEmpty()) {
                     item(key = "top") {
@@ -281,7 +331,8 @@ fun HomeContent(
         }
         // A new playlist with no films and nothing watched yet: say what will appear here.
         val empty = hero.isEmpty() && !hasDownloads && !hasRecordings && forThisHour.isEmpty() && recentLive.isEmpty() && upNext.isEmpty() &&
-            top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty()
+            top.isEmpty() && newMovies.isEmpty() && newSeries.isEmpty() && favLive.isEmpty() && favVod.isEmpty() && myLists.isEmpty() &&
+            sports.isEmpty() && pinned.isEmpty() && popularFilms.isEmpty() && popularSeries.isEmpty() && because == null
         if (empty) {
             item(key = "empty") {
                 EmptyHome(if (index.live.isNotEmpty()) ({ seeAll(Section.LIVE, null, Sort.DEFAULT) }) else null)

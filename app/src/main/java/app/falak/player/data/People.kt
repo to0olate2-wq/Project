@@ -170,26 +170,66 @@ object People {
 
     /** Their films and series, each newest first; ones with no date last. */
     fun parseCredits(text: String): Pair<List<Title>, List<Title>> {
-        val all = rows(text).mapNotNull { r ->
-            val imdb = value(r["imdb"]).takeIf { Regex("tt\\d{5,}").matches(it) } ?: return@mapNotNull null
-            val kinds = value(r["kinds"]).split(',').filter { it.isNotBlank() }.toSet()
-            if (kinds.any { it in NOT_A_TITLE } && kinds.none { it in SERIES }) return@mapNotNull null
-            val series = kinds.any { it in SERIES } || value(r["episodes"]).isNotEmpty()
-            // (Since 2024 many titles keep their name as "mul", the same in every language, and no English one.)
-            val en = value(r["en"]).ifBlank { value(r["mul"]) }
-            val ar = value(r["ar"])
-            val name = en.ifBlank { ar }.ifBlank { return@mapNotNull null }
-            Title(
-                type = if (series) "series" else "movie",
-                name = name,
-                year = value(r["date"]).take(4).toIntOrNull(),
-                imdb = imdb,
-                poster = poster(imdb),
-                altName = if (en.isNotBlank() && ar.isNotBlank()) ar else "",
-            )
-        }.distinctBy { it.imdb }.sortedWith(compareByDescending<Title> { it.year ?: 0 }.thenBy { it.name })
+        val all = rows(text).mapNotNull(::titleOf).distinctBy { it.imdb }.sortedWith(compareByDescending<Title> { it.year ?: 0 }.thenBy { it.name })
         return all.filter { it.type == "movie" } to all.filter { it.type == "series" }
     }
+
+    /** A row of a titles query (credits, similar): null for what isn't a film or a series. */
+    private fun titleOf(r: JsonObject): Title? {
+        val imdb = value(r["imdb"]).takeIf { Regex("tt\\d{5,}").matches(it) } ?: return null
+        val kinds = value(r["kinds"]).split(',').filter { it.isNotBlank() }.toSet()
+        if (kinds.any { it in NOT_A_TITLE } && kinds.none { it in SERIES }) return null
+        val series = kinds.any { it in SERIES } || value(r["episodes"]).isNotEmpty()
+        // (Since 2024 many titles keep their name as "mul", the same in every language, and no English one.)
+        val en = value(r["en"]).ifBlank { value(r["mul"]) }
+        val ar = value(r["ar"])
+        val name = en.ifBlank { ar }.ifBlank { return null }
+        return Title(
+            type = if (series) "series" else "movie",
+            name = name,
+            year = value(r["date"]).take(4).toIntOrNull(),
+            imdb = imdb,
+            poster = poster(imdb),
+            altName = if (en.isNotBlank() && ar.isNotBlank()) ar else "",
+        )
+    }
+
+    /**
+     * "Because you watched" (8.34): films and series that share the most with [imdb], weighted:
+     * the same series of films (P179) most, then the director (P57), the writers (P58), the cast (P161).
+     */
+    fun similarQuery(imdb: String): String = """
+        SELECT ?w (SAMPLE(?score0) AS ?score) (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
+               (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
+          {
+            SELECT ?w (SUM(?wt) AS ?score0) WHERE {
+              ?src wdt:P345 "${imdb.filter { it.isLetterOrDigit() }}" .
+              { ?src wdt:P179 ?p . ?w wdt:P179 ?p . BIND(8 AS ?wt) }
+              UNION { ?src wdt:P57 ?p . ?w wdt:P57 ?p . BIND(3 AS ?wt) }
+              UNION { ?src wdt:P58 ?p . ?w wdt:P58 ?p . BIND(2 AS ?wt) }
+              UNION { ?src wdt:P161 ?p . ?w wdt:P161 ?p . BIND(1 AS ?wt) }
+              FILTER(?w != ?src)
+            } GROUP BY ?w ORDER BY DESC(?score0) LIMIT 250
+          }
+          ?w wdt:P345 ?imdbId . FILTER(STRSTARTS(?imdbId, "tt"))
+          OPTIONAL { ?w wdt:P31 ?kind . }
+          OPTIONAL { ?w wdt:P577|wdt:P580 ?d . }
+          OPTIONAL { ?w wdt:P1113|wdt:P2437 ?eps . }
+          OPTIONAL { ?w rdfs:label ?enName . FILTER(LANG(?enName) = "en") }
+          OPTIONAL { ?w rdfs:label ?mulName . FILTER(LANG(?mulName) = "mul") }
+          OPTIONAL { ?w rdfs:label ?arName . FILTER(LANG(?arName) = "ar") }
+        } GROUP BY ?w ORDER BY DESC(?score)
+    """.trimIndent()
+
+    /** The titles of [similarQuery], the most alike first (two shared people outrank one). */
+    fun parseSimilar(text: String): List<Title> {
+        val scored = rows(text).mapNotNull { r -> titleOf(r)?.let { it to (value(r["score"]).toDoubleOrNull() ?: 0.0) } }
+        return scored.filter { it.second >= 2.0 }.sortedByDescending { it.second }.map { it.first }.distinctBy { it.imdb }
+    }
+
+    /** A Cinemeta list (its popular films or series) as titles. */
+    fun parseCatalog(text: String, type: String): List<Title> =
+        TitleMatch.parse(text).map { Title(type = type, name = it.name, year = it.year, imdb = it.id, poster = poster(it.id)) }
 
     fun poster(imdb: String) = "https://images.metahub.space/poster/small/$imdb/img"
 

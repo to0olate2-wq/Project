@@ -324,6 +324,23 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   choose, CH± channel; OK = channel list, OK held = add a screen (`dualOkHeld`; the held key's repeats are
   swallowed), Back = one screen (the heard one). Phones: "Add a screen" in `dualBar`, tap = sound, double tap =
   full screen. Tests: `TvFourScreens`, `PhoneThreeScreens` (`previewScreens`).
+- **8.34 (the owner picked 1, 2, 3, 5, 6 of a list of what paid apps show), `data/Discover.kt` (pure, `DiscoverTest`) +
+  `ui/DiscoverUi.kt`:** (1) **Sports hub**: `Sports.find` reads the guide of sports channels (group or name words)
+  for matches ("X v Y", Grand Prix, "LIVE:"…; not highlights/talk), on now and the next 18 h, one per match with all
+  its channels; `SportsShelf` (`MatchCard` in Cards.kt) on Home ("sports" row) and Live TV's front page: on now
+  plays, later sets a reminder, long press picks the channel, "See all" = the day's list. (2) **One poster per
+  title** (`Versions`): copies share the cleaned name + year (`Versions.title` drops tags in front: "MULTI-SUB |",
+  "4K-AR -"); `LibraryIndex.titleKeys`, the lists of everything (`movies`, `series`, new, trending) show the first
+  copy, groups keep theirs; `VersionChips` on film and series pages. (3) **Pin to Home**: GroupMenu "Pin to Home",
+  `Settings.homePins` ("playlist|KIND|group", syncs), Home row "pinned". (5) **Popular now**: Cinemeta's `top`
+  catalogs (3 pages, kept a day, `PeopleClient.popular`) matched to the playlist by name and year
+  (`repo.popularIn`, People.inLibrary; English names). (6) **Collections** (`Collections`: names — sequel marks,
+  " - " and ":" subtitles; ≥2 films, one marked; `index.collections` lazy): Films page row of `CollectionCard`s
+  opening `COLLECTION_FILTER + name` as a list, and "<name> collection" on a film's page. **Because you watched**
+  (`People.similarQuery`: Wikidata, same film series ×8, director ×3, writers ×2, cast ×1, score ≥ 2;
+  `repo.becauseYouWatched`) on Home and the Films/Series pages, from the last film or series watched.
+  HomeRows got "sports", "pinned", "popular", "because". Tests: `DiscoverScreens.kt` (`discoverSample`,
+  `discoverForTest` = names for popular/because). Never tried live: Cinemeta's list and the Wikidata query.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

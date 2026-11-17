@@ -409,6 +409,12 @@ fun MarqueeBrowse(
             .map { it.key to it.value.take(24) }
             .toList()
     }
+    // 8.34: popular now, "Because you watched", and (films) the collections found in the names.
+    val popular = rememberPopular(vm, kind, excluded)
+    val because = rememberBecause(vm, state, me, kind, excluded)
+    val collections = remember(index, excluded, films) {
+        if (!films) emptyList() else index.collections.filter { c -> c.films.all(::ok) && c.films.none { ADULT_GROUP.containsMatchIn(it.group) } }.take(30)
+    }
     LaunchedEffect(featured, continueOfKind) { vm.loadHeroArt((if (films) featured else emptyList()) + continueOfKind) }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
     val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }
@@ -440,6 +446,33 @@ fun MarqueeBrowse(
         if (top.size >= 3) {
             item(key = "top") {
                 RankShelf(if (films) "Top 10 films on your playlist" else "Top 10 series on your playlist", top, watched, { ch -> onOpen(top, ch) }, sheet)
+            }
+        }
+        if (popular.isNotEmpty()) {
+            item(key = "popular") {
+                Shelf(if (films) "Popular films now" else "Popular series now") {
+                    items(popular, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(popular, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        if (because != null) {
+            item(key = "because") {
+                val (src, list) = because
+                Shelf(becauseTitle(src), key = "because") {
+                    items(list, key = { it.id }) { ch -> PosterCard(ch, watched(ch), onClick = { onOpen(list, ch) }, onLongClick = { sheet(ch) }) }
+                }
+            }
+        }
+        if (collections.isNotEmpty()) {
+            item(key = "collections") {
+                Shelf("Collections") {
+                    items(collections, key = { "c:" + it.name }) { c ->
+                        CollectionCard(c, onClick = {
+                            vm.sort = Sort.DEFAULT
+                            onGroup(COLLECTION_FILTER + c.name)
+                        })
+                    }
+                }
             }
         }
         if (newOfKind.isNotEmpty()) {
