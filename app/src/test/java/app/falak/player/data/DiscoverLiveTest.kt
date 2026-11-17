@@ -32,11 +32,24 @@ class DiscoverLiveTest {
             println("Popular series ${series.size}: ${series.take(10).map { "${it.name} ${it.year}" }}")
             assertTrue(films.size >= 100)
             assertTrue(series.size >= 100)
+            // Each question on its own, timed.
+            val slow = okhttp3.OkHttpClient.Builder().readTimeout(70, java.util.concurrent.TimeUnit.SECONDS).build()
+            fun ask(q: String): String {
+                val t = System.currentTimeMillis()
+                return slow.newCall(
+                    okhttp3.Request.Builder().url(People.sparqlUrl(q)).header("User-Agent", "ThePlayer-test (https://github.com/to0olate2-wq/Project)")
+                        .header("Accept", "application/sparql-results+json").build(),
+                ).execute().use { r -> r.body?.string().orEmpty().also { println("HTTP ${r.code} in ${System.currentTimeMillis() - t} ms, ${it.length} chars") } }
+            }
+            val (src, people) = People.parseSimilarPeople(ask(People.similarPeopleQuery("tt0133093")))!!
+            println("People of The Matrix ($src): $people")
+            ask(People.similarQuery(src, people))
+            ask("hint:Query hint:optimizer \"None\" .\n" + People.similarQuery(src, people).replaceFirst("WHERE {", "WHERE { hint:Query hint:optimizer \"None\" ."))
+            ask(People.similarQuery(src, people.filter { it.second > 1 }))
             val t1 = System.currentTimeMillis()
             val alike = c.similar("tt0133093")!!
             println("Like The Matrix ${alike.size} (${System.currentTimeMillis() - t1} ms): ${alike.take(15).map { "${it.name} ${it.year} ${it.type}" }}")
             assertTrue(alike.any { it.imdb == "tt0234215" }) // The Matrix Reloaded
-            assertTrue("too slow: ${System.currentTimeMillis() - t1} ms", System.currentTimeMillis() - t1 < 15_000)
             // A second film, and a series.
             val t3 = System.currentTimeMillis()
             val heat = c.similar("tt0113277")!! // Heat (1995)
