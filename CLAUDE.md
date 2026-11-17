@@ -370,6 +370,14 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   7–9: the folder itself + `WRITE_EXTERNAL_STORAGE` maxSdk 28, asked by the page). Transformer fails → the .ts is
   copied. Progress in `GallerySave.state` (`GalleryLine` on the Recordings page, a toast when done). Needs ~2× the
   file's size free for a moment. Tests: `GallerySaveTest`, `PhoneGallerySaveScreens`.
+- **8.37 (the owner sent a native crash, SIGABRT, Nothing A001, Android 16, minutes after 8.36):** the report named
+  no crashing thread (loose words of every thread). Now `data/Tombstone.kt` reads Android 12+'s tombstone protobuf
+  (`ExitReasons`): signal, abort message, causes, the crashing thread's frames, the process's last W/E/F log lines
+  (`TombstoneTest` runs on the sandbox with JUnit from Gradle's lib). `FreezeWatch` keeps its steps in
+  `filesDir/steps.txt` too; `previousSteps` (read at start) go under a native crash or memory report. Likely cause:
+  Save to gallery's Transformer used Android's MediaMuxer, which aborts the process on samples it refuses: now
+  `InAppMuxer` (Media3's own writer; errors become `onError` → the .ts is copied). Not proven: the old report
+  couldn't say.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

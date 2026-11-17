@@ -177,6 +177,9 @@ class Repository(private val context: Context) {
         val header = "The Player ${app.falak.player.BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} " +
             "(SDK ${android.os.Build.VERSION.SDK_INT}) · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n\n"
         var unexpected = ExitReasons.takeUnexpected(context, header) // always read, so it's only shown once
+        // What the app was doing just before (8.37): a native crash leaves no other trace of it.
+        val steps = FreezeWatch.previousSteps
+        if (unexpected != null && steps.isNotBlank() && "(ANR)" !in unexpected) unexpected += "\nLast steps:\n$steps\n"
         // The app's own record of a freeze has the whole stuck call chain and the last steps.
         val freeze = FreezeWatch.take(context.filesDir, anr = unexpected?.contains("(ANR)") == true)
         if (freeze != null) unexpected = (unexpected ?: header) + "\n\n" + freeze
