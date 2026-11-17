@@ -32,6 +32,16 @@ class DiscoverLiveTest {
             println("Popular series ${series.size}: ${series.take(10).map { "${it.name} ${it.year}" }}")
             assertTrue(films.size >= 100)
             assertTrue(series.size >= 100)
+            val slow = okhttp3.OkHttpClient.Builder().readTimeout(70, java.util.concurrent.TimeUnit.SECONDS).build()
+            val t2 = System.currentTimeMillis()
+            slow.newCall(
+                okhttp3.Request.Builder().url(People.sparqlUrl(People.similarQuery("tt0133093")))
+                    .header("User-Agent", "ThePlayer-test (https://github.com/to0olate2-wq/Project)")
+                    .header("Accept", "application/sparql-results+json").build(),
+            ).execute().use { r ->
+                val body = r.body?.string().orEmpty()
+                println("Similar query: HTTP ${r.code} in ${System.currentTimeMillis() - t2} ms, ${body.length} chars: ${body.take(1500)}")
+            }
             val t1 = System.currentTimeMillis()
             val alike = c.similar("tt0133093")!!
             println("Like The Matrix ${alike.size} (${System.currentTimeMillis() - t1} ms): ${alike.take(15).map { "${it.name} ${it.year} ${it.type}" }}")
