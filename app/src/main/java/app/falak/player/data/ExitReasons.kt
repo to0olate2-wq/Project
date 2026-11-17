@@ -85,7 +85,9 @@ object ExitReasons {
                 if (start < 0) null else text.substring(start).lineSequence().take(80).joinToString("\n")
             }
             ApplicationExitInfo.REASON_CRASH_NATIVE -> {
-                // A binary record (tombstone): keep the readable bits that name the signal and the
+                // Android 12+: the record read properly (8.37), with the thread that crashed.
+                Tombstone.read(bytes)?.let { return "Crash details:\n$it" }
+                // Older (text) records: keep the readable bits that name the signal and the
                 // libraries and functions on the crashing thread.
                 val words = printable(bytes)
                 val keep = words.filter { w ->

@@ -34,13 +34,26 @@ object FreezeWatch {
             crumbs.addLast(line)
             while (crumbs.size > 30) crumbs.removeFirst()
         }
+        // Kept on disk too (8.37): a native crash kills the app at once, and the steps that led to
+        // it are then read at the next start ([previousSteps]).
+        stepsDir?.let { dir -> writer.execute { runCatching { File(dir, STEPS).writeText(recent()) } } }
     }
+
+    private const val STEPS = "steps.txt"
+    @Volatile private var stepsDir: File? = null
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "steps").apply { isDaemon = true } }
+
+    /** The last steps of the previous run (read once at start), for a report of how it ended. */
+    @Volatile var previousSteps: String = ""
+        private set
 
     fun recent(): String = synchronized(crumbs) { crumbs.joinToString("\n") }
 
     fun start(filesDir: File) {
         if (started) return
         started = true
+        previousSteps = runCatching { File(filesDir, STEPS).readText() }.getOrDefault("")
+        stepsDir = filesDir
         val main = Handler(Looper.getMainLooper())
         val mainThread = Looper.getMainLooper().thread
         Thread({

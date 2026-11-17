@@ -12,12 +12,14 @@ import android.os.StatFs
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.annotation.OptIn
+import app.falak.player.FreezeWatch
 import app.falak.player.OfflineCenter
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.InAppMuxer
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,14 +107,20 @@ object GallerySave {
             return
         }
         val tmp = File(work, "gallery-${r.id}.mp4")
+        FreezeWatch.note("gallery save: making an MP4 (${OfflineCenter.sizeLabel(src.length())})")
         val t = Transformer.Builder(app)
+            // 8.37: Media3's own MP4 writer, not Android's MediaMuxer, which stops the whole app
+            // (a native abort, no way to catch it) on samples it doesn't like.
+            .setMuxerFactory(InAppMuxer.Factory.Builder().build())
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                    FreezeWatch.note("gallery save: MP4 made, copying")
                     transformer = null
                     copyOut(app, r, tmp, "$name.mp4", "video/mp4", from = 80, deleteAfter = true, note = "")
                 }
 
                 override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                    FreezeWatch.note("gallery save: MP4 failed (${exportException.errorCodeName}), copying the .ts")
                     transformer = null
                     tmp.delete()
                     // Kept as it was recorded: still in the folder, though some gallery apps don't list .ts.
