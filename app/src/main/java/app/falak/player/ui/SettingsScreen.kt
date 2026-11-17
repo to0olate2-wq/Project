@@ -685,6 +685,14 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         item {
+            SwitchRow(
+                "Smooth interlaced channels",
+                "Removes the comb-like lines some 1080i channels (often sports) show in fast movement. Live channels then play " +
+                    "with VLC, which uses more power: turn it off if channels stutter.",
+                s.deinterlace,
+            ) { vm.updateSettings { it.copy(deinterlace = !it.deinterlace) } }
+        }
+        item {
             SwitchRow("Prefer HLS for Xtream live TV", "Try this if channels freeze or keep stopping", s.preferHls) {
                 vm.updateSettings { it.copy(preferHls = !it.preferHls) }
             }

@@ -78,6 +78,9 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         vm.index.groupsOf(Kind.MOVIE)[ch.group].orEmpty().asSequence().filter { it.id != ch.id }.take(24).toList()
     }
 
+    // (Versions and the collection never lead to a locked, hidden or, in kids mode, grown-up group.)
+    val excluded = rememberExcluded(vm, state)
+
     BackHandler { vm.leaveTitle() }
     LaunchedEffect(ch.id) {
         // (Also when another film is opened from "More like this": back at its top, on Play.)
@@ -132,7 +135,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     }
                     DownloadProgress(ch)
                     // 8.34: the same film listed again (another language or quality).
-                    VersionChips(vm, ch) { other -> vm.openDetails(other) }
+                    VersionChips(vm, ch, excluded) { other -> vm.openDetails(other) }
                     if (watched != null && watched.dur > 0) {
                         LinearProgressIndicator(
                             progress = { (watched.pos.toFloat() / watched.dur).coerceIn(0f, 1f) },
@@ -158,7 +161,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
             val collection = vm.index.collectionFor(ch)
             if (collection != null) {
                 val same = vm.index.copiesOf(ch).mapTo(HashSet()) { it.id } + ch.id
-                val others = collection.films.filter { it.id !in same }
+                val others = collection.films.filter { it.id !in same && it.group !in excluded }
                 if (others.isNotEmpty()) {
                     item(key = "collection") {
                         Box(Modifier.padding(horizontal = pageMargin() - 4.dp)) {

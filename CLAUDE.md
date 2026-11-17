@@ -345,6 +345,24 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   The Matrix, Heat, Breaking Bad; Cinemeta's popular lists ~0.7 s, 147 films / 150 series.
   HomeRows got "sports", "pinned", "popular", "because". Tests: `DiscoverScreens.kt` (`discoverSample`,
   `discoverForTest` = names for popular/because).
+- **8.35 (the owner picked 1 2 3 4 7 8 9 10 of an all-over check):** PRIVACY.md brought up to date (every online
+  service the app asks; keep it so when one is added). Search shows one copy per title (`Versions.oneEach`);
+  `rememberExcluded` (DiscoverUi) keeps hidden/locked/kids-hidden copies out of `VersionChips` and collections;
+  "Because you watched" asks nothing in kids mode. **Another player app** already existed (`Engine.EXTERNAL`);
+  now `player/ExternalPlayer.kt` sends the provider's User-Agent/Referer as `headers` (MX, Just Player) and no
+  chooser (Android's own list with "Always"). **Android TV home row** `data/TvHomeRow.kt`: a preview channel
+  "The Player" (`publishDefaultChannel`, id in SharedPreferences "tv_home_row") of favorite then recent live
+  channels (`pick`: no excluded/adult groups, 12 at most; empty in kids mode), written by `vm.writeTvRow()` when
+  MainActivity or the player stops (`repo.tvRow`); a pick → `TvHomeRow.EXTRA_PLAY` → `playFromAlert`. Google TV's
+  home doesn't show app rows (only Play next). **Smooth interlaced channels** (`Settings.deinterlace`, this
+  device's, Settings → Player): live channels play with VLC (`desiredEngine`), `--deinterlace=-1
+  --deinterlace-mode=yadif2x`, and `:no-mediacodec-dr` so VLC's filter sees the pictures (more power).
+  **Portal catch-up:** `Portal.archiveDays` (tv_archive/_duration, hours vs days rule as QiTV), `catchupType "stb"`,
+  `Catchup.portalArchive` → link module `tv_archive`, cmd "channel@start s" → `PortalApi.archiveLink`
+  (`get_simple_data_table` of the day ±1, `archiveEntry` within 90 s, `mark_archive` 0 = not recorded, then
+  create_link tv_archive "auto /media/<id>.mpg"). Needs past programmes in the guide. **Portal → Chromecast:**
+  `PortalLinks.ours/real` ask the portal's own link before casting (`castNow` async, `castBypass` = play here
+  when it fails). The portal may refuse a Chromecast (another IP, no MAG User-Agent). Tests: `PortalTest`, `TvHomeRowTest`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

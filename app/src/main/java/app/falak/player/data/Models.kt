@@ -334,6 +334,8 @@ data class Settings(
     /** 0 = fit, 1 = fill (stretch), 2 = zoom (crop) */
     val aspect: Int = 0,
     val bigBuffer: Boolean = false,
+    /** Interlaced (1080i) live channels smoothed (8.35): they play with VLC, which deinterlaces. This device's. */
+    val deinterlace: Boolean = false,
     /** Decode all audio in software (FFmpeg). Fixes silent Dolby/DTS on boxes whose HDMI passthrough fails. */
     val softwareAudio: Boolean = false,
     val preferHls: Boolean = false,

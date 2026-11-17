@@ -13,6 +13,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.falak.player.CrashReports
 import app.falak.player.data.mine
+import app.falak.player.data.Epg
+import app.falak.player.data.TvHomeRow
+import app.falak.player.data.WatchNext
 import app.falak.player.data.Account
 import app.falak.player.data.AccountStore
 import app.falak.player.data.Accounts
@@ -532,6 +535,33 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A reminder's notification was tapped: open its playlist if needed and play the channel. */
+    /**
+     * The Android TV home screen's row (8.35): this profile's favorite live channels, then the ones
+     * watched lately, without hidden, locked or adult groups; emptied in kids mode.
+     */
+    fun writeTvRow() {
+        val ctx = getApplication<Application>()
+        if (!WatchNext.supported(ctx)) return
+        val p = playlist ?: return
+        if (index.all.isEmpty() || choosingProfile) return
+        val st = state.value
+        val me = st.mine(p.id)
+        val chosen = if (st.settings.kidsMode && kidsActive) {
+            emptyList()
+        } else {
+            TvHomeRow.pick(
+                st.favorites[me].orEmpty().mapNotNull { index.byId[it] },
+                st.recents[me].orEmpty().mapNotNull { index.byId[it] },
+                currentExclusions(),
+            )
+        }
+        val guide = epg.value
+        val now = System.currentTimeMillis()
+        TvHomeRow.update(ctx, chosen.map { ch ->
+            TvHomeRow.Item("${p.id}|${ch.id}", ch.name, ch.logo, Epg.current(guide[ch.epgKey], now)?.title.orEmpty())
+        })
+    }
+
     fun playFromAlert(playlistId: String, channelId: String) {
         repo.autoPlayChecked = true
         val p = state.value.playlists.firstOrNull { it.id == playlistId } ?: return

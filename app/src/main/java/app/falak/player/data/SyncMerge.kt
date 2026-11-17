@@ -101,7 +101,7 @@ object SyncMerge {
 
     /** Settings that belong to one device (its screen, player, network, lock) or sync as parts of a playlist. */
     private val DEVICE_SETTINGS = setOf(
-        "aspect", "bigBuffer", "softwareAudio", "preferHls", "frameRate", "theme", "layout", "player",
+        "aspect", "bigBuffer", "deinterlace", "softwareAudio", "preferHls", "frameRate", "theme", "layout", "player",
         "downloadWifiOnly", "downloadDeleteWatched", "kidsMode", "syncOn", "askedNotify",
         "hiddenGroups", "guideOverrides", "lockedGroups", "kidsGroups",
         // 8.7: the buffer, recordings' folder, starting with the TV and the remote's buttons are this device's.

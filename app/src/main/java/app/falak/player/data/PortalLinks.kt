@@ -66,6 +66,22 @@ object PortalLinks {
     fun link(playlistId: String, module: String, series: Int, cmd: String, ext: String): String =
         "$base/$playlistId/$module/$series/${encode(cmd)}.$ext"
 
+    /** True for a link of this server (after [fix]). */
+    fun ours(url: String): Boolean = base.isNotEmpty() && url.startsWith("$base/")
+
+    /**
+     * The portal's own link for one of ours (8.35: a Chromecast can't reach 127.0.0.1), asked now
+     * (blocking: not on the main thread); the "still here" calls start as for a play here.
+     */
+    fun real(url: String): String {
+        val token = base.substringAfterLast('/')
+        val target = parse(url.removePrefix("http://").substringAfter('/', ""), token)
+            ?: throw java.io.IOException("Not a portal link")
+        val got = (resolve ?: throw java.io.IOException("Not ready"))(target.playlistId, target.module, target.series, target.cmd)
+        used[target.playlistId] = System.currentTimeMillis()
+        return got
+    }
+
     /** A link saved with an older port or token, made right ("" and other links as they are). */
     fun fix(url: String): String {
         if (base.isEmpty() || url.startsWith(base) || !url.startsWith("http://127.0.0.1:")) return url

@@ -145,7 +145,7 @@ class PortalTest {
                     "Authorization failed."
                 } else {
                     """{"js":{"total_items":2,"max_page_items":2,"data":[
-                    {"id":"11","name":"Atlas News","cmd":"ffmpeg http://localhost/ch/11_","tv_genre_id":"7","logo":"/logos/11.png","xmltv_id":"atlas.uk"},
+                    {"id":"11","name":"Atlas News","cmd":"ffmpeg http://localhost/ch/11_","tv_genre_id":"7","logo":"/logos/11.png","xmltv_id":"atlas.uk","tv_archive":"1","tv_archive_duration":"168"},
                     {"id":"12","name":"Meridian","cmd":"ffmpeg http://localhost/ch/12_","tv_genre_id":"9","logo":""}]}}"""
                 }
             }
@@ -159,6 +159,15 @@ class PortalTest {
                     {"id":"601","name":"Harbour Lights","cmd":"c2VyaWVz","is_series":"1","series":[1,2]}]}}"""
             }
             q["type"] == "series" -> """{"js":[]}"""
+            q["type"] == "epg" && action == "get_simple_data_table" -> if (q["ch_id"] == "11") {
+                """{"js":{"total_items":2,"max_page_items":10,"data":[
+                {"id":"9000","name":"Morning","start_timestamp":"1699996400","stop_timestamp":"1700000000","mark_archive":"0"},
+                {"id":"9001","name":"News at Ten","start_timestamp":"1700000000","stop_timestamp":"1700003600","mark_archive":"1"}]}}"""
+            } else {
+                """{"js":{"total_items":0,"max_page_items":10,"data":[]}}"""
+            }
+            action == "create_link" && q["type"] == "tv_archive" ->
+                """{"js":{"cmd":"ffmpeg http://127.0.0.1:$port/stream/archive-${q["cmd"].orEmpty().filter { it.isDigit() }}.ts"}}"""
             action == "create_link" -> {
                 links.incrementAndGet()
                 val what = if (q["type"] == "itv") q["cmd"].orEmpty().filter { it.isDigit() } else q["cmd"] + "-" + q["series"]
@@ -225,6 +234,39 @@ class PortalTest {
         assertEquals(404, http.newCall(Request.Builder().url(wrong).build()).execute().use { it.code })
 
         assertTrue((api.account().expires ?: 0) > 0)
+
+        // 8.35: catch-up. The channel says a week of archive (168 hours); the other has none.
+        assertEquals(7, live[0].catchupDays)
+        assertEquals("stb", live[0].catchupType)
+        assertEquals(0, live[1].catchupDays)
+        val news = Program(1_700_000_000_000L, 1_700_003_600_000L, "News at Ten", "")
+        val replay = Catchup.url(live[0], news, "", 1_700_010_000_000L)!!
+        assertTrue(replay.startsWith(PortalLinks.base + "/pl1/tv_archive/"))
+        val got = http.newCall(Request.Builder().url(replay).build()).execute().use { it.body!!.string() }
+        assertEquals("PLAYING /stream/archive-9001.ts", got)
+        // Not recorded: said plainly.
+        val morning = Program(1_699_996_400_000L, 1_700_000_000_000L, "Morning", "")
+        val e = runCatching { api.archiveLink("11", morning.start / 1000) }.exceptionOrNull()
+        assertEquals("The portal didn't record this programme", e?.message)
+
+        // 8.35: Chromecast. The portal's own link, asked for now (the Chromecast can't reach 127.0.0.1).
+        assertTrue(PortalLinks.ours(live[0].url))
+        assertEquals("http://127.0.0.1:${server.port}/stream/11.ts?play_token=x", PortalLinks.real(live[0].url))
+    }
+
+    @Test
+    fun readsArchiveDepths() {
+        fun o(vararg kv: Pair<String, String>) = kotlinx.serialization.json.JsonObject(kv.associate { it.first to kotlinx.serialization.json.JsonPrimitive(it.second) })
+        assertEquals(0, Portal.archiveDays(o("tv_archive_duration" to "168")))
+        assertEquals(7, Portal.archiveDays(o("tv_archive" to "1", "tv_archive_duration" to "168")))
+        assertEquals(3, Portal.archiveDays(o("tv_archive" to "1", "tv_archive_duration" to "3")))
+        assertEquals(2, Portal.archiveDays(o("enable_tv_archive" to "1", "tv_archive_duration" to "48")))
+        assertEquals(1, Portal.archiveDays(o("tv_archive" to "1")))
+        assertEquals(31, Portal.archiveDays(o("archive" to "true", "tv_archive_duration" to "2000")))
+        val items = listOf(o("id" to "5", "start_timestamp" to "1000"), o("id" to "6", "start_timestamp" to "1060", "mark_archive" to "0"))
+        assertEquals("6" to false, Portal.archiveEntry(items, 1070))
+        assertEquals("5" to true, Portal.archiveEntry(items, 1010))
+        assertNull(Portal.archiveEntry(items, 5000))
     }
 
     @Test

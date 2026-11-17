@@ -991,6 +991,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        repo.tvRow?.let { w -> runCatching { w() } }
         cast?.let { c -> runCatching { c.sessionManager.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) } }
         if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
@@ -1050,6 +1051,8 @@ class PlayerActivity : ComponentActivity() {
     /** Settings' choice, the in-player choice, or (Automatic) what suits this TV and this channel. */
     private fun desiredEngine(ch: Channel): Engine {
         sessionEngine?.let { if (it != Engine.EXTERNAL) return it }
+        // Smooth interlaced channels (8.35): VLC deinterlaces live channels; ExoPlayer can't.
+        if (repo.state.value.settings.deinterlace && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) return Engine.VLC
         val setting = repo.state.value.settings.player
         val auto = Engine.of(setting) == null
         val base = EngineAdvisor.resolve(this, setting).let { if (it == Engine.EXTERNAL) EngineAdvisor.advise(this).engine else it }
@@ -1209,6 +1212,7 @@ class PlayerActivity : ComponentActivity() {
             audioLang = st.audioLang,
             subtitleLang = if (st.subtitlesOn) st.subtitleLang.ifBlank { "en" } else "",
             subtitleLook = SubtitleStyle.vlcOptions(st.subSize, st.subColor, st.subEdge),
+            deinterlace = st.deinterlace,
         )
         val layout = VLCVideoLayout(this)
         // Underneath the controls; ExoPlayer's own picture surface steps aside.
@@ -1326,7 +1330,8 @@ class PlayerActivity : ComponentActivity() {
         deleteWatchedCopies(except = ch.id)
         droppedFrames = 0
         // Casting: the next channel or episode goes to the Chromecast, not here.
-        if (castingTo != null && castNow()) return
+        if (castingTo != null && !castBypass && castNow()) return
+        castBypass = false
         playingHere = index
         showLoading(ch)
         loadSkips(ch)
@@ -2591,14 +2596,14 @@ class PlayerActivity : ComponentActivity() {
     private fun openExternally() {
         val ch = queue.getOrNull(index) ?: return
         val url = currentUrl.ifBlank { ch.url }
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(Uri.parse(url), "video/*")
-            .putExtra("title", ch.name)
+        val intent = app.falak.player.player.ExternalPlayer.intent(
+            Uri.parse(url), ch.name, ch.userAgent.ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }, ch.referrer,
+        )
         try {
             handingOff = true
             // No small window on the way to the other player.
             updatePipParams()
-            startActivity(Intent.createChooser(intent, "Open with"))
+            startActivity(intent)
         } catch (e: Exception) {
             handingOff = false
             toast("No other video player is installed. VLC for Android is free.")
@@ -6019,13 +6024,46 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun castNow(): Boolean {
         val session = cast?.sessionManager?.currentCastSession ?: return false
-        val client = session.remoteMediaClient ?: return false
+        if (session.remoteMediaClient == null) return false
         val ch = queue.getOrNull(index) ?: return false
+        // A MAC portal's channel or title (8.35): the portal's own link is asked for first (the app's
+        // 127.0.0.1 link can't be reached from the Chromecast), then that goes.
+        val portal = app.falak.player.data.PortalLinks.fix(ch.url)
+        if (app.falak.player.data.PortalLinks.ours(portal) && app.falak.player.OfflineCenter.fileFor(ch.id) == null) {
+            val at = index
+            showLoading(ch)
+            Thread {
+                val real = runCatching { app.falak.player.data.PortalLinks.real(portal) }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed || index != at) return@runOnUiThread
+                    val s = cast?.sessionManager?.currentCastSession
+                    val url = real.getOrNull()?.let { app.falak.player.cast.CastLinks.castable(it) }
+                    if (s == null || url == null) {
+                        toast(real.exceptionOrNull()?.message?.let { "The Chromecast can't have it ($it): it plays here." }
+                            ?: "This one can't go to a Chromecast: it plays here.")
+                        castBypass = true
+                        playCurrent(false)
+                    } else {
+                        castLoad(s, ch, url)
+                    }
+                }
+            }.start()
+            return true
+        }
         val url = app.falak.player.cast.CastLinks.castable(ch.url)
         if (url == null || app.falak.player.OfflineCenter.fileFor(ch.id) != null) {
             toast("This one can't go to a Chromecast: it plays here (torrent links and downloads stay on this phone).")
             return false
         }
+        castLoad(session, ch, url)
+        return true
+    }
+
+    /** Casting stopped by a portal link that couldn't go: the next play is here. */
+    private var castBypass = false
+
+    private fun castLoad(session: com.google.android.gms.cast.framework.CastSession, ch: Channel, url: String) {
+        val client = session.remoteMediaClient ?: return
         val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
         val meta = com.google.android.gms.cast.MediaMetadata(
             if (live) com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_GENERIC else com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE,
@@ -6047,7 +6085,6 @@ class PlayerActivity : ComponentActivity() {
         hideLoading()
         updateTopBar()
         markCasting(session)
-        return true
     }
 
     /** Casting stopped: the picture comes back here, where it was. */

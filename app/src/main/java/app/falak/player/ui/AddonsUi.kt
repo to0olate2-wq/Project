@@ -344,7 +344,7 @@ private fun AddonsIntro(onAdd: () -> Unit) {
         Spacer(Modifier.size(14.dp))
         PaperButton("Add an add-on", Icons.Filled.Add, onClick = onAdd)
         Text(
-            "Later: on the Playlists page, or Settings → Playlists.",
+            "Later: on the Playlists page, or Settings → Playlists & TV guide.",
             fontFamily = Sans,
             fontSize = 12.sp,
             color = Faint,

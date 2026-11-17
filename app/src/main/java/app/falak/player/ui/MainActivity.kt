@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
         handleOpen(intent)
         askForNotificationsOnce()
         app.falak.player.sync.RemoteBridge.handler = remoteHandler
+        repo.tvRow = { vm.writeTvRow() }
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
@@ -406,6 +407,11 @@ class MainActivity : ComponentActivity() {
 
     /** Opens What's new when started from a "New in …" notification, or resumes a film picked on the TV home screen. */
     private fun handleOpen(intent: Intent?) {
+        intent?.getStringExtra(app.falak.player.data.TvHomeRow.EXTRA_PLAY)?.let { key ->
+            intent.removeExtra(app.falak.player.data.TvHomeRow.EXTRA_PLAY)
+            vm.playFromAlert(key.substringBefore('|'), key.substringAfter('|'))
+            return
+        }
         intent?.getStringExtra(app.falak.player.data.WatchNext.EXTRA_RESUME)?.let { key ->
             intent.removeExtra(app.falak.player.data.WatchNext.EXTRA_RESUME)
             vm.resumeFromHome(key)
@@ -534,6 +540,11 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onStop() {
+        super.onStop()
+        vm.writeTvRow()
+    }
+
     override fun onDestroy() {
         if (app.falak.player.sync.RemoteBridge.handler === remoteHandler) app.falak.player.sync.RemoteBridge.handler = null
         super.onDestroy()
@@ -601,12 +612,11 @@ class MainActivity : ComponentActivity() {
             val saved = app.falak.player.OfflineCenter.fileFor(channel.id)
             val uri = saved?.let { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.offline", it) }
                 ?: android.net.Uri.parse(channel.url)
-            val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "video/*")
-                .putExtra("title", channel.name)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val intent = app.falak.player.player.ExternalPlayer.intent(
+                uri, channel.name, channel.userAgent.ifBlank { vm.playlist?.userAgent.orEmpty() }, channel.referrer,
+            )
             try {
-                startActivity(Intent.createChooser(intent, "Play with"))
+                startActivity(intent)
                 return
             } catch (e: Exception) {
                 android.widget.Toast.makeText(this, "No other video player is installed; using the built-in one.", android.widget.Toast.LENGTH_LONG).show()

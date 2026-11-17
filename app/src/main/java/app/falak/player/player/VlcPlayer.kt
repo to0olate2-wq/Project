@@ -36,6 +36,12 @@ class VlcPlayer(
     subtitleLang: String = "",
     /** The subtitle look from Settings ([SubtitleStyle.vlcOptions]). */
     subtitleLook: List<String> = emptyList(),
+    /**
+     * Smooth interlaced channels (8.35): VLC's deinterlacer on what the stream says is interlaced
+     * (yadif, at the field rate: 50 pictures a second for 1080i50). VLC's filters only see pictures
+     * it draws itself, so the hardware decoder then hands them over instead of drawing directly.
+     */
+    private val deinterlace: Boolean = false,
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
 
     private val libVlc = createLibVlc(
@@ -65,6 +71,7 @@ class VlcPlayer(
                 )
             }
             // Same language choices as ExoPlayer (Settings → Playback).
+            if (deinterlace) addAll(listOf("--deinterlace=-1", "--deinterlace-mode=yadif2x"))
             if (audioLang.isNotBlank()) add("--audio-language=$audioLang")
             if (subtitleLang.isNotBlank()) add("--sub-language=$subtitleLang")
         },
@@ -116,6 +123,10 @@ class VlcPlayer(
         if (released) return
         val media = Media(libVlc, Uri.parse(url))
         media.setHWDecoderEnabled(hardware, false)
+        if (deinterlace && hardware) {
+            media.addOption(":no-mediacodec-dr")
+            media.addOption(":no-omxil-dr")
+        }
         media.addOption(":http-user-agent=$userAgent")
         if (referrer.isNotBlank()) media.addOption(":http-referrer=$referrer")
         if (startMs > 0) media.addOption(":start-time=${startMs / 1000}")
