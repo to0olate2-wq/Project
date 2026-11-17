@@ -415,6 +415,7 @@ fun MarqueeBrowse(
     val collections = remember(index, excluded, films) {
         if (!films) emptyList() else index.collections.filter { c -> c.films.all(::ok) && c.films.none { ADULT_GROUP.containsMatchIn(it.group) } }.take(30)
     }
+    val allCount = remember(groups, index) { app.falak.player.data.Versions.oneEach(groups.values.flatten(), index.titleKeys).size }
     LaunchedEffect(featured, continueOfKind) { vm.loadHeroArt((if (films) featured else emptyList()) + continueOfKind) }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
     val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }
@@ -425,7 +426,8 @@ fun MarqueeBrowse(
         item(key = "groups") {
             GroupPicker(
                 all = if (films) "All films" else "All series",
-                total = groups.values.sumOf { it.size },
+                // (Each film once, as the list of them all shows them.)
+                total = allCount,
                 groups = groups,
                 locked = locked,
                 onGroup = onGroup,
