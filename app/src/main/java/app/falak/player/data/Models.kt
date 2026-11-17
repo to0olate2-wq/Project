@@ -28,8 +28,14 @@ data class Playlist(
      * file playlist with no file, so versions before 8.4 leave it alone.
      */
     val sources: List<String> = emptyList(),
+    /**
+     * A MAC portal (8.33): the box's MAC address the provider activated; [url] is the portal's
+     * address. Stored as an M3U link playlist, so older versions only fail to download it.
+     */
+    val mac: String = "",
 ) {
     val isCombined: Boolean get() = sources.isNotEmpty()
+    val isPortal: Boolean get() = mac.isNotEmpty()
 }
 
 @Serializable

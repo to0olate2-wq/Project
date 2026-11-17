@@ -303,6 +303,27 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (SharedPreferences "mini_player", this device's; bottom right at first). Phones: drag (a tap still opens it).
   TVs: hold OK on it (key repeat) → arrows move it 48 dp, OK or Back = done; a short OK opens it, Back closes it
   (all in `onPreviewKeyEvent`, so `clickable` never sees OK). Test: `MiniSpotTest`.
+- **8.33 (the owner picked 1 and 3 from a list of what paid apps have):** (1) **MAC portals** (Stalker/Ministra),
+  `data/Portal.kt` (`Portal` = pieces without network, `PortalApi` = session: handshake with our own token,
+  get_profile with MAG ids made from the MAC (`identity`), "Authorization failed" → one new session, then
+  `Portal.REFUSED`; lists: itv get_all_channels (else paged get_ordered_list), vod/series categories paged 4 at a
+  time (`PARALLEL`, `MAX_TITLES`), series in the films list (`is_series`, "v" + id) or the series part ("x" + id);
+  seasons via get_ordered_list movie_id/season_id; create_link per play; get_epg_info (24 h) as "Your portal's
+  guide"; get_main_info → `Account`). A playlist with `Playlist.mac` (`isPortal`) is stored as M3U_URL (older
+  versions just fail to download it); its UA defaults to `Portal.MAG_UA`. Links: `data/PortalLinks.kt`, a
+  127.0.0.1 server (port + token kept in SharedPreferences "portal_links", started by Repository when a portal
+  exists) that asks the portal for a fresh link and answers 302 (20 s cache; "still here" watchdog every 2 min for
+  3 h after a play), so every player, recording and download works unchanged; `fix` mends saved copies after a
+  port change. Details the list leaves out: `PortalExtra` in `<id>.portal.json` (`repo.portalExtra`). Add window:
+  "MAC portal" chip (`SourceKinds(type, portal)`), `vm.addPlaylist(portal = true, mac)` checks it first
+  (`repo.portalLogin`). Not done: catch-up, Chromecast for portal links (127.0.0.1), serial/device-id portals.
+  Never tried against a real portal: `PortalTest` runs a made-up portal on the CI machine.
+  (2) **Up to four screens** (PlayerActivity): `panes` (the other pictures; `dual` = the first, so the old
+  `dual != null` checks mean "several screens"), `heard` (0 = main), `rects`, `dualLabels`; two side by side as
+  before, three or four in a 2×2 grid (`layoutDual`). TV: two = ◀ ▶ sound, ▲ ▼ channel; three or four = arrows
+  choose, CH± channel; OK = channel list, OK held = add a screen (`dualOkHeld`; the held key's repeats are
+  swallowed), Back = one screen (the heard one). Phones: "Add a screen" in `dualBar`, tap = sound, double tap =
+  full screen. Tests: `TvFourScreens`, `PhoneThreeScreens` (`previewScreens`).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

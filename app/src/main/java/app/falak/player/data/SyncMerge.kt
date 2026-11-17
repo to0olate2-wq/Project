@@ -149,7 +149,7 @@ object SyncMerge {
     /** Two playlists from the same source (same link and login): the same playlist on two devices. */
     fun sameSource(a: Playlist, b: Playlist): Boolean =
         a.type == b.type && a.type != SourceType.M3U_FILE &&
-            a.url.trimEnd('/').equals(b.url.trimEnd('/'), ignoreCase = true) && a.username == b.username
+            a.url.trimEnd('/').equals(b.url.trimEnd('/'), ignoreCase = true) && a.username == b.username && a.mac == b.mac
 
     private fun introsOf(s: AppState, id: String): Map<String, Intro> {
         val prefix = "$id|"

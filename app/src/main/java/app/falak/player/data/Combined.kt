@@ -19,6 +19,7 @@ object Combined {
         val user = src.username.ifBlank { XtreamApi.fromM3uLink(src.url)?.second.orEmpty() }
         val basis = when {
             src.type == SourceType.M3U_FILE -> "file:" + src.id
+            src.isPortal -> "portal:" + src.mac
             user.isNotBlank() -> src.type.name + ":" + user
             else -> src.type.name + ":" + src.url.trim().trimEnd('/').lowercase()
         }

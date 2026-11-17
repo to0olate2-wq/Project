@@ -74,6 +74,18 @@ object AppChanges {
             "On a phone, drag the small picture wherever you like. On a TV, hold OK on it, move it with the arrows, " +
                 "then press OK. It stays where you put it.",
         ),
+        Change(
+            "8.33",
+            "MAC portals",
+            "Providers that give a portal and a MAC address work now: Playlists → Add → MAC portal. " +
+                "Live TV, films, series and the portal's TV guide come from it.",
+        ),
+        Change(
+            "8.33",
+            "Up to four screens at once",
+            "With two screens on, add a third and a fourth: tap Add on a phone, or hold OK on a TV remote. " +
+                "Choose the picture you hear with a tap, or with the arrows on a TV.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */
