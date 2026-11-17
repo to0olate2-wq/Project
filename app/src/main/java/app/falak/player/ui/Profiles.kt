@@ -56,7 +56,66 @@ internal val ProfileTints = listOf(
 )
 
 /** One choice in "Who's watching?". */
-private class Choice(val id: String, val name: String, val tint: Color, val kids: Boolean)
+private class Choice(val id: String, val name: String, val tint: Color, val kids: Boolean, val avatar: String)
+
+/** The drawing of a profile picture ([app.falak.player.data.Avatars.KEYS]). */
+internal fun avatarRes(key: String): Int = when (key) {
+    "fox" -> app.falak.player.R.drawable.avatar_fox
+    "bear" -> app.falak.player.R.drawable.avatar_bear
+    "cat" -> app.falak.player.R.drawable.avatar_cat
+    "owl" -> app.falak.player.R.drawable.avatar_owl
+    "frog" -> app.falak.player.R.drawable.avatar_frog
+    "robot" -> app.falak.player.R.drawable.avatar_robot
+    "alien" -> app.falak.player.R.drawable.avatar_alien
+    "penguin" -> app.falak.player.R.drawable.avatar_penguin
+    "bunny" -> app.falak.player.R.drawable.avatar_bunny
+    "monster" -> app.falak.player.R.drawable.avatar_monster
+    "lion" -> app.falak.player.R.drawable.avatar_lion
+    "ghost" -> app.falak.player.R.drawable.avatar_ghost
+    else -> app.falak.player.R.drawable.avatar_octopus
+}
+
+/** The picture of profile [id] ("" = main, [KIDS_PROFILE] = Kids). */
+internal fun avatarOf(state: AppState, id: String): String = when (id) {
+    "" -> app.falak.player.data.Avatars.of("", state.settings.mainAvatar)
+    KIDS_PROFILE -> app.falak.player.data.Avatars.of(KIDS_PROFILE, state.settings.kidsAvatar.ifBlank { app.falak.player.data.Avatars.KIDS_DEFAULT })
+    else -> app.falak.player.data.Avatars.of(id, state.profiles.firstOrNull { it.id == id }?.avatar.orEmpty())
+}
+
+/** Pick a picture (8.38): the cartoons in a grid, the one in use ringed. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun AvatarDialog(current: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose a picture") },
+        text = {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                app.falak.player.data.Avatars.KEYS.forEach { key ->
+                    val shape = RoundedCornerShape(14.dp)
+                    Box(
+                        Modifier
+                            .size(64.dp)
+                            .focusRing(shape)
+                            .clip(shape)
+                            .then(if (key == current) Modifier.border(3.dp, Signal, shape) else Modifier)
+                            .clickable { onPick(key) },
+                    ) {
+                        androidx.compose.foundation.Image(
+                            androidx.compose.ui.res.painterResource(avatarRes(key)),
+                            contentDescription = key,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
 
 /**
  * "Who's watching?": each time the app opens while kids mode is on or there are extra profiles.
@@ -77,9 +136,9 @@ fun ProfilePicker(vm: LibraryViewModel, state: AppState, onBack: () -> Unit) {
     BackHandler { onBack() }
     val s = state.settings
     val choices = buildList {
-        add(Choice("", s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], kids = false))
-        if (s.profilesOn) state.profiles.forEach { add(Choice(it.id, it.name, ProfileTints[(it.color + 1) % ProfileTints.size], kids = false)) }
-        if (s.kidsMode) add(Choice(KIDS_PROFILE, "Kids", Amber, kids = true))
+        add(Choice("", s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], kids = false, avatarOf(state, "")))
+        if (s.profilesOn) state.profiles.forEach { add(Choice(it.id, it.name, ProfileTints[(it.color + 1) % ProfileTints.size], kids = false, avatarOf(state, it.id))) }
+        if (s.kidsMode) add(Choice(KIDS_PROFILE, "Kids", Amber, kids = true, avatarOf(state, KIDS_PROFILE)))
     }
     val needsPin = s.kidsMode && s.pin.isNotEmpty()
     // Opaque, and swallows taps, so nothing behind it can be reached.
@@ -113,6 +172,7 @@ fun ProfilePicker(vm: LibraryViewModel, state: AppState, onBack: () -> Unit) {
                         kids = c.kids,
                         locked = locked,
                         tile = tile,
+                        avatar = c.avatar,
                         modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
                     ) {
                         if (locked) askPin = c.id else vm.chooseProfile(c.id)
@@ -144,6 +204,7 @@ private fun ProfileCard(
     kids: Boolean,
     locked: Boolean,
     tile: androidx.compose.ui.unit.Dp,
+    avatar: String? = null,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -158,7 +219,7 @@ private fun ProfileCard(
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ProfileTile(label, tint, kids, tile)
+        ProfileTile(label, tint, kids, tile, avatar)
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -179,10 +240,18 @@ private fun ProfileCard(
     }
 }
 
-/** A profile's square: the Kids face, or the name's first letter in the profile's colour. */
+/** A profile's square: its cartoon (8.38), else the Kids face or the name's first letter in the profile's colour. */
 @Composable
-internal fun ProfileTile(label: String, tint: Color, kids: Boolean, size: androidx.compose.ui.unit.Dp) {
+internal fun ProfileTile(label: String, tint: Color, kids: Boolean, size: androidx.compose.ui.unit.Dp, avatar: String? = null) {
     val shape = RoundedCornerShape(size * 0.14f)
+    if (avatar != null) {
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(avatarRes(avatar)),
+            contentDescription = label,
+            modifier = Modifier.size(size).clip(shape),
+        )
+        return
+    }
     Box(
         Modifier
             .size(size)
@@ -228,20 +297,17 @@ fun ProfileButton(state: AppState, kids: Boolean, onClick: () -> Unit) {
     }
     val p = state.profiles.firstOrNull { it.id == state.activeProfile }
     val name = p?.name ?: state.settings.mainProfileName.ifBlank { "Me" }
-    val tint = ProfileTints[if (p == null) 0 else (p.color + 1) % ProfileTints.size]
     val shape = CircleShape
-    Box(
-        Modifier
+    androidx.compose.foundation.Image(
+        androidx.compose.ui.res.painterResource(avatarRes(avatarOf(state, p?.id ?: ""))),
+        contentDescription = name,
+        modifier = Modifier
             .padding(horizontal = 6.dp)
             .size(32.dp)
             .focusRing(shape)
             .clip(shape)
-            .background(tint.copy(alpha = 0.22f))
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(name.trim().take(1).uppercase(), fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = tint)
-    }
+    )
 }
 
 /**
@@ -258,6 +324,7 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
     val repo = remember { (context.applicationContext as app.falak.player.FalakApp).repo }
     var naming by remember { mutableStateOf<String?>(null) } // profile id being renamed; "+" = new; "" = main
     var deleting by remember { mutableStateOf<app.falak.player.data.Profile?>(null) }
+    var picturing by remember { mutableStateOf<String?>(null) } // profile id whose picture is being picked
     val tv = isTv()
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -280,18 +347,26 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
             if (s.profilesOn) {
                 Spacer(Modifier.height(18.dp))
                 Kicker("Who's watching", color = Muted)
+                Text("Tap a picture to change it", fontFamily = Sans, fontSize = 12.sp, color = Faint)
                 Spacer(Modifier.height(8.dp))
-                ProfileRow(s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], "Main profile", onRename = { naming = "" })
+                ProfileRow(s.mainProfileName.ifBlank { "Me" }, ProfileTints[0], "Main profile", avatar = avatarOf(state, ""), onPicture = { picturing = "" }, onRename = { naming = "" })
                 state.profiles.forEach { pr ->
                     ProfileRow(
                         pr.name,
                         ProfileTints[(pr.color + 1) % ProfileTints.size],
                         "This device only",
+                        avatar = avatarOf(state, pr.id),
+                        onPicture = { picturing = pr.id },
                         onRename = { naming = pr.id },
                         onDelete = { deleting = pr },
                     )
                 }
-                if (s.kidsMode) ProfileRow("Kids", Amber, "Kids mode (Settings → Profiles & parental control)", kids = true)
+                if (s.kidsMode) {
+                    ProfileRow(
+                        "Kids", Amber, "Kids mode (Settings → Profiles & parental control)", kids = true,
+                        avatar = avatarOf(state, KIDS_PROFILE), onPicture = { picturing = KIDS_PROFILE },
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 if (state.profiles.size < MAX_PROFILES) PaperButton("Add a profile") { naming = "+" }
                 Spacer(Modifier.height(24.dp))
@@ -311,6 +386,12 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
                 else -> repo.renameProfile(id, name)
             }
             naming = null
+        }
+    }
+    picturing?.let { id ->
+        AvatarDialog(avatarOf(state, id), onDismiss = { picturing = null }) { key ->
+            repo.setAvatar(id, key)
+            picturing = null
         }
     }
     deleting?.let { pr ->
@@ -369,11 +450,18 @@ private fun ProfileRow(
     tint: Color,
     note: String,
     kids: Boolean = false,
+    avatar: String? = null,
+    onPicture: (() -> Unit)? = null,
     onRename: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProfileTile(name, tint, kids, 44.dp)
+        Box(
+            Modifier
+                .focusRing(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(8.dp))
+                .then(if (onPicture != null) Modifier.clickable(onClick = onPicture) else Modifier),
+        ) { ProfileTile(name, tint, kids, 44.dp, avatar) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper)

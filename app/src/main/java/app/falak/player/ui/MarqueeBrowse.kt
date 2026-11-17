@@ -36,6 +36,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -111,7 +116,8 @@ private fun marqueeFraction(height: Dp, section: Section? = null, portrait: Bool
     portrait -> if (cinema) 0.68f else 0.56f
     // TV: behind the bar and the spotlight, fading out behind the first row (the Cinema look: the whole screen).
     tv -> if (cinema) 1f else 0.62f
-    height < 480.dp -> 0.84f
+    // A phone on its side (8.38): less picture, so the first row shows under it.
+    height < 480.dp -> 0.7f
     section == Section.HOME -> 0.6f
     else -> 0.74f
 }
@@ -624,6 +630,8 @@ fun MarqueePage(
                                     onDetails = { ch -> vm.openDetails(ch) },
                                     onFocus = { heroFocused = it },
                                     compact = section == Section.HOME && (stage?.height ?: 0.dp) >= 480.dp,
+                                    onCurrent = { vm.marqueeIndex[section] = it },
+                                    tight = (stage?.height ?: 0.dp) < 480.dp,
                                 )
                             } else {
                                 PhoneHero(
@@ -779,13 +787,43 @@ private fun MarqueeHero(
     onFocus: (Boolean) -> Unit,
     /** Home: a shorter picture, so the name takes one line. */
     compact: Boolean = false,
+    /** Touch screens (8.38): swipe sideways, or tap the arrows, for the next or the one before. */
+    onCurrent: ((Int) -> Unit)? = null,
+    /** A phone on its side (8.38): the name on one line, the story on one, less space between. */
+    tight: Boolean = false,
 ) {
     val tv = isTv()
     val tap = LocalCardTap.current
     // Back from it: the remote goes to Play again.
     val back = LocalReturnFocus.current?.row == HERO_ROW
-    Box(Modifier.fillMaxWidth().heightIn(min = height).pinToTop().onFocusChanged { onFocus(it.hasFocus) }) {
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(if (tv) 0.54f else 0.6f).padding(start = 4.dp, bottom = 16.dp)) {
+    val swipe = with(LocalDensity.current) { 56.dp.toPx() }
+    val shown by rememberUpdatedState(current)
+    val change by rememberUpdatedState(onCurrent)
+    val touch = !tv && onCurrent != null && count > 1
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = height)
+            .pinToTop()
+            .onFocusChanged { onFocus(it.hasFocus) }
+            .then(
+                if (touch) {
+                    Modifier.pointerInput(count) {
+                        var moved = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { moved = 0f },
+                            onDragEnd = {
+                                if (moved <= -swipe) change?.invoke((shown + 1) % count)
+                                else if (moved >= swipe) change?.invoke((shown - 1 + count) % count)
+                            },
+                        ) { _, dx -> moved += dx }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(if (tv) 0.54f else 0.6f).padding(start = 4.dp, bottom = if (tight) 10.dp else 16.dp)) {
             AnimatedContent(
                 targetState = item to info,
                 transitionSpec = { fadeIn(tween(if (tv) 200 else 350)).togetherWith(fadeOut(tween(150))) },
@@ -806,15 +844,15 @@ private fun MarqueeHero(
                             CardBadge(it, Paper)
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(if (tight) 4.dp else 8.dp))
                     Text(
                         ch.name,
                         fontFamily = Serif,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (compact) 36.sp else if (tv) 44.sp else 32.sp,
-                        lineHeight = if (compact) 40.sp else if (tv) 48.sp else 36.sp,
+                        fontSize = if (tight) 26.sp else if (compact) 36.sp else if (tv) 44.sp else 32.sp,
+                        lineHeight = if (tight) 30.sp else if (compact) 40.sp else if (tv) 48.sp else 36.sp,
                         color = Paper,
-                        maxLines = if (compact) 1 else 2,
+                        maxLines = if (compact || tight) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     val meta = listOfNotNull(
@@ -829,11 +867,11 @@ private fun MarqueeHero(
                     }
                     details?.plot?.takeIf { it.isNotBlank() }?.let { plot ->
                         Spacer(Modifier.height(8.dp))
-                        Text(plot, fontFamily = Sans, fontSize = if (tv) 15.sp else 13.sp, lineHeight = if (tv) 22.sp else 19.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(plot, fontFamily = Sans, fontSize = if (tv) 15.sp else 13.sp, lineHeight = if (tv) 22.sp else 19.sp, color = Muted, maxLines = if (tight) 1 else 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(if (tight) 10.dp else 16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PaperButton(
                     if (item.isSeriesFolder) "Episodes" else "Play",
@@ -852,7 +890,13 @@ private fun MarqueeHero(
             }
         }
         if (count > 1) {
-            Row(Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.align(Alignment.BottomEnd).padding(end = if (touch) 0.dp else 8.dp, bottom = if (touch) 14.dp else 30.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Touch screens: the one before and the next, as buttons beside the dots.
+                if (touch) HeroArrow(next = false) { change?.invoke((shown - 1 + count) % count) }
                 repeat(count) { i ->
                     Box(
                         Modifier
@@ -862,7 +906,32 @@ private fun MarqueeHero(
                             .background(if (i == current) Paper else Paper.copy(alpha = 0.35f)),
                     )
                 }
+                if (touch) HeroArrow(next = true) { change?.invoke((shown + 1) % count) }
             }
+        }
+    }
+}
+
+/** ‹ or › beside the featured title's dots (touch screens, 8.38): a 40 dp round button. */
+@Composable
+private fun HeroArrow(next: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Ink.copy(alpha = 0.55f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (next) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = if (next) "Next" else "Previous",
+                tint = Paper,
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

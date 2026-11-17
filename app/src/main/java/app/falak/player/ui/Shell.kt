@@ -32,6 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -115,17 +119,30 @@ fun greeting(hour: Int = java.util.Calendar.getInstance().get(java.util.Calendar
  */
 @Composable
 fun AppShell(vm: LibraryViewModel, state: AppState, mode: ShellMode, content: @Composable () -> Unit) {
+    // Phones (8.38): the bars slide away while a page is scrolled down, back on the way up ([Chrome]).
+    val phone = isPhone()
+    val chrome = remember { Chrome() }
+    LaunchedEffect(vm.screen, vm.section, vm.group, mode) { chrome.show() }
+    val barGone by androidx.compose.animation.core.animateDpAsState(
+        if (phone && mode == ShellMode.BAR && chrome.hidden) BAR_HEIGHT else 0.dp,
+        label = "barGone",
+    )
     val start = if (mode == ShellMode.RAIL) railWidth() else 0.dp
-    val bottom = if (mode == ShellMode.BAR) BAR_HEIGHT else 0.dp
+    val bottom = if (mode == ShellMode.BAR) BAR_HEIGHT - barGone else 0.dp
     // The menu along the top: the lists draw their picture behind it (and leave its room themselves).
     val top = if (mode == ShellMode.TOP && vm.screen != Screen.LIBRARY) TOP_MENU_HEIGHT else 0.dp
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().padding(start = start, top = top, bottom = bottom)) {
-            CompositionLocalProvider(LocalShell provides mode) { content() }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(start = start, top = top, bottom = bottom)
+                .then(if (phone) Modifier.nestedScroll(chrome.connection) else Modifier),
+        ) {
+            CompositionLocalProvider(LocalShell provides mode, LocalChrome provides (if (phone) chrome else null)) { content() }
         }
         when (mode) {
             ShellMode.RAIL -> ShellRail(vm, state, Modifier.align(Alignment.CenterStart).fillMaxHeight())
-            ShellMode.BAR -> BottomBar(vm, state, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            ShellMode.BAR -> BottomBar(vm, state, Modifier.align(Alignment.BottomCenter).fillMaxWidth().offset(y = barGone))
             ShellMode.TOP -> TopMenu(vm, state, Modifier.align(Alignment.TopCenter))
             ShellMode.NONE -> Unit
         }

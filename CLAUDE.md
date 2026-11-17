@@ -378,6 +378,21 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   Save to gallery's Transformer used Android's MediaMuxer, which aborts the process on samples it refuses: now
   `InAppMuxer` (Media3's own writer; errors become `onError` → the .ts is copied). Not proven: the old report
   couldn't say.
+- **8.38 (the owner: cartoon profile pictures; the side-on slideshow can't be moved; "make full use of the space on
+  phones… push buttons… not necessarily the same way for both"; asked, he said both the playlist pages and the
+  add-on portal):** (1) **Profile pictures** `data/Avatars.kt` + `res/drawable/avatar_*.xml` (13 original cartoons:
+  fox, bear, cat, owl, frog, robot, alien, penguin, bunny, monster, lion, octopus, ghost; drawn from shapes by a
+  script, never a known character). `Profile.avatar`, `Settings.mainAvatar` / `kidsAvatar` (Kids: octopus); a new
+  profile gets a random unused one, an old one a steady one from its id (`Avatars.of`). `ProfileTile(avatar)`,
+  `ProfileButton`, `AvatarDialog` (tap the picture in Settings → Profiles). (2) **Side-on slideshow:** `MarqueeHero`
+  takes `onCurrent` (touch: swipe, and ‹ › `HeroArrow`s beside the dots) and `tight` (phones on their side: name
+  and story one line); `marqueeFraction` 0.7 there (was 0.84). (3) **Room on phones** (`isPhone()` = not a TV,
+  smallest width < 600): `ui/Chrome.kt` (`Chrome.hidden` from nested scrolling, 24 px of travel; `LocalChrome`):
+  AppShell's bottom bar slides off and the page's top bar (SidebarFrame) folds away while scrolling down, back on
+  the way up or while searching; reset on page/section/group change. Add-on portal on a phone: upright =
+  `PortalTopBar` (back, name, search magnifier) + `PortalBar`, both hiding with the scroll, the hero `TALL` (poster
+  across the width, 340 dp); on its side = `PortalRail` (back, the four pages, search) and the page beside it,
+  hero `LOW` (156 dp). The search box shows only when asked for (`searchShown`). AppChanges entry "More room".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

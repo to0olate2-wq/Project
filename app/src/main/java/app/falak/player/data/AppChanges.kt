@@ -94,6 +94,13 @@ object AppChanges {
                 "Films has collections.",
             keys = listOf("Home"),
         ),
+        Change(
+            "8.38",
+            "More room on your phone",
+            "Scroll down and the bars at the top and bottom slide away; scroll up a little and they come back. " +
+                "In the add-ons' portal the search is the magnifier at the top (on the left when the phone is on its side). " +
+                "Profiles have cartoon pictures: tap one in Settings → Profiles to change it.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

@@ -170,6 +170,14 @@ fun SidebarFrame(
         // (While the Cinema look's search box is open the page has no picture: it would sit under the box.)
         MarqueeStage(vm, if (searching) null else landing, excluded, Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(horizontal = if (tv) 28.dp else 16.dp).padding(top = if (topMenu) TOP_MENU_HEIGHT else 0.dp)) {
+                // Phones (8.38): the bar slides away while the page is scrolled down ([Chrome]), never
+                // while something is typed in it.
+                val chrome = LocalChrome.current
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = chrome == null || !chrome.hidden || vm.query.isNotEmpty() || vm.searchFocused,
+                    enter = androidx.compose.animation.expandVertically(),
+                    exit = androidx.compose.animation.shrinkVertically(),
+                ) {
                 if (!topMenu || searching) SidebarTopBar(
                     query = vm.query,
                     scope = section.label,
@@ -200,6 +208,7 @@ fun SidebarFrame(
                     // Opened from the menu: the box takes the remote, ready to type in.
                     focusSearch = topMenu && cinemaSearchOpen,
                 )
+                }
                 body(Modifier.fillMaxSize())
             }
         }
