@@ -115,6 +115,8 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_INDEX = "index"
         private const val SEEK_STEP_MS = 10_000L
+        /** Pictures at once, the main one included (8.33). */
+        private const val MAX_SCREENS = 4
         private const val LEVEL_BRIGHTNESS = 1
         private const val LEVEL_VOLUME = 2
         private const val ASPECT_FIT = 0
@@ -299,23 +301,30 @@ class PlayerActivity : ComponentActivity() {
 
     // ---- two channels at once ----
 
-    /** The second picture while two-screen mode is on (null: one picture, as usual). */
-    private var dual: DualPane? = null
+    /**
+     * The other pictures while several screens are on (8.33: up to four; empty: one picture, as
+     * usual). The main player is picture 0; these are 1, 2, 3.
+     */
+    private val panes = ArrayList<DualPane>()
 
-    /** Two-screen mode: the second (right, or lower) picture is the one heard and steered. */
-    private var dualSecond = false
+    /** The second picture: set while two or more screens are on (the many `dual != null` checks). */
+    private val dual: DualPane? get() = panes.firstOrNull()
 
-    /** The channel list is open to pick the second channel. */
+    /** The picture heard and steered: 0 = the main one, 1..3 = [panes]. */
+    private var heard = 0
+
+    private val heardPane: DualPane? get() = if (heard > 0) panes.getOrNull(heard - 1) else null
+
+    /** The channel list is open to pick a channel for a new screen. */
     private var pickingSecond = false
 
-    /** Where each picture is in two-screen mode (left, top, right, bottom), for taps. */
-    private var rectMain = IntArray(4)
-    private var rectSecond = IntArray(4)
+    /** Where each picture is (left, top, right, bottom), main first, for taps. */
+    private val rects = Array(MAX_SCREENS) { IntArray(4) }
     private lateinit var twoButton: TextView
     private lateinit var dualFrame: View
-    private lateinit var dualLabelA: TextView
-    private lateinit var dualLabelB: TextView
+    private val dualLabels = ArrayList<TextView>()
     private lateinit var dualHint: TextView
+    private var addScreenButton: View? = null
     private lateinit var dualBar: LinearLayout
     private lateinit var touchLayer: View
     private val hideDualHint = Runnable { if (::dualHint.isInitialized) dualHint.visibility = View.GONE }
@@ -988,7 +997,7 @@ class PlayerActivity : ComponentActivity() {
         prayerJob?.cancel()
         alertJob?.cancel()
         // Two-screen mode ends when the player leaves the screen.
-        if (dual != null) endDual(keepSecond = false, replay = false)
+        if (dual != null) endDual(keep = 0, replay = false)
         handler.removeCallbacks(rateTick)
         handler.removeCallbacks(freezeTick)
         if (repo.kidsActive) app.falak.player.data.KidsClock.flush(this)
@@ -1825,8 +1834,8 @@ class PlayerActivity : ComponentActivity() {
         if (!::root.isInitialized) return
         val w = root.width
         val h = root.height
-        dual?.let { d ->
-            layoutDual(d, w, h)
+        if (dual != null) {
+            layoutDual(w, h)
             return
         }
         val m = when {
@@ -1857,6 +1866,8 @@ class PlayerActivity : ComponentActivity() {
             swallowUpKey = KeyEvent.KEYCODE_UNKNOWN
             return true
         }
+        // A key held after it did its job (e.g. OK held to add a screen): its repeats go nowhere.
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount > 0 && event.keyCode == swallowUpKey) return true
         // Stopped by the sleep timer: OK carries on.
         if (sleptByTimer && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && !menuOpen && !browserOpen && !styleOpen &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
@@ -2185,7 +2196,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Picture-in-picture shows one channel: the one being heard.
-        if (dual != null) endDual(keepSecond = dualSecond)
+        if (dual != null) endDual(keep = heard)
         // Listen mode (phones): the sound carries on in the background instead of a small window.
         if (startListening()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -3703,7 +3714,7 @@ class PlayerActivity : ComponentActivity() {
         }
         if (alert.at == prayerSeen) return
         prayerSeen = alert.at
-        if (repo.state.value.settings.prayerMode == "pause" && dual != null) endDual(keepSecond = false, replay = false)
+        if (repo.state.value.settings.prayerMode == "pause" && dual != null) endDual(keep = 0, replay = false)
         val p = player ?: return
         if (repo.state.value.settings.prayerMode == "pause" && p.isPlaying) {
             p.pause()
@@ -4238,9 +4249,9 @@ class PlayerActivity : ComponentActivity() {
             setPadding(dp(12), dp(7), dp(12), dp(7))
             visibility = View.GONE
         }
-        dualLabelA = label()
-        dualLabelB = label()
-        for (v in listOf(dualLabelA, dualLabelB)) {
+        repeat(MAX_SCREENS) {
+            val v = label()
+            dualLabels += v
             root.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
         }
         dualHint = TextView(this).apply {
@@ -4248,11 +4259,7 @@ class PlayerActivity : ComponentActivity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 16f else 13f)
             typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
             gravity = Gravity.CENTER
-            text = if (tvLayout) {
-                "◀ ▶  choose the sound        ▲ ▼  change channel        OK  channel list        BACK  one screen"
-            } else {
-                "Tap a picture for its sound · double-tap for full screen"
-            }
+            text = dualHintText()
             background = GradientDrawable().apply {
                 cornerRadius = dp(22).toFloat()
                 setColor(0xE6111010.toInt())
@@ -4277,22 +4284,18 @@ class PlayerActivity : ComponentActivity() {
                 override fun onDown(e: android.view.MotionEvent): Boolean = true
 
                 override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                    val second = inRect(rectSecond, e)
-                    if (second || inRect(rectMain, e)) {
-                        if (second != dualSecond) {
-                            dualSecond = second
-                            dualChanged()
-                        }
+                    val at = pictureAt(e)
+                    if (at >= 0 && at != heard) {
+                        heard = at
+                        dualChanged()
                     }
                     showDualHint()
                     return true
                 }
 
                 override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                    when {
-                        inRect(rectSecond, e) -> endDual(keepSecond = true)
-                        inRect(rectMain, e) -> endDual(keepSecond = false)
-                    }
+                    val at = pictureAt(e)
+                    if (at >= 0) endDual(keep = at)
                     return true
                 }
             },
@@ -4309,8 +4312,9 @@ class PlayerActivity : ComponentActivity() {
             gravity = Gravity.CENTER
             visibility = View.GONE
             val channels = pill("Channels", R.drawable.ic_pl_channels) { openBrowserForDual() }
+            addScreenButton = pill("Add a screen", R.drawable.ic_pl_two) { startPickingSecond() }
             val exit = pill("One screen", R.drawable.ic_pl_close) { endDual() }
-            for (b in listOf(channels, exit)) {
+            for (b in listOf(channels, addScreenButton, exit)) {
                 addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { setMargins(dp(6), 0, dp(6), 0) })
             }
         }
@@ -4324,34 +4328,42 @@ class PlayerActivity : ComponentActivity() {
     private fun inRect(r: IntArray, e: android.view.MotionEvent): Boolean =
         e.x >= r[0] && e.x < r[2] && e.y >= r[1] && e.y < r[3]
 
-    /** "Two screens": the channel list opens to pick the second channel. */
+    /** "Two screens" (and, once on, "Add a screen"): the channel list opens to pick the next picture's channel. */
     private fun startPickingSecond() {
         val ch = queue.getOrNull(index) ?: return
-        if (ch.kind != Kind.LIVE || inPip || dual != null) return
+        if (ch.kind != Kind.LIVE || inPip || panes.size >= MAX_SCREENS - 1) return
         playerView.hideController()
         openBrowser()
         if (!browserOpen) return
         pickingSecond = true
-        Toast.makeText(this, "Pick a channel to watch beside “${ch.name}”", Toast.LENGTH_LONG).show()
+        Toast.makeText(
+            this,
+            if (dual == null) "Pick a channel to watch beside “${ch.name}”" else "Pick a channel for the new screen",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
-    /** A channel picked in the list: the second picture (starting two-screen mode), or the one being steered. */
+    /** The channels on screen now, main first. */
+    private fun channelsOnScreen(): List<Channel?> = listOf(queue.getOrNull(index)) + panes.map { it.channel }
+
+    /** A channel picked in the list: a new picture (when adding one), or the one being steered. */
     private fun pickForDual(list: List<Channel>, ch: Channel) {
         val at = list.indexOfFirst { it.id == ch.id }
         if (at < 0) return
-        val d = dual
-        if (d == null) {
-            if (ch.id == queue.getOrNull(index)?.id) {
-                Toast.makeText(this, "That one is already playing: pick another channel", Toast.LENGTH_SHORT).show()
+        val adding = pickingSecond || dual == null
+        if (adding) {
+            if (channelsOnScreen().any { it?.id == ch.id }) {
+                Toast.makeText(this, "That one is already on screen: pick another channel", Toast.LENGTH_SHORT).show()
                 return
             }
             closeBrowser()
-            startDual(list, at)
+            addScreen(list, at)
             return
         }
         closeBrowser()
-        if (dualSecond) {
-            d.play(list, at)
+        val steered = heardPane
+        if (steered != null) {
+            steered.play(list, at)
         } else {
             saveProgress()
             queue = list
@@ -4365,10 +4377,12 @@ class PlayerActivity : ComponentActivity() {
         showDualHint()
     }
 
-    private fun startDual(list: List<Channel>, at: Int) {
-        if (dual != null) return
-        // One picture's captions over two pictures would only confuse: off in two-screen mode.
-        stopAutoCaptions()
+    /** One more picture (two to four screens). */
+    private fun addScreen(list: List<Channel>, at: Int) {
+        if (panes.size >= MAX_SCREENS - 1) return
+        val first = panes.isEmpty()
+        // One picture's captions over several pictures would only confuse: off with more than one.
+        if (first) stopAutoCaptions()
         val d = DualPane(
             this,
             repo.http,
@@ -4378,43 +4392,48 @@ class PlayerActivity : ComponentActivity() {
         )
         root.addView(
             d.container,
-            root.indexOfChild(playerView) + 1,
+            root.indexOfChild(playerView) + 1 + panes.size,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
-        dual = d
-        dualSecond = false
-        playerView.hideController()
-        playerView.useController = false
-        bannerView.visibility = View.GONE
-        twoButton.visibility = View.GONE
+        panes += d
+        if (first) {
+            heard = 0
+            playerView.hideController()
+            playerView.useController = false
+            bannerView.visibility = View.GONE
+            twoButton.visibility = View.GONE
+        }
         d.play(list, at)
         dualChanged()
         showDualHint()
-        FreezeWatch.note("two screens on")
+        FreezeWatch.note("screens: ${panes.size + 1}")
     }
 
     /**
-     * Back to one screen. [keepSecond]: the second channel goes full screen (else the main one
-     * stays); [replay] = false only tidies up (the player is closing).
+     * Back to one screen. [keep]: the picture that goes full screen (0 = the main one); [replay] =
+     * false only tidies up (the player is closing).
      */
-    private fun endDual(keepSecond: Boolean = dualSecond, replay: Boolean = true) {
-        val d = dual ?: return
-        val list = d.list
-        val at = d.index
-        val second = d.channel
-        d.release()
-        root.removeView(d.container)
-        dual = null
+    private fun endDual(keep: Int = heard, replay: Boolean = true) {
+        if (panes.isEmpty()) return
+        val kept = if (keep > 0) panes.getOrNull(keep - 1) else null
+        val list = kept?.list
+        val at = kept?.index ?: 0
+        val keptChannel = kept?.channel
+        for (d in panes) {
+            d.release()
+            root.removeView(d.container)
+        }
+        panes.clear()
         updatePipParams()
-        dualSecond = false
+        heard = 0
         handler.removeCallbacks(hideDualHint)
-        for (v in listOf(dualFrame, dualLabelA, dualLabelB, dualHint, touchLayer, dualBar)) v.visibility = View.GONE
+        for (v in listOf(dualFrame, dualHint, touchLayer, dualBar) + dualLabels) v.visibility = View.GONE
         playerView.useController = !inPip
         applyDualVolume()
         applyVideoArea()
-        FreezeWatch.note("two screens off")
+        FreezeWatch.note("screens: 1")
         if (!replay) return
-        if (keepSecond && second != null) {
+        if (keptChannel != null && list != null) {
             saveProgress()
             rememberPrevious()
             queue = list
@@ -4432,70 +4451,103 @@ class PlayerActivity : ComponentActivity() {
         playerView.requestFocus()
     }
 
-    /** The picture being heard changed (or two-screen mode started). */
+    /** The picture being heard changed (or a screen came or went). */
     private fun dualChanged() {
+        if (heard > panes.size) heard = 0
         applyDualVolume()
         applyVideoArea()
         updateDualLabels()
         updatePipParams()
+        if (::dualHint.isInitialized) dualHint.text = dualHintText()
+        addScreenButton?.visibility = if (panes.size < MAX_SCREENS - 1) View.VISIBLE else View.GONE
     }
 
     /** Only the picture being heard makes a sound. */
     private fun applyDualVolume() {
-        val mainHeard = dual == null || !dualSecond
+        val mainHeard = heard == 0
         exo?.volume = if (mainHeard) 1f else 0f
         vlc?.setMuted(!mainHeard)
-        dual?.setHeard(!mainHeard)
+        panes.forEachIndexed { i, d -> d.setHeard(i + 1 == heard) }
     }
 
-    /** The two pictures side by side (one above the other on an upright phone), the heard one framed. */
-    private fun layoutDual(d: DualPane, w: Int, h: Int) {
+    /** How to use several screens (TV: the remote's keys). */
+    private fun dualHintText(): String {
+        val more = panes.size < MAX_SCREENS - 1
+        return if (tvLayout) {
+            if (panes.size <= 1) {
+                "◀ ▶  choose the sound     ▲ ▼  change channel     OK  channel list" + (if (more) "     hold OK  add a screen" else "") + "     BACK  one screen"
+            } else {
+                "◀ ▶ ▲ ▼  choose the sound     CH+ CH−  change channel     OK  channel list" + (if (more) "     hold OK  add a screen" else "") + "     BACK  one screen"
+            }
+        } else {
+            "Tap a picture for its sound · double-tap for full screen"
+        }
+    }
+
+    /** Which picture a touch is on (0 = main), or −1. */
+    private fun pictureAt(e: android.view.MotionEvent): Int {
+        for (i in 0..panes.size) if (inRect(rects[i], e)) return i
+        return -1
+    }
+
+    /**
+     * Two pictures side by side (one above the other on an upright phone); three or four in a
+     * 2×2 grid. The heard one is framed.
+     */
+    private fun layoutDual(w: Int, h: Int) {
         if (w == 0 || h == 0) return
         val gap = dp(if (tvLayout) 16 else 6)
         val none = intArrayOf(0, 0, 0, 0)
-        val a: IntArray
-        val b: IntArray
+        val n = panes.size + 1
+        val r = Array(n) { none }
         if (browserOpen) {
-            // The list beside (or below) the picture being steered; the other one waits out of sight.
-            val area = if (h > w) {
+            // The list beside (or below) the picture being steered; the others wait out of sight.
+            r[heard.coerceIn(0, n - 1)] = if (h > w) {
                 intArrayOf(0, 0, w, w * 9 / 16)
             } else {
                 val panel = dp(BrowserLayout.panelWidthDp(tvLayout, browserShowGroups))
                 fit16x9((panel + gap).coerceAtMost(w - dp(120)), gap, w - gap, h - gap)
             }
-            a = if (dualSecond) none else area
-            b = if (dualSecond) area else none
-        } else if (h > w) {
+        } else if (n == 2 && h > w) {
             val ph = w * 9 / 16
             val top = ((h - 2 * ph - gap) / 2).coerceAtLeast(0)
-            a = intArrayOf(0, top, w, top + ph)
-            b = intArrayOf(0, top + ph + gap, w, top + 2 * ph + gap)
-        } else {
+            r[0] = intArrayOf(0, top, w, top + ph)
+            r[1] = intArrayOf(0, top + ph + gap, w, top + 2 * ph + gap)
+        } else if (n == 2) {
             val pw = (w - 3 * gap) / 2
             val ph = pw * 9 / 16
             val top = ((h - ph) / 2).coerceAtLeast(0)
-            a = intArrayOf(gap, top, gap + pw, top + ph)
-            b = intArrayOf(2 * gap + pw, top, 2 * gap + 2 * pw, top + ph)
+            r[0] = intArrayOf(gap, top, gap + pw, top + ph)
+            r[1] = intArrayOf(2 * gap + pw, top, 2 * gap + 2 * pw, top + ph)
+        } else {
+            // A 2×2 grid: main top left, then top right, bottom left, bottom right.
+            val cw = (w - 3 * gap) / 2
+            val ch = (h - 3 * gap) / 2
+            for (i in 0 until n) {
+                val l = gap + (i % 2) * (cw + gap)
+                val t = gap + (i / 2) * (ch + gap)
+                r[i] = fit16x9(l, t, l + cw, t + ch)
+            }
         }
-        rectMain = a
-        rectSecond = b
-        for (v in listOfNotNull<View>(playerView, vlcLayout, messageView)) placeIn(v, a, w, h)
-        placeIn(d.container, b, w, h)
+        for (i in 0 until MAX_SCREENS) rects[i] = r.getOrNull(i) ?: none
+        for (v in listOfNotNull<View>(playerView, vlcLayout, messageView)) placeIn(v, r[0], w, h)
+        panes.forEachIndexed { i, d -> placeIn(d.container, r[i + 1], w, h) }
         playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         vlc?.setScale(0)
-        val heard = if (dualSecond) b else a
+        val heardRect = r[heard.coerceIn(0, n - 1)]
         val showing = !browserOpen
         // The frame sits just outside the heard picture.
         val pad = dp(4)
-        placeIn(dualFrame, intArrayOf(heard[0] - pad, heard[1] - pad, heard[2] + pad, heard[3] + pad), w, h)
+        placeIn(dualFrame, intArrayOf(heardRect[0] - pad, heardRect[1] - pad, heardRect[2] + pad, heardRect[3] + pad), w, h)
         dualFrame.visibility = if (showing) View.VISIBLE else View.GONE
-        for ((label, r) in listOf(dualLabelA to a, dualLabelB to b)) {
+        dualLabels.forEachIndexed { i, label ->
+            val rect = r.getOrNull(i) ?: none
             val lp = label.layoutParams as FrameLayout.LayoutParams
-            lp.leftMargin = r[0] + dp(10)
-            lp.bottomMargin = (h - r[3]) + dp(10)
+            lp.leftMargin = rect[0] + dp(10)
+            lp.bottomMargin = (h - rect[3]) + dp(10)
             label.layoutParams = lp
-            label.maxWidth = (r[2] - r[0] - dp(20)).coerceAtLeast(dp(80))
-            label.visibility = if (showing && r[2] > r[0]) View.VISIBLE else View.GONE
+            label.maxWidth = (rect[2] - rect[0] - dp(20)).coerceAtLeast(dp(80))
+            label.visibility = if (showing && rect[2] > rect[0]) View.VISIBLE else View.GONE
         }
         touchLayer.visibility = if (showing && !tvLayout) View.VISIBLE else View.GONE
         dualBar.visibility = if (showing && !tvLayout) View.VISIBLE else View.GONE
@@ -4524,11 +4576,17 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** OK went down on the remote (several screens): held, it adds a screen; let go, the channel list. */
+    private var dualOkHeld = false
+
     /**
-     * The remote in two-screen mode: Left/Right choose the picture heard, Up/Down (and CH±) change
-     * its channel, OK opens the channel list for it, Back goes back to one screen (the one heard).
+     * The remote with several screens. Two: Left/Right choose the picture heard, Up/Down (and CH±)
+     * change its channel. Three or four (a 2×2 grid): the arrows choose the picture, CH± change
+     * its channel. OK opens the channel list for it, OK held adds a screen, Back goes back to one
+     * screen (the one heard).
      */
     private fun dualKey(event: KeyEvent): Boolean {
+        val grid = panes.size >= 2
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
@@ -4537,23 +4595,61 @@ class PlayerActivity : ComponentActivity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    val second = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                    if (second != dualSecond) {
-                        dualSecond = second
+                    val right = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    val next = if (grid) {
+                        // The other picture in the same row (when there is one).
+                        val col = heard % 2
+                        val target = heard - col + (if (right) 1 else 0)
+                        if (target <= panes.size) target else heard
+                    } else {
+                        if (right) 1 else 0
+                    }
+                    if (next != heard) {
+                        heard = next
                         dualChanged()
                     }
                     showDualHint()
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (grid) {
+                        val down = event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                        val target = (heard % 2) + (if (down) 2 else 0)
+                        val next = when {
+                            target <= panes.size -> target
+                            down && 2 <= panes.size -> 2 // three screens: the one below on the left
+                            else -> heard
+                        }
+                        if (next != heard) {
+                            heard = next
+                            dualChanged()
+                        }
+                        showDualHint()
+                    } else if (event.repeatCount == 0) {
+                        dualZap(if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) 1 else -1)
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_CHANNEL_UP -> {
                     if (event.repeatCount == 0) dualZap(1)
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                     if (event.repeatCount == 0) dualZap(-1)
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MENU -> {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (event.repeatCount == 0) {
+                        dualOkHeld = false
+                    } else if (!dualOkHeld) {
+                        // Held: a channel for one more screen.
+                        dualOkHeld = true
+                        swallowUpKey = event.keyCode
+                        if (panes.size < MAX_SCREENS - 1) startPickingSecond()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_MENU -> {
                     if (event.repeatCount == 0) openBrowserForDual()
                     swallowUpKey = event.keyCode
                     return true
@@ -4565,6 +4661,12 @@ class PlayerActivity : ComponentActivity() {
             }
         } else if (event.action == KeyEvent.ACTION_UP) {
             when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    // A short press: the channel list for the picture heard.
+                    if (!dualOkHeld) openBrowserForDual()
+                    dualOkHeld = false
+                    return true
+                }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
                 KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE,
                 -> return true
@@ -4576,9 +4678,10 @@ class PlayerActivity : ComponentActivity() {
 
     /** The next or previous channel in the picture being steered. */
     private fun dualZap(delta: Int) {
-        val d = dual ?: return
-        if (dualSecond) {
-            d.zap(delta)
+        if (dual == null) return
+        val steered = heardPane
+        if (steered != null) {
+            steered.zap(delta)
         } else {
             if (queue.size < 2) return
             saveProgress()
@@ -4594,28 +4697,28 @@ class PlayerActivity : ComponentActivity() {
 
     /** The channel list, for the picture being steered. */
     private fun openBrowserForDual() {
-        val d = dual ?: return
-        openBrowser(if (dualSecond) d.channel else null)
+        if (dual == null) return
+        openBrowser(heardPane?.channel)
     }
 
     /** Each picture's channel and what's on, the heard one marked. */
     private fun updateDualLabels() {
-        val d = dual ?: return
-        if (!::dualLabelA.isInitialized) return
+        if (dual == null || dualLabels.isEmpty()) return
         val now = System.currentTimeMillis()
         val epg = repo.epg.value
-        fun line(ch: Channel?, heard: Boolean): String {
+        fun line(ch: Channel?, isHeard: Boolean): String {
             if (ch == null) return ""
             val on = epg[ch.epgKey]?.firstOrNull { now >= it.start && now < it.stop }?.title
-            return (if (heard) "🔊  " else "") + ch.name + (on?.let { "  ·  $it" } ?: "")
+            return (if (isHeard) "🔊  " else "") + ch.name + (on?.let { "  ·  $it" } ?: "")
         }
-        dualLabelA.text = line(queue.getOrNull(index), !dualSecond)
-        dualLabelB.text = line(d.channel, dualSecond)
-        dualLabelA.alpha = if (dualSecond) 0.75f else 1f
-        dualLabelB.alpha = if (dualSecond) 1f else 0.75f
+        val shown = channelsOnScreen()
+        dualLabels.forEachIndexed { i, label ->
+            label.text = line(shown.getOrNull(i), i == heard)
+            label.alpha = if (i == heard) 1f else 0.75f
+        }
     }
 
-    /** How to use two-screen mode, for a few seconds. */
+    /** How to use several screens, for a few seconds. */
     private fun showDualHint() {
         if (dual == null || browserOpen) return
         dualHint.visibility = View.VISIBLE
@@ -4628,20 +4731,26 @@ class PlayerActivity : ComponentActivity() {
         c.userAgent.ifBlank { repo.currentPlaylist?.userAgent.orEmpty() }.ifBlank { Repository.DEFAULT_UA } to c.referrer
 
     /** Screenshot tests: two-screen mode with stand-in players. */
-    internal fun previewDual(main: Player, second: Player, secondChannel: Channel, heardSecond: Boolean) {
+    internal fun previewDual(main: Player, second: Player, secondChannel: Channel, heardSecond: Boolean) =
+        previewScreens(main, listOf(second to secondChannel), if (heardSecond) 1 else 0)
+
+    /** Screenshot tests: several screens (the main one and [others]) with stand-in players, [heardAt] heard. */
+    internal fun previewScreens(main: Player, others: List<Pair<Player, Channel>>, heardAt: Int) {
         playerView.player = main
-        val d = DualPane(this, repo.http, { c -> headersFor(c) }, false) { updateDualLabels() }
-        root.addView(
-            d.container,
-            root.indexOfChild(playerView) + 1,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
-        )
-        dual = d
-        dualSecond = heardSecond
+        for ((stand, ch) in others) {
+            val d = DualPane(this, repo.http, { c -> headersFor(c) }, false) { updateDualLabels() }
+            root.addView(
+                d.container,
+                root.indexOfChild(playerView) + 1 + panes.size,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+            panes += d
+            d.previewWith(stand, listOf(ch), 0)
+        }
+        heard = heardAt
         playerView.hideController()
         playerView.useController = false
         bannerView.visibility = View.GONE
-        d.previewWith(second, listOf(secondChannel), 0)
         dualChanged()
         dualHint.visibility = View.VISIBLE
         handler.removeCallbacks(hideDualHint)
@@ -5987,7 +6096,7 @@ class PlayerActivity : ComponentActivity() {
             Toast.makeText(this, "“${a.channelName}” isn't in this playlist", Toast.LENGTH_SHORT).show()
             return
         }
-        if (dual != null) endDual(keepSecond = false, replay = false)
+        if (dual != null) endDual(keep = 0, replay = false)
         if (browserOpen) closeBrowser()
         val list = idx.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)
         saveProgress()

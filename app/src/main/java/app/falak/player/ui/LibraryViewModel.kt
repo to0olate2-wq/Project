@@ -409,9 +409,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (accountForTest) return
         val p = playlist ?: return
         val ctx = getApplication<Application>()
-        val api = repo.xtreamFor(p)
-        accountReadable = api != null
-        if (api == null) {
+        val xtream = repo.xtreamFor(p)
+        val portal = if (xtream == null) runCatching { repo.portalFor(p) }.getOrNull() else null
+        val read: (() -> Account)? = xtream?.let { x -> { x.account() } } ?: portal?.let { m -> { m.account() } }
+        accountReadable = read != null
+        if (read == null) {
             account = null
             return
         }
@@ -425,7 +427,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         accountJob = viewModelScope.launch {
             val read = withContext(Dispatchers.IO) {
                 try {
-                    api.account()
+                    read()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -949,12 +951,20 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Returns an error message, or null on success. */
     suspend fun addPlaylist(
         type: SourceType, name: String, url: String, user: String, pass: String,
-        epgUrl: String, userAgent: String, file: Uri?,
+        epgUrl: String, userAgent: String, file: Uri?, portal: Boolean = false, mac: String = "",
     ): String? = try {
         val id = UUID.randomUUID().toString()
         val epg = epgUrl.trim()
         val ua = userAgent.trim()
-        val p = when (type) {
+        val p = if (portal) {
+            // A MAC portal: checked before it's added (the portal must take this MAC).
+            require(url.isNotBlank()) { "Enter the portal's address" }
+            require(mac.isNotBlank()) { "Enter the MAC address your provider activated" }
+            val m = app.falak.player.data.Portal.normalizeMac(mac)
+                ?: throw IllegalArgumentException("That MAC address isn't right: it has 12 letters and digits, like 00:1A:79:12:34:56")
+            repo.portalLogin(url.trim(), m, ua)
+            Playlist(id, name.trim().ifBlank { nextPlaylistName() }, SourceType.M3U_URL, url.trim(), epgUrl = epg, userAgent = ua.ifBlank { app.falak.player.data.Portal.MAG_UA }, mac = m)
+        } else when (type) {
             SourceType.M3U_URL -> {
                 require(url.isNotBlank()) { "Enter the playlist link" }
                 Playlist(id, name.trim().ifBlank { nextPlaylistName() }, type, url.trim(), epgUrl = epg, userAgent = ua)
@@ -1243,7 +1253,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * at a time, never while something plays. Each find goes to What's new (and a notification).
      */
     private suspend fun checkFollowedSeries(p: Playlist) {
-        if (repo.xtreamFor(p) == null && !p.isCombined) return
+        if (repo.xtreamFor(p) == null && !p.isCombined && !p.isPortal) return
         val now = System.currentTimeMillis()
         val due = state.value.followed[p.id].orEmpty().filter { now - it.checkedAt > FOLLOW_CHECK_MS }.take(25)
         for (f in due) {

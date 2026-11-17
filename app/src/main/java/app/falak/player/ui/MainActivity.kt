@@ -744,6 +744,8 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
                     Text(
                         if (p.isCombined) {
                             "COMBINED"
+                        } else if (p.isPortal) {
+                            "PORTAL"
                         } else {
                             when (p.type) {
                                 SourceType.M3U_URL -> "M3U"
@@ -963,6 +965,9 @@ private fun AddPlaylistDialog(
     onClose: () -> Unit,
 ) {
     var type by remember { mutableStateOf(SourceType.M3U_URL) }
+    // The MAC portal choice (8.33): stored as an M3U link playlist with a MAC address.
+    var portal by remember { mutableStateOf(false) }
+    var mac by remember { mutableStateOf("") }
     // The fourth choice (GitHub version): an add-on, added with just its link.
     var addon by remember { mutableStateOf(startWithAddon && Addons.enabled) }
     var name by remember { mutableStateOf("") }
@@ -989,9 +994,10 @@ private fun AddPlaylistDialog(
             },
             onDismiss = onClose,
             kinds = {
-                SourceKinds(null) { t ->
+                SourceKinds(null, portal = false) { t, isPortal ->
                     if (t != null) {
                         type = t
+                        portal = isPortal
                         addon = false
                     }
                 }
@@ -1007,11 +1013,12 @@ private fun AddPlaylistDialog(
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                SourceKinds(type) { t ->
+                SourceKinds(type, portal) { t, isPortal ->
                     if (t == null) {
                         addon = true
                     } else {
                         type = t
+                        portal = isPortal
                     }
                     error = null
                 }
@@ -1020,7 +1027,15 @@ private fun AddPlaylistDialog(
                     FilterChip(selected = false, onClick = onCombine, label = { Text("Combine my playlists…") })
                 }
                 Field(name, { name = it }, "Name (optional)")
-                when (type) {
+                if (portal) {
+                    Field(url, { url = it }, "Portal (http://host:port/c/)", KeyboardType.Uri)
+                    Field(mac, { mac = it }, "MAC address (00:1A:79:…)")
+                    Text(
+                        "The MAC address your provider activated for you. Live TV, films and series come from the portal.",
+                        fontSize = 12.sp,
+                        color = Muted,
+                    )
+                } else when (type) {
                     SourceType.M3U_URL ->
                         Field(url, { url = it }, "Playlist link (http://…)", KeyboardType.Uri)
                     SourceType.M3U_FILE ->
@@ -1054,7 +1069,7 @@ private fun AddPlaylistDialog(
                     busy = true
                     error = null
                     scope.launch {
-                        val err = vm.addPlaylist(type, name, url, user, pass, epg, ua, file)
+                        val err = vm.addPlaylist(type, name, url, user, pass, epg, ua, file, portal = portal, mac = mac)
                         busy = false
                         if (err == null) onClose() else error = err
                     }
@@ -1065,19 +1080,23 @@ private fun AddPlaylistDialog(
     )
 }
 
-/** The Add window's choices: M3U link, M3U file, Xtream and (GitHub version) Add-on, which is null. */
+/**
+ * The Add window's choices: M3U link, M3U file, Xtream, MAC portal (an M3U link playlist with a MAC,
+ * `onPick(M3U_URL, true)`) and (GitHub version) Add-on, which is null.
+ */
 @Composable
-private fun SourceKinds(selected: SourceType?, onPick: (SourceType?) -> Unit) {
+private fun SourceKinds(selected: SourceType?, portal: Boolean, onPick: (SourceType?, Boolean) -> Unit) {
     ChipFlow {
         listOf(
             SourceType.M3U_URL to "M3U link",
             SourceType.M3U_FILE to "M3U file",
             SourceType.XTREAM to "Xtream",
         ).forEach { (t, label) ->
-            FilterChip(selected = selected == t, onClick = { onPick(t) }, label = { Text(label) })
+            FilterChip(selected = selected == t && !portal, onClick = { onPick(t, false) }, label = { Text(label) })
         }
+        FilterChip(selected = selected == SourceType.M3U_URL && portal, onClick = { onPick(SourceType.M3U_URL, true) }, label = { Text("MAC portal") })
         if (Addons.enabled) {
-            FilterChip(selected = selected == null, onClick = { onPick(null) }, label = { Text("Add-on") })
+            FilterChip(selected = selected == null, onClick = { onPick(null, false) }, label = { Text("Add-on") })
         }
     }
 }

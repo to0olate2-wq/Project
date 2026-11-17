@@ -64,6 +64,13 @@ fun ConnectionCheckDialog(vm: LibraryViewModel, state: AppState, p: Playlist?, o
                     200_000, 10_000, p.userAgent,
                 )
             }
+            p.isPortal -> withContext(Dispatchers.IO) {
+                // A MAC portal: how long its hello takes.
+                val t0 = System.currentTimeMillis()
+                val err = runCatching { repo.portalFor(p)?.connect() }.exceptionOrNull()
+                val ms = System.currentTimeMillis() - t0
+                ConnectionCheck.Measure(0, ms, ms, err?.let { it.message ?: "no answer" })
+            }
             p.type == SourceType.M3U_URL && p.url.startsWith("http") -> withContext(Dispatchers.IO) {
                 ConnectionCheck.measure(repo.http, p.url, 300_000, 10_000, p.userAgent)
             }

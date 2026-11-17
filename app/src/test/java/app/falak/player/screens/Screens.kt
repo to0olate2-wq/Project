@@ -145,6 +145,9 @@ abstract class ScreenshotBase {
         prayer: Boolean = false,
         dual: Boolean = false,
         heardSecond: Boolean = false,
+        /** Several screens (8.33): this many pictures in all (3 or 4), [heardAt] heard. */
+        screens: Int = 0,
+        heardAt: Int = 0,
         alert: Boolean = false,
         /** "offer": "From the start" for the show on now; "replay": watching it from the start. */
         startOver: String? = null,
@@ -170,7 +173,10 @@ abstract class ScreenshotBase {
         val intent = Intent(app, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_INDEX, 2)
         val activity = Robolectric.buildActivity(PlayerActivity::class.java, intent).setup().get()
         idle(500)
-        if (dual) {
+        if (screens > 2) {
+            val others = listOf(6, 9, 4).take(screens - 1).map { StandIn(live, queue[it].name) to queue[it] }
+            activity.previewScreens(StandIn(live, queue[2].name), others, heardAt)
+        } else if (dual) {
             activity.previewDual(StandIn(live, queue[2].name), StandIn(live, queue[6].name), queue[6], heardSecond)
         } else {
             activity.previewControls(StandIn(live, queue[2].name), browser, groups, menu)
@@ -1293,6 +1299,21 @@ class TvTwoScreensSecondHeard : ScreenshotBase() {
 class PhoneTwoScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE)
     fun phoneTwoScreens() = player(tv = false, live = true, dual = true) { shoot -> shoot("phone-25-two-screens") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TvFourScreens : ScreenshotBase() {
+    // 8.33: four channels at once, the lower right one heard.
+    @Test @Config(qualifiers = TV)
+    fun tvFourScreens() = player(tv = true, live = true, screens = 4, heardAt = 3) { shoot -> shoot("tv-35b-four-screens") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneThreeScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneThreeScreens() = player(tv = false, live = true, screens = 3) { shoot -> shoot("phone-25b-three-screens") }
 }
 
 // ---- 7.0: start over, For this hour, tidy list, mini player ----

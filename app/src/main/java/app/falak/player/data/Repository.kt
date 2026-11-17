@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -46,6 +48,61 @@ class Repository(private val context: Context) {
 
     private val _state = MutableStateFlow(readState())
     val state: StateFlow<AppState> = _state.asStateFlow()
+
+    // ---- MAC portals (8.33): one session per portal, links made fresh at each play (PortalLinks) ----
+    private val portals = java.util.concurrent.ConcurrentHashMap<String, Pair<String, PortalApi>>()
+
+    /** The open session with [p]'s portal (null: not a portal). */
+    fun portalFor(p: Playlist): PortalApi? {
+        if (!p.isPortal) return null
+        val key = p.url.trim() + "|" + p.mac + "|" + p.userAgent
+        portals[p.id]?.takeIf { it.first == key }?.let { return it.second }
+        return PortalApi(listHttp, p.url, p.mac, p.userAgent).also { portals[p.id] = key to it }
+    }
+
+    private fun portalById(id: String): PortalApi? = _state.value.playlists.firstOrNull { it.id == id }?.let { portalFor(it) }
+
+    /** The portal's link server, started once (only when there is a portal to play from). */
+    private fun portalLinks() {
+        PortalLinks.resolve = { id, module, series, cmd ->
+            (portalById(id) ?: throw IOException("That portal isn't in your playlists any more")).playLink(module, cmd, series)
+        }
+        PortalLinks.keepAlive = { id -> portalById(id)?.stillHere() }
+        PortalLinks.ensure(context)
+    }
+
+    /** Checks a portal takes this MAC (the Add window). */
+    suspend fun portalLogin(url: String, mac: String, ua: String) = withContext(Dispatchers.IO) {
+        try {
+            PortalApi(listHttp, url, mac, ua).check()
+        } catch (e: IOException) {
+            throw if (e.message == Portal.REFUSED) e else Downloads.explain(e)
+        }
+    }
+
+    /** Films' and series' details a portal's list leaves out, kept beside its saved copy. */
+    @Volatile private var portalExtras: Pair<String, Map<String, PortalExtra>>? = null
+    private val portalExtrasSerializer = kotlinx.serialization.builtins.MapSerializer(String.serializer(), PortalExtra.serializer())
+
+    private fun portalExtrasFile(id: String) = File(cacheDir, "$id.portal.json")
+
+    init {
+        // Saved links (Continue watching, recordings) need the link server from the start.
+        if (_state.value.playlists.any { it.isPortal }) runCatching { portalLinks() }
+    }
+
+    fun portalExtra(playlistId: String, itemId: String): PortalExtra? {
+        portalExtras?.takeIf { it.first == playlistId }?.let { return it.second[itemId] }
+        val read = try {
+            portalExtrasFile(playlistId).takeIf { it.exists() }?.inputStream()?.buffered()?.use {
+                json.decodeFromStream(portalExtrasSerializer, it)
+            }
+        } catch (e: Exception) {
+            null
+        } ?: emptyMap()
+        portalExtras = playlistId to read
+        return read[itemId]
+    }
 
     private val _epg = MutableStateFlow<Map<String, List<Program>>>(emptyMap())
     val epg: StateFlow<Map<String, List<Program>>> = _epg.asStateFlow()
@@ -294,6 +351,8 @@ class Repository(private val context: Context) {
         File(cacheDir, "$id.bin").delete()
         File(cacheDir, "$id.guide.json").delete()
         File(cacheDir, "$id.guide.bin").delete()
+        portalExtrasFile(id).delete()
+        portals.remove(id)
         File(importDir, "$id.m3u").delete()
         ServiceLogStore.clear(context.filesDir, id)
     }
@@ -629,7 +688,7 @@ class Repository(private val context: Context) {
     }
 
     /** Xtream access for this playlist: Xtream logins and get.php-style M3U links. */
-    fun xtreamFor(p: Playlist): XtreamApi? = when (p.type) {
+    fun xtreamFor(p: Playlist): XtreamApi? = if (p.isPortal) null else when (p.type) {
         SourceType.XTREAM -> XtreamApi(http, p.url, p.username, p.password, p.userAgent)
         SourceType.M3U_URL -> XtreamApi.fromM3uLink(p.url)?.let { (server, user, pass) ->
             XtreamApi(http, server, user, pass, p.userAgent)
@@ -656,9 +715,25 @@ class Repository(private val context: Context) {
     private suspend fun loadVodInfoAsSent(p: Playlist, streamId: String): VodInfo? = withContext(Dispatchers.IO) {
         if (p.isCombined) {
             val src = Combined.sourceFor(p, streamId, _state.value.playlists) ?: return@withContext null
+            if (src.isPortal) return@withContext portalVodInfo(src, Combined.untag(streamId))
             return@withContext xtreamFor(src)?.vodInfo(Combined.untag(streamId))
         }
+        if (p.isPortal) return@withContext portalVodInfo(p, streamId)
         xtreamFor(p)?.vodInfo(streamId)
+    }
+
+    /** A portal film's details, from what its list said (portals have no details call). */
+    private fun portalVodInfo(p: Playlist, streamId: String): VodInfo? {
+        val e = portalExtra(p.id, "m$streamId") ?: return null
+        return VodInfo(e.plot, e.poster, "", e.genre, e.cast, e.director, e.year, e.duration, e.rating, "")
+    }
+
+    private fun portalSeries(p: Playlist, seriesId: String): SeriesInfo {
+        val api = portalFor(p) ?: throw IOException("Episodes need the portal")
+        portalLinks()
+        return api.seriesInfo(seriesId, portalExtra(p.id, "s$seriesId")) { module, series, cmd, ext ->
+            PortalLinks.link(p.id, module, series, cmd, ext)
+        }
     }
 
     suspend fun loadSeries(p: Playlist, seriesId: String): SeriesInfo = loadSeriesAsSent(p, seriesId).also { noteYear("s$seriesId", it.year) }
@@ -669,9 +744,13 @@ class Repository(private val context: Context) {
             val t = Combined.tagOf(seriesId)
             val src = Combined.sourcesOf(p, _state.value.playlists).firstOrNull { it.second == t }
                 ?: throw IOException("The playlist this series came from isn't in this list any more")
+            if (src.first.isPortal) {
+                return@withContext Combined.markEpisodes(portalSeries(src.first, Combined.untag(seriesId)), src.first, src.second)
+            }
             val api = xtreamFor(src.first) ?: throw IOException("Episodes need an Xtream login for that playlist")
             return@withContext Combined.markEpisodes(api.seriesInfo(Combined.untag(seriesId)), src.first, src.second)
         }
+        if (p.isPortal) return@withContext portalSeries(p, seriesId)
         val api = xtreamFor(p) ?: throw IOException("Episodes need an Xtream login for this playlist")
         api.seriesInfo(seriesId)
     }
@@ -726,7 +805,8 @@ class Repository(private val context: Context) {
         val bin = File(cacheDir, "${p.id}.bin")
         if (bin.exists()) {
             try {
-                return@withContext Store.readPlaylist(bin)
+                val read = Store.readPlaylist(bin)
+                return@withContext if (p.isPortal) mendPortalLinks(read) else read
             } catch (e: Exception) {
                 bin.delete()
             }
@@ -744,6 +824,14 @@ class Repository(private val context: Context) {
         }
     }
 
+    /** A portal's saved copy: its links go to this run's link server (its port may have changed). */
+    private fun mendPortalLinks(c: PlaylistCache): PlaylistCache {
+        portalLinks()
+        val sample = c.channels.firstOrNull { it.url.isNotEmpty() }?.url ?: return c
+        if (PortalLinks.fix(sample) == sample) return c
+        return c.copy(channels = c.channels.map { if (it.url.isEmpty()) it else it.copy(url = PortalLinks.fix(it.url)) })
+    }
+
     /**
      * Returns the cached list unless [refresh] is true or there is no cache yet. [keep] is the
      * list already in memory: unchanged entries are reused instead of being held twice.
@@ -758,7 +846,22 @@ class Repository(private val context: Context) {
         val reuse = Reuse.from(keep)
         val counted: ((Int) -> Unit)? = progress?.let { report -> { n: Int -> report(LoadProgress(n)) } }
         val loaded = try {
-            when (p.type) {
+            if (p.isPortal) {
+                portalLinks()
+                val api = portalFor(p) ?: throw IOException("That portal isn't right")
+                val (list, extras) = api.loadAll(reuse, progress) { module, series, cmd, ext ->
+                    PortalLinks.link(p.id, module, series, cmd, ext)
+                }
+                try {
+                    portalExtrasFile(p.id).outputStream().buffered().use {
+                        json.encodeToStream(portalExtrasSerializer, extras, it)
+                    }
+                } catch (e: Exception) {
+                    portalExtrasFile(p.id).delete() // details only
+                }
+                portalExtras = p.id to extras
+                PlaylistCache(list)
+            } else when (p.type) {
                 SourceType.M3U_URL -> loadXtreamStyleLink(p, reuse, progress) ?: downloadM3u(p, reuse, progress)
                 SourceType.M3U_FILE -> {
                     val parsed = M3uParser.parse(File(p.url).bufferedReader(), reuse, counted)
@@ -896,12 +999,30 @@ class Repository(private val context: Context) {
             // A combined playlist's providers each have a guide: one link a line.
             val providerUrls = providerUrl.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
             val sources = (providerUrls + p.extraEpg).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            if (sources.isEmpty()) return@withContext "No TV guide for this playlist yet"
+            if (sources.isEmpty() && !p.isPortal) return@withContext "No TV guide for this playlist yet"
             if (matcher.keys.isEmpty()) return@withContext ""
             val merged = HashMap<String, List<Program>>()
             val listed = ArrayList<GuideChannel>()
             val failed = ArrayList<String>()
             val stats = ArrayList<GuideSourceStat>()
+            // A MAC portal's own guide (the next day), by its channel ids; other guides fill the gaps.
+            if (p.isPortal) {
+                try {
+                    val part = portalFor(p)?.guide(24).orEmpty()
+                    var matched = 0
+                    for (ch in channels) {
+                        val list = part[ch.id] ?: continue
+                        if (merged.putIfAbsent(ch.epgKey, list) == null) matched++
+                    }
+                    stats += GuideSourceStat("portal", "Your portal's guide", true, matched, matched, ok = true)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed += "portal guide"
+                    stats += GuideSourceStat("portal", "Your portal's guide", true, 0, 0, ok = false)
+                }
+                if (merged.isEmpty() && sources.isEmpty()) return@withContext "This portal sends no TV guide. Add one in Settings → Playlists & TV guide."
+            }
             // The first guide with data is the yardstick the later ones are checked against.
             var reference = ""
             val job = coroutineContext[kotlinx.coroutines.Job]

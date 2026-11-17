@@ -36,7 +36,7 @@ object Accounts {
     private const val DAY = 86_400_000L
 
     /** Tells logins apart without keeping them: the playlist's kind, address and username. */
-    fun owner(p: Playlist): String = (p.type.name + "|" + p.url.trim() + "|" + p.username.trim()).hashCode().toString(16)
+    fun owner(p: Playlist): String = (p.type.name + "|" + p.url.trim() + "|" + p.username.trim() + p.mac).hashCode().toString(16)
 
     /** The account from Xtream's "user_info" fields ([field] gives "" for a missing one). */
     fun parse(field: (String) -> String, now: Long): Account {
