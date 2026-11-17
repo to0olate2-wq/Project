@@ -337,10 +337,14 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (`repo.popularIn`, People.inLibrary; English names). (6) **Collections** (`Collections`: names — sequel marks,
   " - " and ":" subtitles; ≥2 films, one marked; `index.collections` lazy): Films page row of `CollectionCard`s
   opening `COLLECTION_FILTER + name` as a list, and "<name> collection" on a film's page. **Because you watched**
-  (`People.similarQuery`: Wikidata, same film series ×8, director ×3, writers ×2, cast ×1, score ≥ 2;
-  `repo.becauseYouWatched`) on Home and the Films/Series pages, from the last film or series watched.
+  (`repo.becauseYouWatched` → `PeopleClient.similar`, Wikidata in three short questions: the film's people
+  (`similarPeopleQuery`: film series ×8, director ×3, writers ×2, its 8 best-known actors by sitelinks ×1), what
+  they made (`similarQuery`, VALUES, score ≥ 2), then those works' names (`titlesQuery`); ~0.5 s from CI. One
+  question with the names in it took 13–60 s or timed out: Wikidata then scans every title with an IMDb number)
+  on Home and the Films/Series pages, from the last film or series watched. Checked live 8.34 (`DiscoverLiveTest`):
+  The Matrix, Heat, Breaking Bad; Cinemeta's popular lists ~0.7 s, 147 films / 150 series.
   HomeRows got "sports", "pinned", "popular", "because". Tests: `DiscoverScreens.kt` (`discoverSample`,
-  `discoverForTest` = names for popular/because). Never tried live: Cinemeta's list and the Wikidata query.
+  `discoverForTest` = names for popular/because).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
