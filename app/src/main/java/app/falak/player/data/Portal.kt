@@ -654,7 +654,11 @@ class PortalApi(
         loop@ for (day in days) {
             for (p in 1..8) {
                 val page = Portal.page(call("type" to "epg", "action" to "get_simple_data_table", "ch_id" to chId, "date" to day, "p" to p.toString()))
-                Portal.archiveEntry(page.items, startSec)?.let { found = it; break@loop }
+                val hit = Portal.archiveEntry(page.items, startSec)
+                if (hit != null) {
+                    found = hit
+                    break@loop
+                }
                 if (page.items.isEmpty() || p >= page.pages) break
             }
         }
