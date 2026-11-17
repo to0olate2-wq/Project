@@ -196,22 +196,31 @@ object People {
 
     /**
      * "Because you watched" (8.34): films and series that share the most with [imdb], weighted:
-     * the same series of films (P179) most, then the director (P57), the writers (P58), the cast (P161).
+     * the same series of films (P179) ×8, its director (P57) ×3, writers (P58) ×2, and its 8 best-known
+     * actors (P161, by how many Wikipedias have a page on them) ×1. The people are picked first, so
+     * Wikidata only looks at their work (asking through every actor took 20–60 s; checked in CI).
      */
     fun similarQuery(imdb: String): String = similarQueryFor(imdb.filter { it.isLetterOrDigit() })
 
-    // (The film is looked up inside each part: Wikidata's planner then starts from it, not from every film's cast.)
     private fun similarQueryFor(id: String): String = """
         SELECT ?w (SAMPLE(?score0) AS ?score) (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
                (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
           {
             SELECT ?w (SUM(?wt) AS ?score0) WHERE {
-              { ?src wdt:P345 "$id" . ?src wdt:P179 ?p . ?w wdt:P179 ?p . BIND(8 AS ?wt) }
-              UNION { ?src wdt:P345 "$id" . ?src wdt:P57 ?p . ?w wdt:P57 ?p . BIND(3 AS ?wt) }
-              UNION { ?src wdt:P345 "$id" . ?src wdt:P58 ?p . ?w wdt:P58 ?p . BIND(2 AS ?wt) }
-              UNION { ?src wdt:P345 "$id" . ?src wdt:P161 ?p . ?w wdt:P161 ?p . BIND(1 AS ?wt) }
-              FILTER(?w != ?src)
-            } GROUP BY ?w ORDER BY DESC(?score0) LIMIT 250
+              {
+                SELECT ?p ?wt WHERE {
+                  { ?s1 wdt:P345 "$id" . ?s1 wdt:P179 ?p . BIND(8 AS ?wt) }
+                  UNION { ?s2 wdt:P345 "$id" . ?s2 wdt:P57 ?p . BIND(3 AS ?wt) }
+                  UNION { ?s3 wdt:P345 "$id" . ?s3 wdt:P58 ?p . BIND(2 AS ?wt) }
+                  UNION {
+                    { SELECT ?p WHERE { ?s4 wdt:P345 "$id" . ?s4 wdt:P161 ?p . ?p wikibase:sitelinks ?links . } ORDER BY DESC(?links) LIMIT 8 }
+                    BIND(1 AS ?wt)
+                  }
+                }
+              }
+              { ?w wdt:P179 ?p . } UNION { ?w wdt:P57 ?p . } UNION { ?w wdt:P58 ?p . } UNION { ?w wdt:P161 ?p . }
+              FILTER NOT EXISTS { ?w wdt:P345 "$id" . }
+            } GROUP BY ?w ORDER BY DESC(?score0) LIMIT 200
           }
           ?w wdt:P345 ?imdbId . FILTER(STRSTARTS(?imdbId, "tt"))
           OPTIONAL { ?w wdt:P31 ?kind . }

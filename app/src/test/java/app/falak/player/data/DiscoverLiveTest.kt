@@ -32,21 +32,18 @@ class DiscoverLiveTest {
             println("Popular series ${series.size}: ${series.take(10).map { "${it.name} ${it.year}" }}")
             assertTrue(films.size >= 100)
             assertTrue(series.size >= 100)
-            // The query itself, with time to answer: what Wikidata says, and how long it takes.
-            val slow = okhttp3.OkHttpClient.Builder().readTimeout(70, java.util.concurrent.TimeUnit.SECONDS).build()
-            val t2 = System.currentTimeMillis()
-            slow.newCall(
-                okhttp3.Request.Builder().url(People.sparqlUrl(People.similarQuery("tt0133093")))
-                    .header("User-Agent", "ThePlayer-test (https://github.com/to0olate2-wq/Project)")
-                    .header("Accept", "application/sparql-results+json").build(),
-            ).execute().use { r ->
-                val body = r.body?.string().orEmpty()
-                println("Similar query: HTTP ${r.code} in ${System.currentTimeMillis() - t2} ms, ${body.length} chars: ${body.take(600)}")
-            }
             val t1 = System.currentTimeMillis()
             val alike = c.similar("tt0133093")!!
             println("Like The Matrix ${alike.size} (${System.currentTimeMillis() - t1} ms): ${alike.take(15).map { "${it.name} ${it.year} ${it.type}" }}")
             assertTrue(alike.any { it.imdb == "tt0234215" }) // The Matrix Reloaded
+            assertTrue("too slow: ${System.currentTimeMillis() - t1} ms", System.currentTimeMillis() - t1 < 15_000)
+            // A second film, and a series.
+            val t3 = System.currentTimeMillis()
+            val heat = c.similar("tt0113277")!! // Heat (1995)
+            println("Like Heat ${heat.size} (${System.currentTimeMillis() - t3} ms): ${heat.take(10).map { "${it.name} ${it.year}" }}")
+            val t4 = System.currentTimeMillis()
+            val bb = c.similar("tt0903747")!! // Breaking Bad
+            println("Like Breaking Bad ${bb.size} (${System.currentTimeMillis() - t4} ms): ${bb.take(10).map { "${it.name} ${it.year} ${it.type}" }}")
             // A playlist that has some of them finds them by name.
             val library = listOf(
                 Channel(id = "m1", name = "EN - The Matrix Reloaded (2003)", group = "Films", url = "u1", kind = Kind.MOVIE),
