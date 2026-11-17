@@ -21,4 +21,14 @@ class AvatarsTest {
         // All taken: any of them.
         assertTrue(Avatars.random(Avatars.KEYS) in Avatars.KEYS)
     }
+
+    @Test
+    fun noTwoProfilesShareOneUnlessPicked() {
+        val profiles = (1..10).map { Profile("p$it", "P$it") }
+        val state = AppState(profiles = profiles)
+        val all = Avatars.all(state)
+        assertEquals(12, all.size)
+        assertEquals(all.size, all.values.toSet().size)
+        assertEquals(Avatars.KIDS_DEFAULT, all[KIDS_PROFILE])
+    }
 }

@@ -76,11 +76,8 @@ internal fun avatarRes(key: String): Int = when (key) {
 }
 
 /** The picture of profile [id] ("" = main, [KIDS_PROFILE] = Kids). */
-internal fun avatarOf(state: AppState, id: String): String = when (id) {
-    "" -> app.falak.player.data.Avatars.of("", state.settings.mainAvatar)
-    KIDS_PROFILE -> app.falak.player.data.Avatars.of(KIDS_PROFILE, state.settings.kidsAvatar.ifBlank { app.falak.player.data.Avatars.KIDS_DEFAULT })
-    else -> app.falak.player.data.Avatars.of(id, state.profiles.firstOrNull { it.id == id }?.avatar.orEmpty())
-}
+internal fun avatarOf(state: AppState, id: String): String =
+    app.falak.player.data.Avatars.all(state)[id] ?: app.falak.player.data.Avatars.of(id, "")
 
 /** Pick a picture (8.38): the cartoons in a grid, the one in use ringed. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)

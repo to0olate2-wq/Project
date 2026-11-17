@@ -610,7 +610,7 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
         return
     }
     val high = when (style) {
-        HeroStyle.LOW -> 156.dp
+        HeroStyle.LOW -> 172.dp
         else -> if (tv) 210.dp else 196.dp
     }
     Row(
@@ -627,7 +627,7 @@ private fun PortalHero(item: AddonItem, saved: Boolean, onOpen: () -> Unit, onLi
                 fontSize = if (tv) 28.sp else 23.sp,
                 lineHeight = if (tv) 33.sp else 28.sp,
                 color = Paper,
-                maxLines = 2,
+                maxLines = if (style == HeroStyle.LOW) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val about = listOfNotNull(item.year.ifBlank { null }, item.rating.ifBlank { null }?.let { "★ $it" }).joinToString("  ·  ")
