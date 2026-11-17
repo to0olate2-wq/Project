@@ -4312,7 +4312,7 @@ class PlayerActivity : ComponentActivity() {
             gravity = Gravity.CENTER
             visibility = View.GONE
             val channels = pill("Channels", R.drawable.ic_pl_channels) { openBrowserForDual() }
-            addScreenButton = pill("Add a screen", R.drawable.ic_pl_two) { startPickingSecond() }
+            addScreenButton = pill("Add", R.drawable.ic_pl_two) { startPickingSecond() }
             val exit = pill("One screen", R.drawable.ic_pl_close) { endDual() }
             for (b in listOf(channels, addScreenButton, exit)) {
                 addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { setMargins(dp(6), 0, dp(6), 0) })
@@ -4519,13 +4519,20 @@ class PlayerActivity : ComponentActivity() {
             val top = ((h - ph) / 2).coerceAtLeast(0)
             r[0] = intArrayOf(gap, top, gap + pw, top + ph)
             r[1] = intArrayOf(2 * gap + pw, top, 2 * gap + 2 * pw, top + ph)
+        } else if (h > w && n == 3) {
+            // An upright phone, three pictures: one above the other, each the full width.
+            val ph = w * 9 / 16
+            val top = ((h - 3 * ph - 2 * gap) / 2).coerceAtLeast(0)
+            for (i in 0 until n) r[i] = intArrayOf(0, top + i * (ph + gap), w, top + i * (ph + gap) + ph)
         } else {
-            // A 2×2 grid: main top left, then top right, bottom left, bottom right.
+            // A 2×2 grid: main top left, then top right, bottom left, bottom right (kept together
+            // in the middle of an upright phone).
             val cw = (w - 3 * gap) / 2
-            val ch = (h - 3 * gap) / 2
+            val ch = if (h > w) cw * 9 / 16 else (h - 3 * gap) / 2
+            val top = if (h > w) ((h - 2 * ch - gap) / 2).coerceAtLeast(0) else gap
             for (i in 0 until n) {
                 val l = gap + (i % 2) * (cw + gap)
-                val t = gap + (i / 2) * (ch + gap)
+                val t = top + (i / 2) * (ch + gap)
                 r[i] = fit16x9(l, t, l + cw, t + ch)
             }
         }

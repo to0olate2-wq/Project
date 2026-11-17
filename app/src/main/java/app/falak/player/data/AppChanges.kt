@@ -83,7 +83,7 @@ object AppChanges {
         Change(
             "8.33",
             "Up to four screens at once",
-            "With two screens on, add a third and a fourth: Add a screen on a phone, or hold OK on a TV remote. " +
+            "With two screens on, add a third and a fourth: tap Add on a phone, or hold OK on a TV remote. " +
                 "Choose the picture you hear with a tap, or with the arrows on a TV.",
         ),
     )

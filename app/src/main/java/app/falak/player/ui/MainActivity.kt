@@ -659,7 +659,7 @@ private fun UpdateDialogs(vm: LibraryViewModel) {
 private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
     val addonLinks = if (Addons.enabled) state.settings.addons else emptyList()
     var adding by remember { mutableStateOf(state.playlists.isEmpty() && addonLinks.isEmpty()) }
-    LaunchedEffect(addAddonForTest) { if (addAddonForTest) adding = true }
+    LaunchedEffect(addAddonForTest, addPortalForTest) { if (addAddonForTest || addPortalForTest) adding = true }
     var addonToRemove by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(addonLinks) { vm.addons.readNames(addonLinks) }
     var toDelete by remember { mutableStateOf<Playlist?>(null) }
@@ -867,6 +867,7 @@ private fun PlaylistsScreen(vm: LibraryViewModel, state: AppState) {
             addonLinks,
             onCombine = if (canCombine) ({ adding = false; combiningNew = true }) else null,
             startWithAddon = addAddonForTest,
+            startWithPortal = addPortalForTest,
         ) { adding = false }
     }
     addonToRemove?.let { link ->
@@ -962,11 +963,12 @@ private fun AddPlaylistDialog(
     addonLinks: List<String>,
     onCombine: (() -> Unit)? = null,
     startWithAddon: Boolean = false,
+    startWithPortal: Boolean = false,
     onClose: () -> Unit,
 ) {
     var type by remember { mutableStateOf(SourceType.M3U_URL) }
     // The MAC portal choice (8.33): stored as an M3U link playlist with a MAC address.
-    var portal by remember { mutableStateOf(false) }
+    var portal by remember { mutableStateOf(startWithPortal) }
     var mac by remember { mutableStateOf("") }
     // The fourth choice (GitHub version): an add-on, added with just its link.
     var addon by remember { mutableStateOf(startWithAddon && Addons.enabled) }
@@ -1121,6 +1123,10 @@ internal fun RemoveAddonDialog(name: String, onRemove: () -> Unit, onClose: () -
 /** Screen tests: the Playlists page opens the Add window on its Add-on choice. */
 @androidx.annotation.VisibleForTesting
 internal var addAddonForTest by mutableStateOf(false)
+
+/** Screen tests: the Playlists page opens the Add window on its MAC portal choice. */
+@androidx.annotation.VisibleForTesting
+internal var addPortalForTest by mutableStateOf(false)
 
 @Composable
 private fun Field(

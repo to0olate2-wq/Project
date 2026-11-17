@@ -68,6 +68,7 @@ import app.falak.player.ui.MainActivity
 import app.falak.player.data.SkipSegments
 import app.falak.player.ui.PlayerActivity
 import app.falak.player.ui.Screen
+import app.falak.player.ui.addPortalForTest
 import app.falak.player.ui.Section
 import app.falak.player.ui.stillForTest
 import app.falak.player.ui.SettingsPage
@@ -1314,6 +1315,29 @@ class TvFourScreens : ScreenshotBase() {
 class PhoneThreeScreens : ScreenshotBase() {
     @Test @Config(qualifiers = PHONE)
     fun phoneThreeScreens() = player(tv = false, live = true, screens = 3) { shoot -> shoot("phone-25b-three-screens") }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneFourScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneFourScreens() = player(tv = false, live = true, screens = 4, heardAt = 1) { shoot -> shoot("phone-25c-four-screens") }
+}
+
+// 8.33: the Add window on its MAC portal choice.
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PhoneAddPortalScreens : ScreenshotBase() {
+    @Test @Config(qualifiers = PHONE)
+    fun phoneAddPortal() = mainScreens("phone") { vm, shoot ->
+        try {
+            vm.screen = Screen.PLAYLISTS
+            addPortalForTest = true
+            shoot("phone-97-add-portal")
+        } finally {
+            addPortalForTest = false
+        }
+    }
 }
 
 // ---- 7.0: start over, For this hour, tidy list, mini player ----
