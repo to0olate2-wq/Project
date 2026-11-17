@@ -259,6 +259,124 @@ fun ChannelCard(
     }
 }
 
+/**
+ * A match in the sports hub (8.34): its channel's logo, LIVE or its start time, the match and the
+ * channel (and how many more carry it).
+ */
+@Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun MatchCard(
+    m: app.falak.player.data.Sports.Match,
+    now: Long,
+    reminded: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    width: Dp = 220.dp,
+) {
+    val ch = m.channels.first()
+    val shape = RoundedCornerShape(8.dp)
+    val row = LocalRow.current
+    val tap = LocalCardTap.current
+    val id = "match:" + m.title + "|" + m.start
+    val live = m.live(now)
+    Column(Modifier.width(width)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .comeBackHere(row, id)
+                .spotlights(ch)
+                .cardFocus(shape)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Ink3, Ink2)))
+                .combinedClickable(onClick = { tap?.invoke(row, id); onClick() }, onLongClick = onLongClick),
+        ) {
+            LogoOr(ch.logo, ch.name, ContentScale.Fit, Modifier.align(Alignment.Center).fillMaxSize(0.5f)) {
+                Text(
+                    ch.name,
+                    fontFamily = Serif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = Paper,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    modifier = Modifier.align(Alignment.Center).padding(12.dp),
+                )
+            }
+            Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (live) {
+                    LiveDot(6.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.2.sp, color = Paper)
+                } else {
+                    CardBadge(hourMinute(m.start), Paper)
+                }
+            }
+            if (reminded && !live) CardBadge("Reminder on", Amber, Modifier.align(Alignment.TopEnd).padding(7.dp))
+            if (live) {
+                val length = (m.stop - m.start).coerceAtLeast(1L).toFloat()
+                EdgeProgress((now - m.start) / length, Modifier.align(Alignment.BottomCenter))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(m.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            ch.name + if (m.channels.size > 1) "  ·  +${m.channels.size - 1} more" else "",
+            style = MaterialTheme.typography.labelSmall,
+            color = Muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** "21:30" (or "9:30 PM", as the device shows times). */
+@Composable
+fun hourMinute(ms: Long): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(ms))
+}
+
+/** A collection of films (8.34): the first film's poster, the collection's name and how many films. */
+@Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun CollectionCard(c: app.falak.player.data.Collections.Collection, onClick: () -> Unit, width: Dp = 120.dp) {
+    val shape = RoundedCornerShape(8.dp)
+    val row = LocalRow.current
+    val tap = LocalCardTap.current
+    val first = c.films.first()
+    val id = "collection:" + c.name
+    Column(Modifier.width(width)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .comeBackHere(row, id)
+                .spotlights(first)
+                .cardFocus(shape)
+                .clip(shape)
+                .background(Ink3)
+                .combinedClickable(onClick = { tap?.invoke(row, id); onClick() }),
+        ) {
+            LogoOr(first.logo, c.name, ContentScale.Crop, Modifier.fillMaxSize()) {
+                Text(
+                    c.name,
+                    fontFamily = Serif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = Muted,
+                    textAlign = TextAlign.Center,
+                    maxLines = 4,
+                    modifier = Modifier.align(Alignment.Center).padding(10.dp),
+                )
+            }
+            CardBadge("${c.films.size} films", Paper, Modifier.align(Alignment.TopStart).padding(7.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(c.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 fun minutesLeft(p: Program, now: Long): String {
     val m = ((p.stop - now) / 60_000).coerceAtLeast(0)
     return if (m >= 60) "${m / 60}h ${m % 60}m left" else "${m}m left"

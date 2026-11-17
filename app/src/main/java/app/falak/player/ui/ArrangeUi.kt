@@ -69,6 +69,12 @@ fun GroupMenu(vm: LibraryViewModel, kind: Kind?, group: String, onDismiss: () ->
                     }
                     Spacer(Modifier.height(8.dp))
                     ChipFlow {
+                        // 8.34: its own row on Home.
+                        val pinned = vm.isPinned(kind, group)
+                        GhostButton(if (pinned) "Unpin from Home" else "Pin to Home") {
+                            vm.togglePin(kind, group)
+                            onDismiss()
+                        }
                         GhostButton("Arrange groups…") {
                             onDismiss()
                             vm.openArrange(kind, null)

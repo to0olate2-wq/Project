@@ -465,6 +465,27 @@ class Repository(private val context: Context) {
     private val imdbFound = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** The IMDb number of a provider's film or series ([type] "movie" or "series"), found by its name; null if not sure. Network: call off the main thread. */
+    /** The playlist's titles among what is popular now ([kind] films or series), most popular first (8.34). */
+    fun popularIn(index: LibraryIndex, kind: Kind): List<Channel> {
+        val titles = people.popular(if (kind == Kind.SERIES) "series" else "movie") ?: return emptyList()
+        val names = people.names(index) { index.movies + index.series }
+        return People.inLibrary(titles, names).map { it.second }
+    }
+
+    /**
+     * "Because you watched [ch]" (8.34): the playlist's titles most like it (Wikidata: the same
+     * series of films, director, writers, cast). Empty when it can't be found by its name.
+     */
+    fun becauseYouWatched(index: LibraryIndex, ch: Channel): List<Channel> {
+        val type = if (ch.kind == Kind.SERIES) "series" else "movie"
+        val (name, year) = Versions.title(ch.name)
+        val imdb = imdbFor(type, name, year ?: providerYears[(if (type == "series") "s" else "m") + ch.id.removePrefix("m").removePrefix("s")]) ?: return emptyList()
+        val titles = people.similar(imdb) ?: return emptyList()
+        val names = people.names(index) { index.movies + index.series }
+        val same = index.copiesOf(ch).mapTo(HashSet()) { it.id } + ch.id
+        return People.inLibrary(titles, names).map { it.second }.filter { it.id !in same }.take(24)
+    }
+
     fun imdbFor(type: String, name: String, year: Int?): String? {
         val key = "$type|${TitleMatch.norm(name)}|${year ?: ""}"
         imdbFound[key]?.let { return it.ifEmpty { null } }

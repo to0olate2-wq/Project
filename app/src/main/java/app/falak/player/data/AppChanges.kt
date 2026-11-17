@@ -86,6 +86,14 @@ object AppChanges {
             "With two screens on, add a third and a fourth: tap Add on a phone, or hold OK on a TV remote. " +
                 "Choose the picture you hear with a tap, or with the arrows on a TV.",
         ),
+        Change(
+            "8.34",
+            "Sports, pinned groups and more on Home",
+            "Home shows the matches on now and later today (from your TV guide), groups you pin (hold a group: Pin to Home), " +
+                "what's popular now and \"Because you watched\". A film listed several times shows once, with its versions on its page; " +
+                "Films has collections.",
+            keys = listOf("Home"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

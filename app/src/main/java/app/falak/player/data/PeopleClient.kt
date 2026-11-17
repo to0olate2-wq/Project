@@ -18,10 +18,10 @@ class PeopleClient(private val http: OkHttpClient, private val dir: File? = null
 
     private fun stored(url: String): File? = dir?.let { File(it, sha1(url)) }
 
-    private fun get(url: String, accept: String = "application/json"): String? {
+    private fun get(url: String, accept: String = "application/json", keepMs: Long = KEEP_MS): String? {
         if (testing) return null
         val file = stored(url)
-        if (file != null && file.isFile && System.currentTimeMillis() - file.lastModified() < KEEP_MS) {
+        if (file != null && file.isFile && System.currentTimeMillis() - file.lastModified() < keepMs) {
             runCatching { return file.readText() }
         }
         val text = try {
@@ -129,6 +129,35 @@ class PeopleClient(private val http: OkHttpClient, private val dir: File? = null
         }
         val people = search(q) ?: return null
         return People.pick(people, q)?.also(onPerson) ?: NOT_FOUND
+    }
+
+    // ---- popular now, and "because you watched" (8.34) ----
+
+    private val similars = java.util.concurrent.ConcurrentHashMap<String, List<People.Title>>()
+
+    /** Cinemeta's popular films or series ([type] "movie" / "series"), kept a day. Null: no answer. */
+    fun popular(type: String): List<People.Title>? = once("p|$type") {
+        val out = ArrayList<People.Title>()
+        for (skip in listOf(0, 100, 200)) {
+            val url = "https://v3-cinemeta.strem.io/catalog/$type/top" + (if (skip > 0) "/skip=$skip" else "") + ".json"
+            val text = get(url, keepMs = 24 * 3_600_000L) ?: break
+            val page = People.parseCatalog(text, type)
+            if (page.isEmpty()) break
+            out += page
+        }
+        out.distinctBy { it.imdb }.ifEmpty { null }
+    }
+
+    /** Films and series most like [imdb] (Wikidata). Null: no answer. */
+    fun similar(imdb: String): List<People.Title>? = once("s|$imdb") {
+        similars[imdb]?.let { return@once it }
+        val (src, people) = People.parseSimilarPeople(sparql(People.similarPeopleQuery(imdb)) ?: return@once null) ?: return@once emptyList()
+        if (people.isEmpty()) return@once emptyList()
+        val scores = People.parseScores(sparql(People.similarQuery(src, people)) ?: return@once null)
+        if (scores.isEmpty()) return@once emptyList()
+        val list = People.similarTitles(scores, sparql(People.titlesQuery(scores.map { it.first })) ?: return@once null)
+        similars[imdb] = list
+        list
     }
 
     // ---- the playlist's names ----

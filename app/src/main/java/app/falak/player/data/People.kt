@@ -170,26 +170,102 @@ object People {
 
     /** Their films and series, each newest first; ones with no date last. */
     fun parseCredits(text: String): Pair<List<Title>, List<Title>> {
-        val all = rows(text).mapNotNull { r ->
-            val imdb = value(r["imdb"]).takeIf { Regex("tt\\d{5,}").matches(it) } ?: return@mapNotNull null
-            val kinds = value(r["kinds"]).split(',').filter { it.isNotBlank() }.toSet()
-            if (kinds.any { it in NOT_A_TITLE } && kinds.none { it in SERIES }) return@mapNotNull null
-            val series = kinds.any { it in SERIES } || value(r["episodes"]).isNotEmpty()
-            // (Since 2024 many titles keep their name as "mul", the same in every language, and no English one.)
-            val en = value(r["en"]).ifBlank { value(r["mul"]) }
-            val ar = value(r["ar"])
-            val name = en.ifBlank { ar }.ifBlank { return@mapNotNull null }
-            Title(
-                type = if (series) "series" else "movie",
-                name = name,
-                year = value(r["date"]).take(4).toIntOrNull(),
-                imdb = imdb,
-                poster = poster(imdb),
-                altName = if (en.isNotBlank() && ar.isNotBlank()) ar else "",
-            )
-        }.distinctBy { it.imdb }.sortedWith(compareByDescending<Title> { it.year ?: 0 }.thenBy { it.name })
+        val all = rows(text).mapNotNull(::titleOf).distinctBy { it.imdb }.sortedWith(compareByDescending<Title> { it.year ?: 0 }.thenBy { it.name })
         return all.filter { it.type == "movie" } to all.filter { it.type == "series" }
     }
+
+    /** A row of a titles query (credits, similar): null for what isn't a film or a series. */
+    private fun titleOf(r: JsonObject): Title? {
+        val imdb = value(r["imdb"]).takeIf { Regex("tt\\d{5,}").matches(it) } ?: return null
+        val kinds = value(r["kinds"]).split(',').filter { it.isNotBlank() }.toSet()
+        if (kinds.any { it in NOT_A_TITLE } && kinds.none { it in SERIES }) return null
+        val series = kinds.any { it in SERIES } || value(r["episodes"]).isNotEmpty()
+        // (Since 2024 many titles keep their name as "mul", the same in every language, and no English one.)
+        val en = value(r["en"]).ifBlank { value(r["mul"]) }
+        val ar = value(r["ar"])
+        val name = en.ifBlank { ar }.ifBlank { return null }
+        return Title(
+            type = if (series) "series" else "movie",
+            name = name,
+            year = value(r["date"]).take(4).toIntOrNull(),
+            imdb = imdb,
+            poster = poster(imdb),
+            altName = if (en.isNotBlank() && ar.isNotBlank()) ar else "",
+        )
+    }
+
+    /**
+     * "Because you watched" (8.34), in two short questions (one big one took 20–60 s or timed out;
+     * checked in CI): first the film's people — its series of films (P179) ×8, director (P57) ×3,
+     * writers (P58) ×2, actors (P161) ×1 with how many Wikipedias have a page on them —
+     */
+    fun similarPeopleQuery(imdb: String): String = """
+        SELECT ?s ?p ?wt ?links WHERE {
+          ?s wdt:P345 "${imdb.filter { it.isLetterOrDigit() }}" .
+          { ?s wdt:P179 ?p . BIND(8 AS ?wt) }
+          UNION { ?s wdt:P57 ?p . BIND(3 AS ?wt) }
+          UNION { ?s wdt:P58 ?p . BIND(2 AS ?wt) }
+          UNION { ?s wdt:P161 ?p . BIND(1 AS ?wt) OPTIONAL { ?p wikibase:sitelinks ?links . } }
+        }
+    """.trimIndent()
+
+    /** The film's item and its people with their weight: all but the actors, and its 8 best-known actors. */
+    fun parseSimilarPeople(text: String): Pair<String, List<Pair<String, Int>>>? {
+        val rows = rows(text)
+        val src = rows.firstNotNullOfOrNull { entity(it["s"]) } ?: return null
+        val all = rows.mapNotNull { r ->
+            val p = entity(r["p"]) ?: return@mapNotNull null
+            Triple(p, value(r["wt"]).toIntOrNull() ?: 1, value(r["links"]).toIntOrNull() ?: 0)
+        }
+        val crew = all.filter { it.second > 1 }.distinctBy { it.first + it.second }
+        val actors = all.filter { it.second == 1 }.distinctBy { it.first }.sortedByDescending { it.third }.take(8)
+        return src to (crew + actors).map { it.first to it.second }
+    }
+
+    /**
+     * — then what those people made, the most shared first (the works only: asking for their names in
+     * the same question made Wikidata look at every title first, 13–18 s) —
+     */
+    fun similarQuery(src: String, people: List<Pair<String, Int>>): String = """
+        SELECT ?w (SUM(?wt) AS ?score) WHERE {
+          VALUES (?p ?wt) { ${people.filter { QID.matches(it.first) }.joinToString(" ") { "(wd:${it.first} ${it.second})" }} }
+          { ?w wdt:P179 ?p . } UNION { ?w wdt:P57 ?p . } UNION { ?w wdt:P58 ?p . } UNION { ?w wdt:P161 ?p . }
+          FILTER(?w != wd:$src)
+        } GROUP BY ?w HAVING (SUM(?wt) >= 2) ORDER BY DESC(?score) LIMIT 150
+    """.trimIndent()
+
+    /** The works and how much they share, the most first. */
+    fun parseScores(text: String): List<Pair<String, Double>> =
+        rows(text).mapNotNull { r -> entity(r["w"])?.let { it to (value(r["score"]).toDoubleOrNull() ?: 0.0) } }
+
+    /** — and last, those works' names, years and kinds, as for an actor's titles. */
+    fun titlesQuery(ids: List<String>): String = """
+        SELECT ?w (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
+               (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
+          VALUES ?w { ${ids.filter { QID.matches(it) }.joinToString(" ") { "wd:$it" }} }
+          ?w wdt:P345 ?imdbId . FILTER(STRSTARTS(?imdbId, "tt"))
+          OPTIONAL { ?w wdt:P31 ?kind . }
+          OPTIONAL { ?w wdt:P577|wdt:P580 ?d . }
+          OPTIONAL { ?w wdt:P1113|wdt:P2437 ?eps . }
+          OPTIONAL { ?w rdfs:label ?enName . FILTER(LANG(?enName) = "en") }
+          OPTIONAL { ?w rdfs:label ?mulName . FILTER(LANG(?mulName) = "mul") }
+          OPTIONAL { ?w rdfs:label ?arName . FILTER(LANG(?arName) = "ar") }
+        } GROUP BY ?w
+    """.trimIndent()
+
+    /** The titles of [titlesQuery] in the order of [scores] (the most alike first). */
+    fun similarTitles(scores: List<Pair<String, Double>>, titlesText: String): List<Title> {
+        val byId = HashMap<String, Title>()
+        for (r in rows(titlesText)) {
+            val id = entity(r["w"]) ?: continue
+            titleOf(r)?.let { byId[id] = it }
+        }
+        return scores.mapNotNull { byId[it.first] }.distinctBy { it.imdb }
+    }
+
+    /** A Cinemeta list (its popular films or series) as titles. */
+    fun parseCatalog(text: String, type: String): List<Title> =
+        TitleMatch.parse(text).map { Title(type = type, name = it.name, year = it.year, imdb = it.id, poster = poster(it.id)) }
 
     fun poster(imdb: String) = "https://images.metahub.space/poster/small/$imdb/img"
 

@@ -475,6 +475,8 @@ data class Settings(
     val homeRows: List<String> = emptyList(),
     /** Home's rows switched off. */
     val homeHidden: List<String> = emptyList(),
+    /** Groups pinned to Home (8.34): "playlist id|KIND|group", in the order pinned. */
+    val homePins: List<String> = emptyList(),
     /** Remote buttons given a job while watching: key code (as text) -> action (see KeyActions). */
     val keyActions: Map<String, String> = emptyMap(),
     /**

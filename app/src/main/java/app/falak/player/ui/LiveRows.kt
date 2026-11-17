@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -84,6 +86,10 @@ internal fun LiveRows(
         }
     }
     val favShown = remember(favorites) { favorites.take(ROW_MAX) }
+    val appState by vm.state.collectAsState()
+    // (Hidden and locked groups' channels stay out of it.)
+    val notShown = remember(groups, locked, vm.index) { vm.index.groupsOf(app.falak.player.data.Kind.LIVE).keys.filterTo(HashSet()) { it !in groups } + locked }
+    val sports = if (vm.kidsActive) emptyList() else rememberSports(vm, epg, now, notShown)
     // (A phone held upright shows three channels of a row and the edge of the fourth.)
     val width = if (tv) 168.dp else 118.dp
     val card: @Composable (Channel, List<Channel>) -> Unit = { ch, row ->
@@ -106,6 +112,10 @@ internal fun LiveRows(
                     items(favShown, key = { it.id }) { ch -> card(ch, favorites) }
                 }
             }
+        }
+        // 8.34: the sports hub's matches, from the guide.
+        if (folder == null && sports.isNotEmpty()) {
+            item(key = "sports") { SportsShelf(vm, appState, sports, now, onPlay) }
         }
         if (folder == null && often.isNotEmpty()) {
             item(key = "often") {

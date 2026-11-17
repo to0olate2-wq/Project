@@ -1393,6 +1393,29 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- hidden groups ----
 
+    private fun pinKey(kind: Kind, group: String) = "${playlist?.id}|${kind.name}|$group"
+
+    /** A group pinned to Home (8.34). */
+    fun isPinned(kind: Kind, group: String): Boolean = pinKey(kind, group) in state.value.settings.homePins
+
+    /** Pins a group to Home, or takes it off. */
+    fun togglePin(kind: Kind, group: String) {
+        if (playlist == null) return
+        val key = pinKey(kind, group)
+        updateSettings { s -> s.copy(homePins = if (key in s.homePins) s.homePins - key else s.homePins + key) }
+    }
+
+    /** This playlist's pinned groups, in the order pinned. */
+    fun pinnedGroups(s: app.falak.player.data.Settings): List<Pair<Kind, String>> {
+        val id = playlist?.id ?: return emptyList()
+        return s.homePins.mapNotNull { k ->
+            val parts = k.split('|', limit = 3)
+            if (parts.size != 3 || parts[0] != id) return@mapNotNull null
+            val kind = runCatching { Kind.valueOf(parts[1]) }.getOrNull() ?: return@mapNotNull null
+            kind to parts[2]
+        }
+    }
+
     fun toggleHiddenGroup(group: String) {
         val p = playlist ?: return
         val hide = group !in state.value.settings.hiddenGroups[p.id].orEmpty()

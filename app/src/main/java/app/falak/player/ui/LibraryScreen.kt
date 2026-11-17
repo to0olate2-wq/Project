@@ -229,7 +229,12 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     val src = when (group) {
                         null, ALL_FILTER -> base
                         FAV_FILTER -> favOfKind
-                        else -> groupMap[group].orEmpty()
+                        // A collection of films (8.34, Films' "Collections" row).
+                        else -> groupMap[group] ?: if (group.startsWith(COLLECTION_FILTER)) {
+                            index.collections.firstOrNull { it.name == group.removePrefix(COLLECTION_FILTER) }?.films.orEmpty()
+                        } else {
+                            emptyList()
+                        }
                     }
                     val inGroup = if (excluded.isEmpty()) src else src.filter(allowed)
                     // (Favorites keep theirs: you chose them.)
@@ -556,7 +561,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                             FAV_FILTER -> "Favorites"
                                             else -> liveTree.title(pickedGroup)
                                         }
-                                        shown == Section.MOVIES -> "All films"
+                                        shown == Section.MOVIES -> group?.takeIf { it.startsWith(COLLECTION_FILTER) }?.let { it.removePrefix(COLLECTION_FILTER) + " collection" } ?: "All films"
                                         shown == Section.SERIES -> "All series"
                                         shown == Section.RECENT -> "Recently watched"
                                         else -> shown.label
