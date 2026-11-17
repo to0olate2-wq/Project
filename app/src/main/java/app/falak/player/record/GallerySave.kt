@@ -12,6 +12,7 @@ import android.os.StatFs
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.annotation.OptIn
+import app.falak.player.OfflineCenter
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
@@ -100,7 +101,7 @@ object GallerySave {
         work.listFiles()?.filter { it.name.startsWith("gallery-") }?.forEach { it.delete() }
         val free = runCatching { StatFs(work.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
         if (free < src.length() * 21 / 10 + 100_000_000L) {
-            _state.value = Job(r.id, r.title, error = "Not enough free space: saving needs about ${app.falak.player.OfflineCenter.sizeLabel(src.length() * 2)} free for a moment")
+            _state.value = Job(r.id, r.title, error = "Not enough free space: saving needs about ${OfflineCenter.sizeLabel(src.length() * 2)} free for a moment")
             return
         }
         val tmp = File(work, "gallery-${r.id}.mp4")
