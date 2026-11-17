@@ -198,16 +198,18 @@ object People {
      * "Because you watched" (8.34): films and series that share the most with [imdb], weighted:
      * the same series of films (P179) most, then the director (P57), the writers (P58), the cast (P161).
      */
-    fun similarQuery(imdb: String): String = """
+    fun similarQuery(imdb: String): String = similarQueryFor(imdb.filter { it.isLetterOrDigit() })
+
+    // (The film is looked up inside each part: Wikidata's planner then starts from it, not from every film's cast.)
+    private fun similarQueryFor(id: String): String = """
         SELECT ?w (SAMPLE(?score0) AS ?score) (SAMPLE(?imdbId) AS ?imdb) (SAMPLE(?enName) AS ?en) (SAMPLE(?mulName) AS ?mul) (SAMPLE(?arName) AS ?ar) (MIN(?d) AS ?date)
                (GROUP_CONCAT(DISTINCT STRAFTER(STR(?kind), "entity/"); separator=",") AS ?kinds) (SAMPLE(?eps) AS ?episodes) WHERE {
           {
             SELECT ?w (SUM(?wt) AS ?score0) WHERE {
-              ?src wdt:P345 "${imdb.filter { it.isLetterOrDigit() }}" .
-              { ?src wdt:P179 ?p . ?w wdt:P179 ?p . BIND(8 AS ?wt) }
-              UNION { ?src wdt:P57 ?p . ?w wdt:P57 ?p . BIND(3 AS ?wt) }
-              UNION { ?src wdt:P58 ?p . ?w wdt:P58 ?p . BIND(2 AS ?wt) }
-              UNION { ?src wdt:P161 ?p . ?w wdt:P161 ?p . BIND(1 AS ?wt) }
+              { ?src wdt:P345 "$id" . ?src wdt:P179 ?p . ?w wdt:P179 ?p . BIND(8 AS ?wt) }
+              UNION { ?src wdt:P345 "$id" . ?src wdt:P57 ?p . ?w wdt:P57 ?p . BIND(3 AS ?wt) }
+              UNION { ?src wdt:P345 "$id" . ?src wdt:P58 ?p . ?w wdt:P58 ?p . BIND(2 AS ?wt) }
+              UNION { ?src wdt:P345 "$id" . ?src wdt:P161 ?p . ?w wdt:P161 ?p . BIND(1 AS ?wt) }
               FILTER(?w != ?src)
             } GROUP BY ?w ORDER BY DESC(?score0) LIMIT 250
           }

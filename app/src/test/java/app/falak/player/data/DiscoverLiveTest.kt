@@ -17,7 +17,8 @@ class DiscoverLiveTest {
     private fun client(): PeopleClient {
         assumeTrue("Only when asked for", System.getenv("LIVE_CHECKS") != null)
         PeopleClient.testing = false
-        return PeopleClient(okhttp3.OkHttpClient())
+        // (The app's client waits up to a minute for an answer, like this one.)
+        return PeopleClient(okhttp3.OkHttpClient.Builder().readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build())
     }
 
     @Test
