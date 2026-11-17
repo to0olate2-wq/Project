@@ -3,6 +3,9 @@ package app.falak.player.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -38,7 +41,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -55,6 +62,7 @@ import app.falak.player.R
 import app.falak.player.data.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.roundToInt
 
 /**
  * The mini player (Settings → Picture & playback, on unless turned off): Back from a live channel
@@ -89,6 +97,29 @@ object MiniPlayerState {
         player = null
         request.value = null
     }
+}
+
+/**
+ * Where the mini player sits: anywhere on the screen (the owner, 8.32), dragged on a phone, moved
+ * with the arrows on a TV (hold OK on it first). Kept as fractions of the free room (0 = left/top,
+ * 1 = right/bottom), so it stays in its place when the phone turns; on this device only.
+ */
+internal object MiniSpot {
+    private const val FILE = "mini_player"
+
+    fun read(context: android.content.Context): Pair<Float, Float> {
+        val p = context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+        return p.getFloat("x", 1f).coerceIn(0f, 1f) to p.getFloat("y", 1f).coerceIn(0f, 1f)
+    }
+
+    fun save(context: android.content.Context, x: Float, y: Float) {
+        context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE).edit()
+            .putFloat("x", x.coerceIn(0f, 1f)).putFloat("y", y.coerceIn(0f, 1f)).apply()
+    }
+
+    /** [at] (a fraction of [span] px) moved by [by] px, kept inside. */
+    fun moved(at: Float, by: Float, span: Float): Float =
+        if (span <= 0f) at else ((at * span + by) / span).coerceIn(0f, 1f)
 }
 
 @Composable
@@ -140,34 +171,112 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
         runCatching { focus.requestFocus() }
     }
     val shape = RoundedCornerShape(12.dp)
+    val density = LocalDensity.current
+    val miniWidth = if (tv) 304.dp else 208.dp
+    // Its place: where it was left last time (bottom right at first).
+    var spot by remember { mutableStateOf(MiniSpot.read(context)) }
+    // TVs: OK held on it = moving it with the arrows, until OK or Back.
+    var moving by remember { mutableStateOf(false) }
+    var okDown by remember { mutableStateOf(false) }
+    var heightPx by remember { mutableStateOf(0) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val margin = with(density) { (if (tv) 24.dp else 12.dp).toPx() }
+    val widthPx = with(density) { miniWidth.toPx() }
+    val spanX = (constraints.maxWidth - widthPx - 2 * margin).coerceAtLeast(0f)
+    val spanY = (constraints.maxHeight - heightPx - 2 * margin).coerceAtLeast(0f)
+    val step = with(density) { 48.dp.toPx() }
+    fun moveBy(dx: Float, dy: Float) {
+        spot = MiniSpot.moved(spot.first, dx, spanX) to MiniSpot.moved(spot.second, dy, spanY)
+    }
+    fun keep() = MiniSpot.save(context, spot.first, spot.second)
     Column(
         Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = if (tv) 28.dp else 12.dp, bottom = if (tv) 24.dp else 16.dp)
-            .width(if (tv) 304.dp else 208.dp)
+            .offset { IntOffset((margin + spot.first * spanX).roundToInt(), (margin + spot.second * spanY).roundToInt()) }
+            .onSizeChanged { heightPx = it.height }
+            .width(miniWidth)
             .clip(shape)
             .background(Color(0xF5141210))
             .border(
-                if (focused) 2.dp else 1.dp,
-                if (focused) Color.White else Color.White.copy(alpha = 0.14f),
+                if (focused || moving) 2.dp else 1.dp,
+                when {
+                    moving -> Signal
+                    focused -> Color.White
+                    else -> Color.White.copy(alpha = 0.14f)
+                },
                 shape,
             )
             .then(
                 if (tv) {
                     Modifier
                         .focusRequester(focus)
-                        .onFocusChanged { focused = it.isFocused }
-                        .onKeyEvent { e ->
-                            // Back on the mini player closes it (elsewhere Back works as usual).
-                            if (e.key == Key.Back || e.key == Key.Escape) {
-                                if (e.type == KeyEventType.KeyDown) close()
-                                true
-                            } else {
-                                false
+                        .onFocusChanged {
+                            focused = it.isFocused
+                            if (!it.isFocused && moving) {
+                                moving = false
+                                keep()
+                            }
+                        }
+                        .onPreviewKeyEvent { e ->
+                            val down = e.type == KeyEventType.KeyDown
+                            when (e.key) {
+                                // OK: full screen; held: move it (then OK again when it's in place).
+                                Key.Enter, Key.DirectionCenter, Key.NumPadEnter -> {
+                                    if (down) {
+                                        if (e.nativeKeyEvent.repeatCount == 0) {
+                                            okDown = true
+                                        } else if (okDown && !moving) {
+                                            okDown = false
+                                            moving = true
+                                        }
+                                    } else if (e.type == KeyEventType.KeyUp && okDown) {
+                                        okDown = false
+                                        if (moving) {
+                                            moving = false
+                                            keep()
+                                        } else {
+                                            onOpen()
+                                        }
+                                    }
+                                    true
+                                }
+                                // Back: done moving; otherwise it closes the mini player.
+                                Key.Back, Key.Escape -> {
+                                    if (down) {
+                                        if (moving) {
+                                            moving = false
+                                            keep()
+                                        } else {
+                                            close()
+                                        }
+                                    }
+                                    true
+                                }
+                                Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown -> {
+                                    if (!moving) return@onPreviewKeyEvent false
+                                    if (down) {
+                                        when (e.key) {
+                                            Key.DirectionLeft -> moveBy(-step, 0f)
+                                            Key.DirectionRight -> moveBy(step, 0f)
+                                            Key.DirectionUp -> moveBy(0f, -step)
+                                            else -> moveBy(0f, step)
+                                        }
+                                    }
+                                    true
+                                }
+                                else -> false
                             }
                         }
                 } else {
-                    Modifier
+                    // Phones: dragged anywhere; a tap still opens it.
+                    Modifier.pointerInput(spanX, spanY) {
+                        detectDragGestures(
+                            onDragEnd = { keep() },
+                            onDragCancel = { keep() },
+                        ) { change, drag ->
+                            change.consume()
+                            moveBy(drag.x, drag.y)
+                        }
+                    }
                 },
             )
             .clickable { onOpen() },
@@ -214,10 +323,11 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
                 )
             }
             val line = when {
-                tv && focused -> "OK  full screen  ·  Back  close"
+                tv && moving -> "Arrows  move it  ·  OK  done"
+                tv && focused -> "OK  full screen  ·  Hold OK  move  ·  Back  close"
                 onNow != null -> onNow
                 tv -> "Mini player"
-                else -> "Tap for full screen"
+                else -> "Tap for full screen · drag to move"
             }
             Text(
                 line,
@@ -228,5 +338,6 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
     }
 }

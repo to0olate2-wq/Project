@@ -298,6 +298,11 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (4) **Watched**: `Watch.done` (pos ≥ dur) = finished; finished titles are now KEPT in progress (were removed,
   so a series' page forgot them) and left out of Continue watching / resume. Series page: long press an episode
   → `vm.setWatched` (✓ Watched on the row, toast).
+- **The mini player moves (8.32, the owner: "free to move anywhere in the app"), `ui/MiniPlayer.kt`:** drawn over
+  every page (MainActivity) inside a `BoxWithConstraints`; `MiniSpot` keeps its place as fractions of the free room
+  (SharedPreferences "mini_player", this device's; bottom right at first). Phones: drag (a tap still opens it).
+  TVs: hold OK on it (key repeat) → arrows move it 48 dp, OK or Back = done; a short OK opens it, Back closes it
+  (all in `onPreviewKeyEvent`, so `clickable` never sees OK). Test: `MiniSpotTest`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

@@ -68,6 +68,12 @@ object AppChanges {
             "When a channel or film stops moving, the app reconnects on its own. Settings → Player → Check the connection " +
                 "measures your internet and your provider. On a series' page, press and hold an episode to mark it watched.",
         ),
+        Change(
+            "8.32",
+            "Move the mini player anywhere",
+            "On a phone, drag the small picture wherever you like. On a TV, hold OK on it, move it with the arrows, " +
+                "then press OK. It stays where you put it.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */
