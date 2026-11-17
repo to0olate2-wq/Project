@@ -575,7 +575,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
         }
 
         SettingsPage.PLAYBACK -> {
-        item { SectionTitle("Player", first = true) }
+        item { SectionTitle("Which player", first = true) }
         item { PlayerChoice(vm, s.player, focusAt("first")) }
 
         item { SectionTitle("Picture") }
