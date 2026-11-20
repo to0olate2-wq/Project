@@ -101,6 +101,12 @@ object AppChanges {
                 "In the add-ons' portal the search is the magnifier at the top (on the left when the phone is on its side). " +
                 "Profiles have cartoon pictures: tap one in Settings → Profiles to change it.",
         ),
+        Change(
+            "8.40",
+            "Pictures and shortcuts",
+            "Hold a profile on \"Who's watching?\" to change its picture: 25 characters, or a photo of your own on a phone. " +
+                "On a phone, hold the app's icon for Live TV, your last channel or Search.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

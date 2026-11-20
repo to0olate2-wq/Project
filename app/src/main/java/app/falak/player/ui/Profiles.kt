@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +74,18 @@ internal fun avatarRes(key: String): Int = when (key) {
     "monster" -> app.falak.player.R.drawable.avatar_monster
     "lion" -> app.falak.player.R.drawable.avatar_lion
     "ghost" -> app.falak.player.R.drawable.avatar_ghost
+    "astronaut" -> app.falak.player.R.drawable.avatar_astronaut
+    "pirate" -> app.falak.player.R.drawable.avatar_pirate
+    "wizard" -> app.falak.player.R.drawable.avatar_wizard
+    "ninja" -> app.falak.player.R.drawable.avatar_ninja
+    "viking" -> app.falak.player.R.drawable.avatar_viking
+    "chef" -> app.falak.player.R.drawable.avatar_chef
+    "dragon" -> app.falak.player.R.drawable.avatar_dragon
+    "unicorn" -> app.falak.player.R.drawable.avatar_unicorn
+    "tiger" -> app.falak.player.R.drawable.avatar_tiger
+    "koala" -> app.falak.player.R.drawable.avatar_koala
+    "shark" -> app.falak.player.R.drawable.avatar_shark
+    "dino" -> app.falak.player.R.drawable.avatar_dino
     else -> app.falak.player.R.drawable.avatar_octopus
 }
 
@@ -79,39 +93,124 @@ internal fun avatarRes(key: String): Int = when (key) {
 internal fun avatarOf(state: AppState, id: String): String =
     app.falak.player.data.Avatars.all(state)[id] ?: app.falak.player.data.Avatars.of(id, "")
 
-/** Pick a picture (8.38): the cartoons in a grid, the one in use ringed. */
+/** A profile picture: one of the cartoons, or (8.40) a photo picked on this phone. */
+@Composable
+internal fun AvatarImage(key: String, description: String, modifier: Modifier) {
+    val photo = remember(key) {
+        app.falak.player.data.Avatars.photoFile(key)?.let { f ->
+            runCatching { android.graphics.BitmapFactory.decodeFile(f.path)?.asImageBitmap() }.getOrNull()
+        }
+    }
+    if (photo != null) {
+        androidx.compose.foundation.Image(photo, contentDescription = description, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = modifier)
+    } else {
+        val cartoon = if (key in app.falak.player.data.Avatars.KEYS) key else app.falak.player.data.Avatars.of(key, "")
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(avatarRes(cartoon)), contentDescription = description, modifier = modifier)
+    }
+}
+
+/**
+ * Pick a picture (8.38): the cartoons in a grid, the one in use ringed; on a phone (8.40) also
+ * "Use a photo" from the gallery (cut to a square, kept in the app's own files).
+ */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-internal fun AvatarDialog(current: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+internal fun AvatarDialog(current: String, onDismiss: () -> Unit, profileId: String = "", onPick: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val phone = !isTv()
+    var busy by remember { mutableStateOf(false) }
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = true
+        val app = context.applicationContext
+        Thread({
+            val key = runCatching { saveAvatarPhoto(app, uri, profileId) }.getOrNull()
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                busy = false
+                if (key != null) onPick(key) else android.widget.Toast.makeText(app, "Couldn't use that photo", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }, "avatar-photo").start()
+    }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose a picture") },
         text = {
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                app.falak.player.data.Avatars.KEYS.forEach { key ->
-                    val shape = RoundedCornerShape(14.dp)
-                    Box(
-                        Modifier
-                            .size(64.dp)
-                            .focusRing(shape)
-                            .clip(shape)
-                            .then(if (key == current) Modifier.border(3.dp, Signal, shape) else Modifier)
-                            .clickable { onPick(key) },
-                    ) {
-                        androidx.compose.foundation.Image(
-                            androidx.compose.ui.res.painterResource(avatarRes(key)),
-                            contentDescription = key,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (phone) {
+                    TagChip(if (busy) "Getting the photo…" else "Use a photo", current.startsWith(app.falak.player.data.Avatars.PHOTO)) {
+                        if (!busy) {
+                            pickPhoto.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    app.falak.player.data.Avatars.KEYS.forEach { key ->
+                        val shape = RoundedCornerShape(14.dp)
+                        Box(
+                            Modifier
+                                .size(64.dp)
+                                .focusRing(shape)
+                                .clip(shape)
+                                .then(if (key == current) Modifier.border(3.dp, Signal, shape) else Modifier)
+                                .clickable { onPick(key) },
+                        ) {
+                            AvatarImage(key, key, Modifier.fillMaxSize())
+                        }
                     }
                 }
             }
         },
         confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/**
+ * A photo from the gallery made into a profile picture (8.40): the middle square, 320 px, as a
+ * JPEG in filesDir/avatars; the profile's older photos go. Returns its key ("photo:<file>").
+ */
+private fun saveAvatarPhoto(context: android.content.Context, uri: android.net.Uri, profileId: String): String {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+    var sample = 1
+    while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 320) sample *= 2
+    val raw = context.contentResolver.openInputStream(uri)?.use {
+        android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+    } ?: throw java.io.IOException("not a picture")
+    // The photo's own turn (taken sideways), from its EXIF.
+    val turn = runCatching {
+        context.contentResolver.openInputStream(uri)?.use {
+            when (android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                6 -> 90f
+                3 -> 180f
+                8 -> 270f
+                else -> 0f
+            }
+        } ?: 0f
+    }.getOrDefault(0f)
+    val side = minOf(raw.width, raw.height)
+    val m = android.graphics.Matrix().apply {
+        postRotate(turn)
+        val scale = 320f / side
+        postScale(scale, scale)
+    }
+    val square = android.graphics.Bitmap.createBitmap(raw, (raw.width - side) / 2, (raw.height - side) / 2, side, side, m, true)
+    val dir = java.io.File(context.filesDir, "avatars").apply { mkdirs() }
+    val tag = (profileId.ifEmpty { "main" }).replace(Regex("[^A-Za-z0-9_-]"), "_")
+    dir.listFiles()?.filter { it.name.startsWith("$tag-") }?.forEach { it.delete() }
+    val file = java.io.File(dir, "$tag-${System.currentTimeMillis()}.jpg")
+    file.outputStream().use { square.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+    app.falak.player.data.Avatars.photoDir = dir
+    return app.falak.player.data.Avatars.PHOTO + file.name
 }
 
 /**
@@ -123,6 +222,7 @@ internal fun AvatarDialog(current: String, onDismiss: () -> Unit, onPick: (Strin
 fun ProfilePicker(vm: LibraryViewModel, state: AppState, onBack: () -> Unit) {
     val tv = isTv()
     var askPin by remember { mutableStateOf<String?>(null) }
+    var picturing by remember { mutableStateOf<String?>(null) } // 8.40: a held profile's picture
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         repeat(8) {
@@ -171,11 +271,18 @@ fun ProfilePicker(vm: LibraryViewModel, state: AppState, onBack: () -> Unit) {
                         tile = tile,
                         avatar = c.avatar,
                         modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                        onLongClick = { picturing = c.id },
                     ) {
                         if (locked) askPin = c.id else vm.chooseProfile(c.id)
                     }
                 }
             }
+        }
+    }
+    picturing?.let { id ->
+        AvatarDialog(avatarOf(state, id), onDismiss = { picturing = null }, profileId = id) { key ->
+            (vm.getApplication<app.falak.player.FalakApp>()).repo.setAvatar(id, key)
+            picturing = null
         }
     }
     askPin?.let { id ->
@@ -203,6 +310,8 @@ private fun ProfileCard(
     tile: androidx.compose.ui.unit.Dp,
     avatar: String? = null,
     modifier: Modifier = Modifier,
+    /** 8.40: hold a profile (long press, or OK held on a TV) to change its picture. */
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val tv = isTv()
@@ -212,7 +321,7 @@ private fun ProfileCard(
             .width(tile + 24.dp)
             .cardFocus(shape)
             .clip(shape)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -242,11 +351,7 @@ private fun ProfileCard(
 internal fun ProfileTile(label: String, tint: Color, kids: Boolean, size: androidx.compose.ui.unit.Dp, avatar: String? = null) {
     val shape = RoundedCornerShape(size * 0.14f)
     if (avatar != null) {
-        androidx.compose.foundation.Image(
-            androidx.compose.ui.res.painterResource(avatarRes(avatar)),
-            contentDescription = label,
-            modifier = Modifier.size(size).clip(shape),
-        )
+        AvatarImage(avatar, label, Modifier.size(size).clip(shape))
         return
     }
     Box(
@@ -295,10 +400,10 @@ fun ProfileButton(state: AppState, kids: Boolean, onClick: () -> Unit) {
     val p = state.profiles.firstOrNull { it.id == state.activeProfile }
     val name = p?.name ?: state.settings.mainProfileName.ifBlank { "Me" }
     val shape = CircleShape
-    androidx.compose.foundation.Image(
-        androidx.compose.ui.res.painterResource(avatarRes(avatarOf(state, p?.id ?: ""))),
-        contentDescription = name,
-        modifier = Modifier
+    AvatarImage(
+        avatarOf(state, p?.id ?: ""),
+        name,
+        Modifier
             .padding(horizontal = 6.dp)
             .size(32.dp)
             .focusRing(shape)
@@ -386,7 +491,7 @@ fun ProfilesScreen(vm: LibraryViewModel, state: AppState) {
         }
     }
     picturing?.let { id ->
-        AvatarDialog(avatarOf(state, id), onDismiss = { picturing = null }) { key ->
+        AvatarDialog(avatarOf(state, id), onDismiss = { picturing = null }, profileId = id) { key ->
             repo.setAvatar(id, key)
             picturing = null
         }

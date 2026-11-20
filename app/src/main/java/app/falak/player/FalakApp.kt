@@ -63,6 +63,9 @@ class FalakApp : Application(), ImageLoaderFactory {
         watchForSync()
         FreezeWatch.start(filesDir)
         FreezeWatch.note("app started")
+        // Long-press the icon: Live TV, Last channel, Search (8.40, phones).
+        AppShortcuts.publish(this)
+        app.falak.player.data.Avatars.photoDir = java.io.File(filesDir, "avatars")
 
         // Save any crash so the next launch can report it (personal details taken out, see CrashReports).
         val previous = Thread.getDefaultUncaughtExceptionHandler()
