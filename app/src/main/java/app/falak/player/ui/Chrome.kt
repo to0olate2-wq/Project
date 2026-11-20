@@ -50,3 +50,13 @@ val LocalChrome = staticCompositionLocalOf<Chrome?> { null }
 /** A phone (not a TV, not a tablet): where the bars make way. */
 @Composable
 fun isPhone(): Boolean = !isTv() && LocalConfiguration.current.smallestScreenWidthDp < 600
+
+/**
+ * A key for remember / produceState that is the same only for the very same object (8.39). Compose
+ * compares keys with equals(): for the TV guide (a map of 100,000+ programmes) that walked the
+ * whole guide on the main thread each time a new one arrived.
+ */
+class Same(val value: Any?) {
+    override fun equals(other: Any?): Boolean = other is Same && other.value === value
+    override fun hashCode(): Int = System.identityHashCode(value)
+}
