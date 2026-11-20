@@ -56,7 +56,7 @@ internal var discoverForTest: Map<String, List<String>>? = null
 fun rememberSports(vm: LibraryViewModel, epg: Map<String, List<Program>>, now: Long, excluded: Set<String>): List<Sports.Match> {
     val index = vm.index
     val slot = now / 300_000
-    val list by produceState(emptyList<Sports.Match>(), index, epg, slot, excluded) {
+    val list by produceState(emptyList<Sports.Match>(), index, Same(epg), slot, excluded) {
         value = withContext(Dispatchers.Default) {
             runCatching {
                 val live = index.live.filter { (excluded.isEmpty() || it.group !in excluded) && !ADULT_GROUP.containsMatchIn(it.group) }

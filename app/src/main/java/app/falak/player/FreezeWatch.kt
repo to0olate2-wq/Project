@@ -20,6 +20,8 @@ object FreezeWatch {
     /** A freeze this long is reported even if the app recovered by itself. */
     const val REPORT_AFTER_MS = 8_000L
     private const val SAMPLE_AT_MS = 4_000L
+    /** The watch itself slept this much longer than its 1 s: the app was paused, not frozen. */
+    private const val PAUSED_MS = 3_000L
 
     private val crumbs = ArrayDeque<String>()
     private val clock = SimpleDateFormat("HH:mm:ss", Locale.US)
@@ -60,6 +62,7 @@ object FreezeWatch {
             var stuckSince = 0L
             var samples = 0
             val text = StringBuilder()
+            var lastTick = SystemClock.uptimeMillis()
             while (true) {
                 main.post { lastPong = SystemClock.uptimeMillis() }
                 try {
@@ -68,6 +71,19 @@ object FreezeWatch {
                     return@Thread
                 }
                 val now = SystemClock.uptimeMillis()
+                // This watch itself didn't run for a while (8.39): the whole app was paused, which
+                // Android does to apps in the background (its "cached apps freezer"), not a freeze of
+                // the screen. Start again from now. (Reports like "froze 221 s in watchAlerts" were
+                // that: on waking, the first thing the screen does is the alerts' 3-second timer.)
+                val gap = now - lastTick
+                lastTick = now
+                if (gap > PAUSED_MS) {
+                    lastPong = now
+                    samples = 0
+                    stuckSince = 0L
+                    text.setLength(0)
+                    continue
+                }
                 val stuck = now - lastPong
                 if (stuck < 1_500) {
                     if (samples > 0) {

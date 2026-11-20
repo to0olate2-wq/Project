@@ -119,7 +119,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val all = vm.channels
     // Only channels that actually have programmes (empty rows were just noise); worked out off
     // the main thread so the guide opens at once even with thousands of channels.
-    val guidedOrNull by produceState<List<Channel>?>(null, all, locked, hidden, epg) {
+    val guidedOrNull by produceState<List<Channel>?>(null, all, locked, hidden, Same(epg)) {
         value = try {
             withContext(Dispatchers.Default) {
                 val hiddenSet = hidden.toHashSet()
@@ -160,7 +160,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     val remindedAt = remember(state.reminders) {
         state.reminders.groupBy({ it.channelId }, { it.start }).mapValues { it.value.toHashSet() }
     }
-    val hits by produceState<List<Pair<Channel, Program>>?>(null, query, guided, epg) {
+    val hits by produceState<List<Pair<Channel, Program>>?>(null, query, guided, Same(epg)) {
         val q = query.trim()
         if (q.length < 2) {
             value = null

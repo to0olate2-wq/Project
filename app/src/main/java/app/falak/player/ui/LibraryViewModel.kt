@@ -595,7 +595,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 val excluded = currentExclusions()
                 val refs = arrayOf<Any?>(p?.id, s.reminders, s.alertWords, idx, guide, s.favorites, s.activeProfile)
                 val now = System.currentTimeMillis()
-                val same = last?.let { old -> old.indices.all { old[it] === refs[it] || old[it] == refs[it] && it == 0 } } == true &&
+                // Only the playlist id is compared by value; the rest by identity. (Before 8.39 the
+                // value test ran first for every part, so a new TV guide (often 100,000+ programmes)
+                // was compared item by item on the main thread: the app froze for minutes.)
+                val same = last?.let { old -> old.indices.all { old[it] === refs[it] || (it == 0 && old[it] == refs[it]) } } == true &&
                     excluded == lastExcluded
                 if (!same || now - lastAt > 10 * 60_000L) {
                     last = refs

@@ -138,7 +138,7 @@ fun SearchResults(
     val me = state.mine(p.id)
     val index = vm.index
     val q = query.trim()
-    val onNow by produceState<List<Pair<Channel, Program>>?>(null, q, epg, index, excluded, now) {
+    val onNow by produceState<List<Pair<Channel, Program>>?>(null, q, Same(epg), index, excluded, now) {
         value = withContext(Dispatchers.Default) {
             val channels = if (excluded.isEmpty()) index.live else index.live.filter { it.group !in excluded }
             searchGuide(channels, epg, q, now, limit = 30, onNowOnly = true)
