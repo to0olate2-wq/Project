@@ -397,7 +397,10 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `watchAlerts`' "nothing changed" test read `old == new && it == 0`: the value test ran first for every part, so
   each new TV guide (or index, favorites…) was compared item by item on the main thread every few seconds. Now
   identity first, value only for the playlist id. **Never compare the guide by value on the main thread:** Compose
-  keys use equals(), so keys holding the guide are `Same(epg)` (ui/Chrome.kt, identity).
+  keys use equals(), so keys holding the guide are `Same(epg)` (ui/Chrome.kt, identity). **And the report itself
+  was mostly wrong:** one sample "after 219 s" (not at 4 s) means the watch thread didn't run either: Android's
+  cached-apps freezer had paused the whole app in the background, and on waking the first main-thread job was
+  watchAlerts' 3 s timer. `FreezeWatch` now skips a round whose own sleep overran by > `PAUSED_MS` (3 s).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
