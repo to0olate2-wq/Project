@@ -207,6 +207,7 @@ fun SidebarFrame(
                     tools = !topMenu,
                     // Opened from the menu: the box takes the remote, ready to type in.
                     focusSearch = topMenu && cinemaSearchOpen,
+                    searchAsked = vm.searchAsked,
                 )
                 }
                 body(Modifier.fillMaxSize())
@@ -481,11 +482,13 @@ fun SidebarTopBar(
     tools: Boolean = true,
     /** The search box takes the focus when this turns true. */
     focusSearch: Boolean = false,
+    /** The search shortcut (8.40): a new number = take the cursor. */
+    searchAsked: Int = 0,
 ) {
     val tv = isTv()
     val searchFocus = remember { FocusRequester() }
-    LaunchedEffect(focusSearch) {
-        if (focusSearch) {
+    LaunchedEffect(focusSearch, searchAsked) {
+        if (focusSearch || searchAsked > 0) {
             delay(120)
             runCatching { searchFocus.requestFocus() }
         }

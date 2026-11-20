@@ -7,7 +7,24 @@ package app.falak.player.data
  * 8.38) gets a steady one from its id. The main profile's and the Kids profile's are in Settings.
  */
 object Avatars {
-    val KEYS = listOf("fox", "bear", "cat", "owl", "frog", "robot", "alien", "penguin", "bunny", "monster", "lion", "octopus", "ghost")
+    val KEYS = listOf(
+        "fox", "bear", "cat", "owl", "frog", "robot", "alien", "penguin", "bunny", "monster", "lion", "octopus", "ghost",
+        // 8.40: characters too (all made for the app).
+        "astronaut", "pirate", "wizard", "ninja", "viking", "chef", "dragon", "unicorn", "tiger", "koala", "shark", "dino",
+    )
+
+    /**
+     * Your own photo (8.40, phones): "photo:<file>" in [photoDir] (filesDir/avatars, set at start).
+     * The file stays on the phone it was picked on; other devices show the profile's cartoon.
+     */
+    const val PHOTO = "photo:"
+    @Volatile var photoDir: java.io.File? = null
+
+    fun photoFile(key: String): java.io.File? =
+        if (!key.startsWith(PHOTO)) null else photoDir?.let { java.io.File(it, key.removePrefix(PHOTO)) }?.takeIf { it.isFile }
+
+    /** One of ours, or a photo that is on this device. */
+    fun usable(key: String): Boolean = key in KEYS || photoFile(key) != null
 
     /** The Kids profile's picture when none was picked. */
     const val KIDS_DEFAULT = "octopus"
@@ -30,7 +47,7 @@ object Avatars {
         picked[""] = state.settings.mainAvatar
         state.profiles.forEach { picked[it.id] = it.avatar }
         picked[KIDS_PROFILE] = state.settings.kidsAvatar.ifBlank { KIDS_DEFAULT }
-        picked.forEach { (id, key) -> if (key in KEYS) out[id] = key }
+        picked.forEach { (id, key) -> if (usable(key)) out[id] = key }
         val used = out.values.toMutableSet()
         picked.keys.filter { it !in out }.forEach { id ->
             val start = KEYS.indexOf(of(id, ""))

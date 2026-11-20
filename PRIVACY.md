@@ -1,6 +1,6 @@
 # The Player: Privacy Policy
 
-_Last updated: 17 November 2026 (version 8.36)_
+_Last updated: 20 November 2026 (version 8.40)_
 
 The Player is a video player for Android phones, tablets and Android TV, made by Ahmed. It plays
 playlists that you add yourself. It does not come with any channels, films or other content.
@@ -49,6 +49,7 @@ The app keeps these in its private storage on your device:
   after the app is removed);
 - live channels that failed to play recently, so lists can hide them for a week (this device only);
 - where you put the small player, and this device's sound timing;
+- a photo you pick as a profile picture (a small square copy, kept on that device only);
 - answers from the public services below (actors, film lists, popular titles), kept for a few days
   so pages open quicker;
 - your OpenSubtitles API key, username and password, if you enter them;

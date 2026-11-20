@@ -427,6 +427,11 @@ class MainActivity : ComponentActivity() {
             vm.playFromAlert(alertPlaylist, alertChannel)
             return
         }
+        intent?.getStringExtra(app.falak.player.AppShortcuts.EXTRA)?.let { what ->
+            intent.removeExtra(app.falak.player.AppShortcuts.EXTRA)
+            vm.openShortcut(what)
+            return
+        }
         intent?.getStringExtra(app.falak.player.data.Notifier.EXTRA_OPEN)?.let { where ->
             repo.autoPlayChecked = true // opened for What's new: don't start a channel over it
             intent.removeExtra(app.falak.player.data.Notifier.EXTRA_OPEN)

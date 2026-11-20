@@ -1322,6 +1322,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * locked channel.
      */
     private fun maybeStartLastChannel(p: Playlist) {
+        // A long-press shortcut of the app's icon was waiting for the playlist (8.40).
+        if (shortcutWaiting != null && !choosingProfile) {
+            shortcutWaiting?.let { openShortcut(it) }
+            return
+        }
         if (repo.autoPlayChecked) return
         repo.autoPlayChecked = true
         // "Who's watching?" first: then that profile's last channel.
@@ -1506,9 +1511,49 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         group = null
         query = ""
         if (kids && screen in KIDS_LOCKED) screen = if (playlist != null) Screen.LIBRARY else Screen.PLAYLISTS
+        if (shortcutWaiting != null) {
+            lastChannelPending = false
+            shortcutWaiting?.let { openShortcut(it) }
+        }
         if (lastChannelPending) {
             lastChannelPending = false
             playlist?.let { startLastChannel(it) }
+        }
+    }
+
+    // ---- the app icon's shortcuts (8.40, phones: long-press the icon) ----
+
+    /** A shortcut that came before the playlist (or "Who's watching?") was ready. */
+    private var shortcutWaiting: String? = null
+
+    /** Counts the times the search box was asked for (the search shortcut): the box takes it. */
+    var searchAsked by mutableStateOf(0)
+
+    /** [app.falak.player.AppShortcuts]: "LIVE" (Live TV), "LAST" (the last channel), "SEARCH". */
+    fun openShortcut(what: String) {
+        repo.autoPlayChecked = true // the shortcut decides what opens, not "open the last channel"
+        val p = playlist
+        if (p == null || index.all.isEmpty() || choosingProfile) {
+            shortcutWaiting = what
+            return
+        }
+        shortcutWaiting = null
+        when (what) {
+            "LIVE" -> navigate(Section.LIVE.name)
+            "SEARCH" -> {
+                navigate("HOME")
+                searchAsked++
+            }
+            "LAST" -> {
+                val s = state.value
+                val ch = s.lastLive[s.mine(p.id)]?.let { index.byId[it] }
+                if (ch == null || ch.kind != Kind.LIVE || ch.group in currentExclusions()) {
+                    navigate(Section.LIVE.name)
+                } else {
+                    navigate("HOME")
+                    autoPlay = (index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch)) to ch
+                }
+            }
         }
     }
 

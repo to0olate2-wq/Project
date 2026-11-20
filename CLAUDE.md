@@ -401,6 +401,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   was mostly wrong:** one sample "after 219 s" (not at 4 s) means the watch thread didn't run either: Android's
   cached-apps freezer had paused the whole app in the background, and on waking the first main-thread job was
   watchAlerts' 3 s timer. `FreezeWatch` now skips a round whose own sleep overran by > `PAUSED_MS` (3 s).
+- **8.40 (the owner picked 10 "app shortcuts" of a list, plus "change profile picture… best cartoon or fictional
+  character or anything unique"):** known characters are someone's IP: never; instead 12 more originals (astronaut,
+  pirate, wizard, ninja, viking, chef, dragon, unicorn, tiger, koala, shark, dino; the script is the one of 8.38) and
+  **your own photo** (phones: `AvatarDialog` "Use a photo", PickVisualMedia → `saveAvatarPhoto`: EXIF turn, middle
+  square, 320 px JPEG in filesDir/avatars, key `photo:<file>`; `Avatars.usable/photoFile`, `photoDir` set by FalakApp;
+  the key syncs but the file doesn't: other devices show the cartoon). `AvatarImage` draws either. Hold a profile on
+  "Who's watching?" to change it (`ProfileCard(onLongClick)`). **App shortcuts** `AppShortcuts.kt` (phones only,
+  dynamic, set at start): Live TV / Last channel / Search → `EXTRA` → `vm.openShortcut` (waits in `shortcutWaiting`
+  for the playlist or "Who's watching?"; Search bumps `vm.searchAsked`, which focuses the top bar's box).
+  Icons `res/drawable/shortcut_*.xml`.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
