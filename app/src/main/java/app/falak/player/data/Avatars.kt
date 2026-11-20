@@ -26,12 +26,15 @@ object Avatars {
     /** One of ours, or a photo that is on this device. */
     fun usable(key: String): Boolean = key in KEYS || photoFile(key) != null
 
+    private const val FIRST = 13
+
     /** The Kids profile's picture when none was picked. */
     const val KIDS_DEFAULT = "octopus"
 
     /** [chosen] when it is one of ours, else a steady pick from [id]. */
     fun of(id: String, chosen: String): String =
-        chosen.takeIf { it in KEYS } ?: KEYS[Math.floorMod(("avatar:" + id).hashCode(), KEYS.size)]
+        // The steady pick counts only the first 13 (those of 8.38), so it stays the same as more are added.
+        chosen.takeIf { usable(it) } ?: KEYS[Math.floorMod(("avatar:" + id).hashCode(), FIRST)]
 
     /** A random one, not among [taken] while any is left. */
     fun random(taken: Collection<String>, rnd: kotlin.random.Random = kotlin.random.Random.Default): String =
