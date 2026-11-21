@@ -116,6 +116,8 @@ object SyncMerge {
         "appLook",
         // 8.27: each device has its own welcome, guide and update notes.
         "seenVersion", "tourDue",
+        // 8.42: "Still watching?" (a bedroom TV may ask sooner than the phone).
+        "stillWatchingHours",
     )
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }

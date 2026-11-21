@@ -452,19 +452,29 @@ class Repository(private val context: Context) {
 
     fun imdbRating(imdb: String, type: String): String? {
         imdbRatings[imdb]?.let { return it.ifEmpty { null } }
-        if (PeopleClient.testing) return null
-        val url = "https://v3-cinemeta.strem.io/meta/" + (if (type == "series") "series" else "movie") + "/$imdb.json"
-        val r = try {
-            http.newCall(okhttp3.Request.Builder().url(url).header("User-Agent", "ThePlayer").build()).execute().use { r ->
-                if (!r.isSuccessful) return null
-                Addons.parseMeta(r.body?.string().orEmpty())?.rating.orEmpty()
-            }
-        } catch (e: Exception) {
-            return null
-        }
+        val r = imdbMeta(imdb, type)?.rating ?: return null
         val clean = r.trim().takeIf { it.toDoubleOrNull()?.let { v -> v > 0 } == true }.orEmpty()
         imdbRatings[imdb] = clean
         return clean.ifEmpty { null }
+    }
+
+    private val imdbMetas = java.util.concurrent.ConcurrentHashMap<String, AddonMeta>()
+
+    /** Cinemeta's page of a title by its IMDb number (rating, cast…), for this session; null when it can't be had. Network. */
+    fun imdbMeta(imdb: String, type: String): AddonMeta? {
+        imdbMetas[imdb]?.let { return it }
+        if (PeopleClient.testing) return null
+        val url = "https://v3-cinemeta.strem.io/meta/" + (if (type == "series") "series" else "movie") + "/$imdb.json"
+        val meta = try {
+            http.newCall(okhttp3.Request.Builder().url(url).header("User-Agent", "ThePlayer").build()).execute().use { r ->
+                if (!r.isSuccessful) return null
+                Addons.parseMeta(r.body?.string().orEmpty())
+            }
+        } catch (e: Exception) {
+            return null
+        } ?: return null
+        imdbMetas[imdb] = meta
+        return meta
     }
 
     /** "movie|The Matrix|1999" → its IMDb number, or "" when none is sure (this session; see TitleMatch). */
@@ -586,6 +596,9 @@ class Repository(private val context: Context) {
 
     /** What's on the TV for the phone remote: name and a second line (null when nothing plays). */
     @Volatile var nowPlaying: Pair<String, String>? = null
+
+    /** What the player plays now and where (8.42: a linked phone's second screen asks); null when it's closed. */
+    @Volatile var handNow: NowState? = null
 
     fun addRemote(hash: String, label: String) = update(stamp = false) { s ->
         val now = System.currentTimeMillis()

@@ -336,6 +336,11 @@ data class Settings(
     val bigBuffer: Boolean = false,
     /** Interlaced (1080i) live channels smoothed (8.35): they play with VLC, which deinterlaces. This device's. */
     val deinterlace: Boolean = false,
+    /**
+     * "Still watching?" (8.42): after this many hours with no key or touch the player asks, and stops after
+     * a minute without an answer (a live channel lets go of its connection). 0 = never. This device's.
+     */
+    val stillWatchingHours: Int = 3,
     /** Decode all audio in software (FFmpeg). Fixes silent Dolby/DTS on boxes whose HDMI passthrough fails. */
     val softwareAudio: Boolean = false,
     val preferHls: Boolean = false,

@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -755,6 +756,9 @@ fun ContinueRow(
     onOpen: (Channel) -> Unit,
 ) {
     val tv = isTv()
+    // "What can I finish?" (8.42): the row's last card, once there are two films or episodes to choose from.
+    var finishOpen by remember { mutableStateOf(false) }
+    val canFinish = items.count { it.kind != Kind.LIVE } >= 2
     val scroller = LocalHomeScroller.current
     val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
     Column(Modifier.fillMaxWidth().pinToTop().padding(top = 6.dp)) {
@@ -771,9 +775,107 @@ fun ContinueRow(
                 items(items, key = { "cw:" + it.id }) { ch ->
                     ContinueCard(ch, art[ch.id], progress[progressKey(playlistId, ch.id)], width ?: if (tv) 320.dp else 270.dp) { onOpen(ch) }
                 }
+                if (canFinish) {
+                    item(key = "cw:finish") { FinishCard(width ?: if (tv) 320.dp else 270.dp) { finishOpen = true } }
+                }
             }
         }
     }
+    if (finishOpen) {
+        FinishDialog(items, progress, playlistId, onDismiss = { finishOpen = false }) { ch ->
+            finishOpen = false
+            onOpen(ch)
+        }
+    }
+}
+
+
+/** The card that asks "What can I finish?" (as tall as the row's cards, a little narrower). */
+@Composable
+private fun FinishCard(width: Dp, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    val row = LocalRow.current
+    Box(
+        Modifier
+            .width(width * 0.62f)
+            .height(width * 9f / 16f)
+            .comeBackHere(row, "cw:finish")
+            .cardFocus(shape)
+            .clip(shape)
+            .background(Ink3)
+            .border(1.dp, Color(0x1FFFFFFF), shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(painterResource(R.drawable.ic_pl_hop), contentDescription = null, tint = Signal, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(10.dp))
+            Text("What can I finish?", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 2)
+            Text("In the time you have", fontFamily = Sans, fontSize = 12.sp, color = Muted, maxLines = 1)
+        }
+    }
+}
+
+/** Pick the time you have; what you started that ends within it, and when it would end. */
+@Composable
+private fun FinishDialog(items: List<Channel>, progress: Map<String, Watch>, playlistId: String, onDismiss: () -> Unit, onOpen: (Channel) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var minutes by remember { mutableStateOf(60) }
+    val byId = remember(items) { items.associateBy { it.id } }
+    val picks = remember(progress, playlistId, minutes, byId) {
+        app.falak.player.data.Finish.fits(progress, playlistId, minutes).mapNotNull { p -> byId[p.id]?.let { it to p } }
+    }
+    val clock = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
+    val now = remember(minutes) { System.currentTimeMillis() }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("What can I finish?") },
+        text = {
+            Column {
+                Text("I have", fontFamily = Sans, fontSize = 13.sp, color = Muted)
+                Spacer(Modifier.height(6.dp))
+                ChipFlow {
+                    app.falak.player.data.Finish.CHOICES.forEach { m ->
+                        TagChip(if (m < 60) "$m min" else if (m % 60 == 0) "${m / 60} h" else "${m / 60}½ h", minutes == m) { minutes = m }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                if (picks.isEmpty()) {
+                    Text(
+                        "Nothing you started ends in that time. Films not started yet aren't counted: your provider gives their length only once they play.",
+                        fontFamily = Sans,
+                        fontSize = 14.sp,
+                        color = Muted,
+                    )
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 340.dp)) {
+                        items(picks, key = { it.first.id }) { (ch, p) ->
+                            val ends = clock.format(java.util.Date(now + p.leftMs))
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .cardFocus(RoundedCornerShape(10.dp))
+                                    .clickable { onOpen(ch) }
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                            ) {
+                                Text(ch.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    (if (p.guessed) "Next episode · about " else "") + app.falak.player.data.Finish.length(p.leftMs) +
+                                        (if (p.guessed) "" else " left") + " · ends at $ends",
+                                    fontFamily = Sans,
+                                    fontSize = 13.sp,
+                                    color = Muted,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable

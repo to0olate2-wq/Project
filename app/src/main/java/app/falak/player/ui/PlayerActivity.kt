@@ -108,12 +108,17 @@ import app.falak.player.data.SubtitleResult
 import app.falak.player.data.Repository
 import app.falak.player.data.progressKey
 import app.falak.player.repo
+import app.falak.player.autoSync
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INDEX = "index"
+        /** The half-time hop's button (8.42). */
+        private const val HOP_LABEL = "Back in…"
+        /** "Still watching?": seconds to answer before it stops. */
+        private const val STILL_ANSWER_S = 60
         private const val SEEK_STEP_MS = 10_000L
         /** Pictures at once, the main one included (8.33). */
         private const val MAX_SCREENS = 4
@@ -157,6 +162,10 @@ class PlayerActivity : ComponentActivity() {
     /** The star before the name at the top of the controls: Favorites. */
     private lateinit var favButton: TextView
     private lateinit var homeButton: TextView
+    /** Half-time hop (8.42): "Back in 15", then the time left; live channels only. */
+    private lateinit var hopButton: TextView
+    /** Hand-off (8.42): "On TV" on a phone, "On phone" on a TV, when a linked device is near. */
+    private lateinit var handoffButton: TextView
     // 8.28: the screen lock (phones), Chromecast (phones).
     private lateinit var lockButton: TextView
     private lateinit var castButton: TextView
@@ -611,6 +620,10 @@ class PlayerActivity : ComponentActivity() {
             visibility = if (cast != null) View.VISIBLE else View.GONE
         }
         tracksButton = pill("Audio and subtitles", R.drawable.ic_pl_subtitles) { showTracksPanel() }.apply { visibility = View.GONE }
+        // 8.42: zap away and be brought back (a break in a match), and play this on the other device.
+        hopButton = pill(HOP_LABEL, R.drawable.ic_pl_hop) { hopClicked() }.apply { visibility = View.GONE }
+        handoffButton = pill(if (tvLayout) "On phone" else "On TV", if (tvLayout) R.drawable.ic_pl_phone else R.drawable.ic_pl_tv) { handoffClicked() }
+            .apply { visibility = View.GONE }
         aspectButton = pill("Picture size  ·  " + aspectNames[aspect], R.drawable.ic_pl_fit) { cycleAspect() }
         engineButton = pill("Player", R.drawable.ic_pl_player) { showEngineDialog() }
         // Films and episodes only (live TV always plays at normal speed).
@@ -995,6 +1008,11 @@ class PlayerActivity : ComponentActivity() {
         cast?.let { c -> runCatching { c.sessionManager.removeSessionManagerListener(castListener, com.google.android.gms.cast.framework.CastSession::class.java) } }
         if (!listening && !inPip && !screenOn()) startListening()
         repo.nowPlaying = null
+        repo.handNow = null
+        // A hop and "Still watching?" end with the player.
+        hop = null
+        stillDialog?.let { d -> runCatching { d.dismiss() } }
+        stillDialog = null
         prayerJob?.cancel()
         alertJob?.cancel()
         // Two-screen mode ends when the player leaves the screen.
@@ -1423,6 +1441,8 @@ class PlayerActivity : ComponentActivity() {
         stalls.clear()
         failedUrl = null
         twoButton.visibility = if (ch.kind == Kind.LIVE && !ch.id.startsWith("cu:") && dual == null) View.VISIBLE else View.GONE
+        updateHopButton()
+        updateHandoffButton()
         // A replay of our own "From the start" keeps the way back to live; anything else forgets it.
         if (!ch.id.startsWith("cu:")) liveBeforeStartOver = null
         updateShiftViews()
@@ -2969,27 +2989,27 @@ class PlayerActivity : ComponentActivity() {
         tag = label
         contentDescription = label
         text = label
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 14f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 13f)
         typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
         setTextColor(contentColors())
         setSingleLine()
         includeFontPadding = false
         gravity = Gravity.CENTER
-        val size = dp(if (tvLayout) 20 else 18)
+        val size = dp(if (tvLayout) 20 else 17)
         ResourcesCompat.getDrawable(resources, icon, theme)?.mutate()?.let {
             it.setBounds(0, 0, size, size)
             setCompoundDrawablesRelative(it, null, null, null)
         }
         // An icon-only button (Settings) is a neat circle-ish pill with even sides.
-        compoundDrawablePadding = if (label.isEmpty()) 0 else dp(8)
+        compoundDrawablePadding = if (label.isEmpty()) 0 else dp(if (tvLayout) 8 else 6)
         compoundDrawableTintList = contentColors()
         background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
         if (label.isEmpty()) {
-            // As wide as it is tall (48 dp on phones, 44 on TV).
-            val side = dp(if (tvLayout) 12 else 15)
+            // As wide as it is tall (44 dp on TV; phones' icons sit in the top group, 40 dp).
+            val side = dp(if (tvLayout) 12 else 11)
             setPadding(side, 0, side, 0)
         } else {
-            setPadding(dp(if (tvLayout) 18 else 14), 0, dp(if (tvLayout) 20 else 16), 0)
+            setPadding(dp(if (tvLayout) 18 else 12), 0, dp(if (tvLayout) 20 else 14), 0)
         }
         isFocusable = true
         isClickable = true
@@ -3011,15 +3031,15 @@ class PlayerActivity : ComponentActivity() {
 
     /** The buttons used while watching, with their names (each shows only when it applies). */
     private fun pills(): List<TextView> =
-        listOf(liveButton, browseButton, recordButton, twoButton, tracksButton, speedButton)
+        listOf(liveButton, browseButton, tracksButton, recordButton, twoButton, hopButton, speedButton, handoffButton)
 
     /** The ones set once: icons (phones at the top right, TV at the end of the row). */
     private fun settingIcons(): List<TextView> = listOf(aspectButton, sleepButton, engineButton)
 
     private fun pillParams() =
-        // Phones: 48 dp, the size a finger needs.
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 48))
-            .apply { setMargins(dp(6), 0, dp(6), 0) }
+        // Phones (8.42): 40 dp tall, tighter, so the row reads as one bar (still a finger's size across).
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(if (tvLayout) 44 else 40))
+            .apply { setMargins(dp(if (tvLayout) 6 else 4), 0, dp(if (tvLayout) 6 else 4), 0) }
 
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
@@ -3050,10 +3070,10 @@ class PlayerActivity : ComponentActivity() {
             }
             if (b.text?.toString() == text) continue
             b.text = text
-            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
-            // Icon only: 48 dp across on phones (44 on TV), as wide as it is tall.
-            val side = if (text.isEmpty()) dp(if (tvLayout) 12 else 15) else dp(if (tvLayout) 18 else 14)
-            b.setPadding(side, 0, if (text.isEmpty()) side else dp(if (tvLayout) 20 else 16), 0)
+            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(if (tvLayout) 8 else 6)
+            // Icon only: 40 dp across on phones (44 on TV), as wide as it is tall.
+            val side = if (text.isEmpty()) dp(if (tvLayout) 12 else 11) else dp(if (tvLayout) 18 else 12)
+            b.setPadding(side, 0, if (text.isEmpty()) side else dp(if (tvLayout) 20 else 14), 0)
         }
         if (tvLayout) fitTvPills()
     }
@@ -3071,7 +3091,7 @@ class PlayerActivity : ComponentActivity() {
         for (b in pills()) {
             if (b.visibility != View.VISIBLE) continue
             val label = b.tag as? String ?: ""
-            need += dp(12) + dp(14) + dp(16) + dp(18) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
+            need += dp(8) + dp(12) + dp(14) + dp(17) + (if (label.isEmpty()) 0 else dp(6) + b.paint.measureText(label).toInt())
         }
         val compact = need > avail
         if (compact == compactPills) return
@@ -3079,16 +3099,18 @@ class PlayerActivity : ComponentActivity() {
         for (b in pills()) {
             val label = b.tag as? String ?: ""
             b.text = if (compact) "" else label
-            b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(8)
-            // Icon only: 48 dp across, as tall as it is wide.
-            if (compact) b.setPadding(dp(15), 0, dp(15), 0) else b.setPadding(dp(14), 0, dp(16), 0)
+            b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(6)
+            // Icon only: 40 dp across, as tall as it is wide.
+            if (compact) b.setPadding(dp(11), 0, dp(11), 0) else b.setPadding(dp(12), 0, dp(14), 0)
         }
     }
 
     /** TV: the row doesn't fit across (live TV has the most buttons): these show their icon only, until the remote is on them. */
     private var tvCompact = false
 
-    private fun tvShortPills(): List<TextView> = listOf(twoButton)
+    // (8.42: with the hop and hand-off, these show their names only when the row has room or on focus;
+    // a hop counting down keeps its time showing.)
+    private fun tvShortPills(): List<TextView> = listOfNotNull(twoButton, handoffButton, hopButton.takeIf { hop == null })
 
     private fun fitTvPills() {
         if (!::toolbar.isInitialized || !::sleepButton.isInitialized) return
@@ -3130,19 +3152,41 @@ class PlayerActivity : ComponentActivity() {
         clipToPadding = false
         clipChildren = false
         if (!tvLayout) addView(homeButton, pillParams())
-        addView(favButton, pillParams())
+        // TV: the star first (the remote starts on the left); phones: after the name, as a plain star.
+        if (tvLayout) addView(favButton, pillParams())
         titleView = TextView(this@PlayerActivity).apply {
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 18f else 16f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 18f else 15f)
             typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
-            setSingleLine()
+            // The name, and under it what's on now (two lines at most).
+            maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
+            setLineSpacing(0f, 1.05f)
             setShadowLayer(dp(4).toFloat(), 0f, 0f, 0x99000000.toInt())
-            setPadding(dp(6), 0, dp(6), 0)
+            setPadding(dp(if (tvLayout) 6 else 10), 0, dp(6), 0)
         }
         addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (!tvLayout) addView(castButton, pillParams())
-        if (!tvLayout) for (b in settingIcons()) addView(b, pillParams())
+        if (!tvLayout) {
+            favButton.background = focusBackground(oval = true)
+            addView(favButton, pillParams())
+            // Phones (8.42): the tools set once (Cast, Picture size, Sleep, Lock, Player) in one
+            // rounded group at the top right, not loose buttons around the screen.
+            val group = LinearLayout(this@PlayerActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(100).toFloat()
+                    setColor(0x33FFFFFF)
+                    setStroke(dp(1), 0x1FFFFFFF)
+                }
+                setPadding(dp(3), 0, dp(3), 0)
+                for (b in listOf(castButton) + settingIcons().take(2) + listOf(lockButton) + settingIcons().drop(2)) {
+                    b.background = focusBackground(oval = true)
+                    addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+                }
+            }
+            addView(group, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginStart = dp(8) })
+        }
     }
 
     private fun updateTopBar() {
@@ -3151,11 +3195,15 @@ class PlayerActivity : ComponentActivity() {
         val text = SpannableStringBuilder()
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         if (ch.kind == Kind.LIVE) {
-            Epg.current(repo.epg.value[ch.epgKey], System.currentTimeMillis())?.let { now ->
-                text.append("   ")
+            val nowMs = System.currentTimeMillis()
+            Epg.current(repo.epg.value[ch.epgKey], nowMs)?.let { now ->
+                // 8.42: on its own line under the name, smaller, with the time left.
+                text.append("\n")
                 val start = text.length
-                text.append(now.title)
+                val left = ((now.stop - nowMs) / 60_000).coerceAtLeast(0)
+                text.append(now.title + if (left > 0) "  ·  $left min left" else "")
                 text.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                text.setSpan(android.text.style.RelativeSizeSpan(0.82f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
         titleView.text = text
@@ -3195,13 +3243,7 @@ class PlayerActivity : ComponentActivity() {
                     .apply { bottomMargin = -pad },
             )
             controls.addView(topBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
-            // Phones: the lock at the left edge, half way down (where a thumb is).
-            if (!tvLayout) {
-                controls.addView(
-                    lockButton,
-                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48), Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = dp(18) },
-                )
-            }
+            // (Phones: the lock is in the top group since 8.42; it was alone at the left edge.)
             playerView.setControllerVisibilityListener(
                 PlayerView.ControllerVisibilityListener { visibility -> if (visibility == View.VISIBLE) onControlsShown() },
             )
@@ -3832,6 +3874,9 @@ class PlayerActivity : ComponentActivity() {
             if (shown != null && ::bannerView.isInitialized && bannerView.visibility == View.VISIBLE) renderBanner(shown)
             seriesTick()
             sleepTick()
+            hopTick()
+            stillTick()
+            linkTick()
             serviceTick()
             kidsTick()
             ambientTick()
@@ -4407,6 +4452,8 @@ class PlayerActivity : ComponentActivity() {
             playerView.useController = false
             bannerView.visibility = View.GONE
             twoButton.visibility = View.GONE
+            updateHopButton()
+            updateHandoffButton()
         }
         d.play(list, at)
         dualChanged()
@@ -4450,6 +4497,8 @@ class PlayerActivity : ComponentActivity() {
         } else {
             queue.getOrNull(index)?.let {
                 twoButton.visibility = if (it.kind == Kind.LIVE && !it.id.startsWith("cu:")) View.VISIBLE else View.GONE
+                updateHopButton()
+                updateHandoffButton()
                 showBanner(it)
             }
         }
@@ -4980,6 +5029,254 @@ class PlayerActivity : ComponentActivity() {
         finish()
     }
 
+    // ---- half-time hop (8.42) ----
+
+    /** Zapped away for a while: back to [id] (the [at]th of [list]) at [until] (wall clock). */
+    private class Hop(val list: List<Channel>, val at: Int, val id: String, val name: String, val until: Long)
+
+    private var hop: Hop? = null
+
+    private fun updateHopButton() {
+        if (!::hopButton.isInitialized) return
+        val ch = queue.getOrNull(index)
+        val live = ch != null && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+        val h = hop
+        val v = if (h != null || (live && dual == null && !inPip)) View.VISIBLE else View.GONE
+        val changed = hopButton.visibility != v
+        hopButton.visibility = v
+        val label = if (h == null) {
+            HOP_LABEL
+        } else {
+            val left = ((h.until - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
+            "Back in " + if (left >= 60) "${(left + 59) / 60} min" else "$left s"
+        }
+        if (hopButton.tag != label) setPillLabel(hopButton, label)
+        if (changed && ::sleepButton.isInitialized) {
+            if (tvLayout) fitTvPills() else fitPills()
+        }
+    }
+
+    private fun hopClicked() {
+        val h = hop
+        if (h != null) {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Back to ${h.name} at ${time(h.until)}")
+                .setItems(arrayOf("Go back now", "Stay here (cancel)")) { d, which ->
+                    d.dismiss()
+                    if (which == 0) hopBack() else hop = null
+                    updateHopButton()
+                }
+                .setNegativeButton("Close", null)
+                .show()
+            return
+        }
+        val ch = queue.getOrNull(index) ?: return
+        val wall = System.currentTimeMillis()
+        val choices = ArrayList<Pair<String, Long>>()
+        for (m in listOf(5, 10, 15, 20)) choices += "In $m minutes" to wall + m * 60_000L
+        // The guide: when this channel's next programme starts (the match after the studio talk).
+        val progs = repo.epg.value[ch.epgKey]
+        val nextStart = progs?.firstOrNull { wall >= it.start && wall < it.stop }?.stop ?: progs?.firstOrNull { it.start > wall }?.start
+        val next = progs?.firstOrNull { it.start == nextStart }
+        if (nextStart != null && nextStart - wall in 60_000L..4 * 3_600_000L) {
+            choices += (if (next != null) "When “${next.title}” starts (${time(nextStart)})" else "When the next programme starts (${time(nextStart)})") to nextStart
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Watch something else, then back to ${ch.name}")
+            .setItems(choices.map { it.first }.toTypedArray()) { d, which ->
+                d.dismiss()
+                val until = choices[which].second
+                hop = Hop(queue, index, ch.id, ch.name, until)
+                updateHopButton()
+                Toast.makeText(this, "Back to ${ch.name} at ${time(until)}. Change channel as you like.", Toast.LENGTH_LONG).show()
+                openBrowser()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Once a second: the time left on the button, and back when it's time. */
+    private fun hopTick() {
+        val h = hop ?: return
+        if (System.currentTimeMillis() >= h.until) hopBack() else updateHopButton()
+    }
+
+    private fun hopBack() {
+        val h = hop ?: return
+        hop = null
+        updateHopButton()
+        // Already there, stopped by the sleep timer or "Still watching?": nothing to do.
+        if (queue.getOrNull(index)?.id == h.id || sleptByTimer || h.at !in h.list.indices) return
+        saveProgress()
+        rememberPrevious()
+        queue = h.list
+        repo.playQueue = h.list
+        index = h.at
+        retried = false
+        resumePositionMs = C.TIME_UNSET
+        playCurrent(showInfo = true)
+        Toast.makeText(this, "Back to ${h.name}", Toast.LENGTH_SHORT).show()
+    }
+
+    // ---- hand-off and the second screen (8.42) ----
+
+    /** What plays here, as a linked device would play it (null for what only this device can open). */
+    private fun handItem(): app.falak.player.data.HandItem? {
+        val ch = queue.getOrNull(index) ?: return null
+        val pl = repo.currentPlaylist ?: return null
+        if (!app.falak.player.data.Handoff.canHand(ch, pl.isPortal)) return null
+        val p = player
+        val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+        val state = repo.state.value
+        val seriesId = repo.currentSeries?.seriesId?.takeIf { ch.kind == Kind.SERIES }
+            ?: state.progress[progressKey(state.mine(pl.id), ch.id)]?.seriesId.orEmpty()
+        return app.falak.player.data.HandItem(
+            playlist = app.falak.player.data.SyncMerge.syncId(state, pl.id),
+            channel = ch,
+            pos = if (live) 0 else p?.currentPosition?.coerceAtLeast(0) ?: 0,
+            dur = if (live) 0 else p?.duration?.takeIf { it > 0 } ?: 0,
+            seriesId = seriesId,
+        )
+    }
+
+    private fun updateHandoffButton() {
+        if (!::handoffButton.isInitialized) return
+        val sync = autoSync
+        val ch = queue.getOrNull(index)
+        val show = ch != null && dual == null && castingTo == null && !inPip && sync.runningKey != null && sync.anyNearby &&
+            app.falak.player.data.Handoff.canHand(ch, repo.currentPlaylist?.isPortal == true)
+        val v = if (show) View.VISIBLE else View.GONE
+        if (handoffButton.visibility != v) {
+            handoffButton.visibility = v
+            if (tvLayout) fitTvPills() else fitPills()
+        }
+    }
+
+    private fun handoffClicked() {
+        val devices = autoSync.nearby()
+        when (devices.size) {
+            0 -> toast("No linked device found on this Wi-Fi. Open The Player on it and try again.")
+            1 -> handTo(devices[0].first, devices[0].second)
+            else -> android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Play this on")
+                .setItems(devices.map { it.first }.toTypedArray()) { d, which ->
+                    d.dismiss()
+                    handTo(devices[which].first, devices[which].second)
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    /** Sends what plays to [name]; once it plays there, it stops here. */
+    private fun handTo(name: String, address: String) {
+        val item = handItem() ?: return toast("This can't play on another device")
+        saveProgress()
+        Toast.makeText(this, "Sending to $name…", Toast.LENGTH_SHORT).show()
+        val sync = autoSync
+        Thread({
+            val answer = sync.ask(address, app.falak.player.data.LinkAsk("play", System.currentTimeMillis(), item = item))
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (answer.ok) {
+                    Toast.makeText(this, "Playing on $name", Toast.LENGTH_SHORT).show()
+                    FreezeWatch.note("handed to another device")
+                    finish()
+                } else {
+                    toast("$name: ${answer.message}")
+                }
+            }
+        }, "handoff").start()
+    }
+
+    /** Once a second: what plays, for a linked phone's second screen; the hand-off button. */
+    private fun linkTick() {
+        updateHandoffButton()
+        val item = handItem()
+        if (item == null) {
+            repo.handNow = null
+            return
+        }
+        val ch = item.channel
+        val wall = System.currentTimeMillis()
+        val progs = if (ch.kind == Kind.LIVE) repo.epg.value[ch.epgKey] else null
+        val now = progs?.firstOrNull { wall >= it.start && wall < it.stop }
+        val next = progs?.firstOrNull { it.start >= (now?.stop ?: wall) }
+        repo.handNow = app.falak.player.data.NowState(
+            item = item,
+            playing = player?.playWhenReady == true && !sleptByTimer,
+            now = now?.let { app.falak.player.data.HandProgram(it.start, it.stop, it.title, it.desc.take(600)) },
+            next = next?.let { app.falak.player.data.HandProgram(it.start, it.stop, it.title, it.desc.take(300)) },
+        )
+    }
+
+    // ---- still watching? (8.42) ----
+
+    /** The last key or touch (elapsed time). */
+    private var lastTouchMs = android.os.SystemClock.elapsedRealtime()
+    private var stillDialog: android.app.AlertDialog? = null
+    private var stillLeft = 0
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastTouchMs = android.os.SystemClock.elapsedRealtime()
+    }
+
+    /** Once a second: hours without a key or touch → ask; a minute without an answer → stop. */
+    private fun stillTick() {
+        val d = stillDialog
+        if (d != null) {
+            stillLeft--
+            if (stillLeft <= 0) {
+                stillDialog = null
+                runCatching { d.dismiss() }
+                stillStop()
+            } else {
+                d.setMessage(stillText())
+            }
+            return
+        }
+        val hours = repo.state.value.settings.stillWatchingHours
+        val now = android.os.SystemClock.elapsedRealtime()
+        // Paused, stopped or sent to a Chromecast: nothing is used up here; the count starts again.
+        if (hours <= 0 || sleptByTimer || castingTo != null || inPip || player?.playWhenReady != true) {
+            lastTouchMs = now
+            return
+        }
+        if (now - lastTouchMs < hours * 3_600_000L) return
+        showStillDialog()
+    }
+
+    private fun showStillDialog() {
+        stillLeft = STILL_ANSWER_S
+        stillDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Still watching?")
+            .setMessage(stillText())
+            .setPositiveButton("Keep watching") { _, _ ->
+                stillDialog = null
+                lastTouchMs = android.os.SystemClock.elapsedRealtime()
+            }
+            .setNegativeButton("Stop") { _, _ ->
+                stillDialog = null
+                stillStop()
+            }
+            .setOnCancelListener {
+                // Back: as Keep watching (someone is there).
+                stillDialog = null
+                lastTouchMs = android.os.SystemClock.elapsedRealtime()
+            }
+            .show()
+    }
+
+    private fun stillText() = "Nothing pressed for a while. It stops in $stillLeft s to save your data and your provider's connection."
+
+    private fun stillStop() {
+        FreezeWatch.note("still watching: no answer, stopped")
+        if (dual != null) endDual(keep = 0, replay = false)
+        stopForNow("Stopped: nobody seemed to be watching\n${if (tvLayout) "OK" else "Play"} carries on")
+        lastTouchMs = android.os.SystemClock.elapsedRealtime()
+    }
+
     // ---- sleep timer ----
 
     /** Stopped by the sleep timer: the message is up and OK carries on. */
@@ -5067,6 +5364,11 @@ class PlayerActivity : ComponentActivity() {
     private fun sleepStop() {
         SleepTimer.cancel()
         FreezeWatch.note("sleep timer stopped playback")
+        stopForNow("Stopped by the sleep timer\n${if (tvLayout) "OK" else "Play"} carries on")
+    }
+
+    /** What plays stops (a live channel lets go of its connection), [message] shows, and OK carries on. */
+    private fun stopForNow(message: String) {
         saveProgress()
         val ch = queue.getOrNull(index)
         val p = player
@@ -5081,7 +5383,7 @@ class PlayerActivity : ComponentActivity() {
         sleptByTimer = true
         playerView.keepScreenOn = false
         playerView.hideController()
-        showMessage("Stopped by the sleep timer\n${if (tvLayout) "OK" else "Play"} carries on")
+        showMessage(message)
         updateSleepButton()
     }
 
@@ -5803,6 +6105,24 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /** Screen tests: the lock and the stream info window, as if pressed. */
+    /** Screen tests (8.42): the hand-off button as if a linked TV were near, and a hop 12 minutes from its end. */
+    internal fun previewHop(): Pair<String, String> {
+        val ch = queue.getOrNull(index) ?: return "" to ""
+        handoffButton.visibility = View.VISIBLE
+        hop = Hop(queue, index, ch.id, ch.name, System.currentTimeMillis() + 12 * 60_000L - 1_000)
+        updateHopButton()
+        if (tvLayout) fitTvPills() else fitPills()
+        playerView.showController()
+        return (hopButton.tag as? String).orEmpty() to (handoffButton.tag as? String).orEmpty()
+    }
+
+    /** Screen tests: "Still watching?" as it asks. */
+    internal fun askStillWatchingForTest(): Boolean {
+        playerView.hideController()
+        showStillDialog()
+        return stillDialog != null
+    }
+
     internal fun lockForTest(): Boolean {
         lockScreen()
         return locked && lockShield != null

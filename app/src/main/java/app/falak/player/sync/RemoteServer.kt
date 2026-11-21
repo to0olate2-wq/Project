@@ -37,6 +37,9 @@ interface RemoteHandler {
     fun openSeries(ch: Channel)
     fun search(text: String)
     fun home()
+
+    /** Play what a linked device handed over (8.42), from where it was there. */
+    fun handOff(playlistId: String, item: app.falak.player.data.HandItem) {}
 }
 
 /** Where the phone remote reaches the app (set by the activities as they come and go). */
@@ -291,19 +294,6 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
         sendJson(out, 200, buildJsonObject { put("message", if (ch.isSeriesFolder) "Opening on the TV" else "Playing on the TV") }.toString())
     }
 
-    /** A key on the TV, as if pressed on its remote. */
-    private fun pressKey(code: Int) {
-        try {
-            Instrumentation().sendKeyDownUpSync(code)
-        } catch (e: Exception) {
-            // Not allowed here (a system window on top?): hand it to the app's own screen.
-            val a = RemoteBridge.activity?.get() ?: return
-            a.runOnUiThread {
-                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
-            }
-        }
-    }
 
     private fun main(block: () -> Unit) {
         android.os.Handler(android.os.Looper.getMainLooper()).post(block)
@@ -339,6 +329,23 @@ class RemoteServer(private val context: Context, private val repo: Repository) {
         private const val COOKIE = "tpr"
         private const val MAX_WRONG = 10
         private const val MAX_ITEMS = 150
+        /** A key on the TV, as if pressed on its remote (not on the main thread). */
+        fun pressKey(code: Int) {
+            try {
+                Instrumentation().sendKeyDownUpSync(code)
+            } catch (e: Exception) {
+                // Not allowed here (a system window on top?): hand it to the app's own screen.
+                val a = RemoteBridge.activity?.get() ?: return
+                a.runOnUiThread {
+                    a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                    a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+                }
+            }
+        }
+
+        /** The keys by name (the phone remote's page and the second screen, 8.42). */
+        val KEY_CODES: Map<String, Int> get() = KEYS
+
         private val KEYS = mapOf(
             "up" to KeyEvent.KEYCODE_DPAD_UP,
             "down" to KeyEvent.KEYCODE_DPAD_DOWN,
