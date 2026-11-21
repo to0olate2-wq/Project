@@ -445,6 +445,19 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   from the series' watched episodes; films not started have no length (said in the dialog).
   Tests: `HandoffScreens.kt` (`previewHop`, `askStillWatchingForTest`, `SecondScreenTest`). A Home screen test that opened the finish dialog by a
   test flag never saw ContinueRow compose (unexplained, 4 CI runs): the dialog has no picture test.
+- **8.43 (the owner sent another app's picture, "Peek before you jump in", for the TV; phones unchanged):**
+  **TV Live TV as a list** (`peek` in LibraryScreen: Live, TV, ≥720 dp, nothing searched, not grid) =
+  `LivePeekHead` (LivePreview.kt, 170 dp: number + name, clock, programme, On now time + left, Up next, story; the
+  picture on the right playing after `PREVIEW_DWELL_MS`) + `PeekBar` (the group · count → `GroupFinderDialog`;
+  List | Grid | Guide; `SortMenu`; Search → `cinemaSearchOpen`) + `ChannelList(peek = true)` → `PeekRow` (40 dp:
+  number, logo, name + quality badge, now + progress, next; under the remote white with "Full screen"; ☆ for
+  favorites). No group column, chips or `YourChannels` there (the 8.20/8.21 front page rows still have them);
+  search results keep the old list + `LivePreviewPane`. Test: `peekFocusedForTest`. **Player buttons are icons
+  only** (`applyIconLabels`: a TV shows the name of the focused one; Sleep and "Back in…" show their time left;
+  names are read out). **New icons** (our own line style, 24 vp, 1.8 stroke, round): `ic_pl_*`, `ic_nav_*`
+  (incl. new home/favorites/search/guide), `ic_pl_live` (Back to live), and Media3's middle buttons overridden by
+  name (`exo_styled_controls_play/pause/next/previous/rewind/fastforward`, Media3 1.5.1's names). Made by a
+  script (kept in the 8.43 chat): keep new icons in the same style.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

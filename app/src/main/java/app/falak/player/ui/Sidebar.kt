@@ -400,11 +400,11 @@ private fun RailIcon(
 
 @Composable
 internal fun navIcon(s: Section): Painter = when (s) {
-    Section.HOME -> rememberVectorPainter(Icons.Outlined.Home)
+    Section.HOME -> painterResource(R.drawable.ic_nav_home)
     Section.LIVE -> painterResource(R.drawable.ic_nav_live)
     Section.MOVIES -> painterResource(R.drawable.ic_nav_films)
     Section.SERIES -> painterResource(R.drawable.ic_nav_series)
-    Section.FAVORITES -> rememberVectorPainter(Icons.Outlined.Star)
+    Section.FAVORITES -> painterResource(R.drawable.ic_nav_favorites)
     Section.RECENT -> painterResource(R.drawable.ic_nav_recent)
 }
 
@@ -613,7 +613,7 @@ fun SectionHead(
 }
 
 @Composable
-private fun SortMenu(sorts: List<Sort>, sort: Sort, onSort: (Sort) -> Unit) {
+internal fun SortMenu(sorts: List<Sort>, sort: Sort, onSort: (Sort) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
     Box {
