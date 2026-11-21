@@ -12,6 +12,7 @@ import app.falak.player.screens.ScreenshotBase.Companion.TV
 import app.falak.player.ui.Screen
 import app.falak.player.ui.SecondScreenTest
 import app.falak.player.ui.finishOpenForTest
+import app.falak.player.ui.finishTrace
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -69,7 +70,7 @@ class PhoneFinishScreens : ScreenshotBase() {
                 settle()
                 settle()
                 val d = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-                check(d != null && d.isShowing) { "\"What can I finish?\" didn't open (latest dialog: $d; ${app.falak.player.ui.finishTrace})" }
+                check(d != null && d.isShowing) { "\"What can I finish?\" didn't open (latest dialog: $d; ${finishTrace})" }
                 val dv = d.window?.decorView
                 check(dv != null && dv.width > 0 && dv.height > 0) { "The dialog isn't laid out: ${dv?.width} × ${dv?.height}" }
                 shoot("phone-home-what-can-i-finish")
