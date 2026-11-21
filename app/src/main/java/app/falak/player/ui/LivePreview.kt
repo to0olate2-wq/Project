@@ -203,7 +203,7 @@ fun LivePreviewPane(
 /**
  * TV, Live TV as a list (8.43; the owner sent a picture, "Peek before you jump in"): above the list,
  * on the left what's on the channel the remote is on (its number and name, the programme, its time
- * and what's left, what's next, the story) and the clock; on the right its picture, playing small
+ * and what's left, what's next, the story); on the right its picture, playing small
  * after a moment there. OK on a row opens it full screen.
  */
 @Composable
@@ -240,17 +240,14 @@ fun LivePeekHead(
                 val programs = epg[ch.epgKey]
                 val current = Epg.current(programs, now)
                 val next = Epg.next(programs, now)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "$number   ${ch.name}",
-                        style = Tabular.copy(fontSize = 13.sp),
-                        color = Faint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(timeFormat.format(Date(now)), style = Tabular.copy(fontSize = 14.sp), color = Muted, maxLines = 1)
-                }
+                // (The clock is in the menu along the top.)
+                Text(
+                    "$number   ${ch.name}",
+                    style = Tabular.copy(fontSize = 13.sp),
+                    color = Faint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     current?.title ?: ch.name,

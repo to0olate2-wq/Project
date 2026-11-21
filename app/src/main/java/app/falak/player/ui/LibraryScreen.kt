@@ -1152,7 +1152,7 @@ private fun PeekRow(
 }
 
 /** Screen tests: the TV list row drawn as under the remote (see [PeekRow]). */
-internal var peekFocusedForTest: String? = null
+internal var peekFocusedForTest by mutableStateOf<String?>(null)
 
 /** One quiet line above the lists about the playlist's update. */
 @Composable
