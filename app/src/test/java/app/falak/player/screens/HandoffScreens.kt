@@ -64,7 +64,12 @@ class PhoneFinishScreens : ScreenshotBase() {
     fun phoneFinish() {
         finishOpenForTest = 90
         try {
-            mainScreens("phone", watching = true) { _, shoot -> shoot("phone-home-what-can-i-finish") }
+            mainScreens("phone", watching = true) { _, shoot ->
+                // (The dialog opens with the row, in the frame after the first one.)
+                settle()
+                settle()
+                shoot("phone-home-what-can-i-finish")
+            }
         } finally {
             finishOpenForTest = null
         }
