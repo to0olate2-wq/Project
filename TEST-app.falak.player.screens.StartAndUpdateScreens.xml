@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.StartAndUpdateScreens" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-21T14:31:10" hostname="ip-10-0-131-249" time="14.605">
+  <properties/>
+  <testcase name="tvStart" classname="app.falak.player.screens.StartAndUpdateScreens" time="7.503"/>
+  <testcase name="phoneStartAndUpdate" classname="app.falak.player.screens.StartAndUpdateScreens" time="7.102"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

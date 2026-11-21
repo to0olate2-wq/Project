@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.DiscoverLiveTest" tests="1" skipped="1" failures="0" errors="0" timestamp="2026-11-21T14:19:11" hostname="ip-10-0-131-249" time="3.342">
+  <properties/>
+  <testcase name="popularNowAndMostAlike" classname="app.falak.player.data.DiscoverLiveTest" time="3.342">
+    <skipped/>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
