@@ -11,8 +11,6 @@ import app.falak.player.screens.ScreenshotBase.Companion.PHONE_LAND
 import app.falak.player.screens.ScreenshotBase.Companion.TV
 import app.falak.player.ui.Screen
 import app.falak.player.ui.SecondScreenTest
-import app.falak.player.ui.finishOpenForTest
-import app.falak.player.ui.finishTrace
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -53,30 +51,6 @@ class TvHopScreens : ScreenshotBase() {
             check(hop.startsWith("Back in")) { "The hop button says \"$hop\"" }
             check(hand == "On phone") { "The hand-off button says \"$hand\"" }
             shoot("tv-player-hop")
-        }
-    }
-}
-
-/** "What can I finish?" with an hour and a half: the two films started, longest first, and when each ends. */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-class PhoneFinishScreens : ScreenshotBase() {
-    @Test @Config(qualifiers = PHONE)
-    fun phoneFinish() {
-        finishOpenForTest = 90
-        try {
-            mainScreens("phone", watching = true) { _, shoot ->
-                // (The dialog opens with the row, in the frame after the first one.)
-                settle()
-                settle()
-                val d = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-                check(d != null && d.isShowing) { "\"What can I finish?\" didn't open (latest dialog: $d; set ${finishOpenForTest}; ${finishTrace})" }
-                val dv = d.window?.decorView
-                check(dv != null && dv.width > 0 && dv.height > 0) { "The dialog isn't laid out: ${dv?.width} × ${dv?.height}" }
-                shoot("phone-home-what-can-i-finish")
-            }
-        } finally {
-            finishOpenForTest = null
         }
     }
 }

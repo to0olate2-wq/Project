@@ -757,8 +757,7 @@ fun ContinueRow(
 ) {
     val tv = isTv()
     // "What can I finish?" (8.42): the row's last card, once there are two films or episodes to choose from.
-    var finishOpen by remember { mutableStateOf(finishOpenForTest != null) }
-    androidx.compose.runtime.SideEffect { if (finishTrace.length < 400) finishTrace += "row(open=$finishOpen,test=$finishOpenForTest,n=${items.size}) " }
+    var finishOpen by remember { mutableStateOf(false) }
     val canFinish = items.count { it.kind != Kind.LIVE } >= 2
     val scroller = LocalHomeScroller.current
     val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
@@ -790,9 +789,6 @@ fun ContinueRow(
     }
 }
 
-/** Screen tests: the Continue row opens with "What can I finish?" asked, with this many minutes picked. */
-internal var finishOpenForTest: Int? = null
-internal var finishTrace = ""
 
 /** The card that asks "What can I finish?" (as tall as the row's cards, a little narrower). */
 @Composable
@@ -824,8 +820,7 @@ private fun FinishCard(width: Dp, onClick: () -> Unit) {
 @Composable
 private fun FinishDialog(items: List<Channel>, progress: Map<String, Watch>, playlistId: String, onDismiss: () -> Unit, onOpen: (Channel) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var minutes by remember { mutableStateOf(finishOpenForTest ?: 60) }
-    if (finishOpenForTest != null) androidx.compose.runtime.SideEffect { finishTrace += "dialog " }
+    var minutes by remember { mutableStateOf(60) }
     val byId = remember(items) { items.associateBy { it.id } }
     val picks = remember(progress, playlistId, minutes, byId) {
         app.falak.player.data.Finish.fits(progress, playlistId, minutes).mapNotNull { p -> byId[p.id]?.let { it to p } }

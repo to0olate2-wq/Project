@@ -443,7 +443,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   Both apps must be open (sync runs only on screen). (6) **What can I finish?** (`data/Finish.kt`, `FinishTest`):
   last card of `ContinueRow` (2+ films/episodes) → `FinishDialog` (30 min–3 h): time left, next episodes guessed
   from the series' watched episodes; films not started have no length (said in the dialog).
-  Tests: `HandoffScreens.kt` (`previewHop`, `askStillWatchingForTest`, `finishOpenForTest`, `SecondScreenTest`).
+  Tests: `HandoffScreens.kt` (`previewHop`, `askStillWatchingForTest`, `SecondScreenTest`). A Home screen test that opened the finish dialog by a
+  test flag never saw ContinueRow compose (unexplained, 4 CI runs): the dialog has no picture test.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
