@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.SkipSegmentsLiveTest" tests="3" skipped="3" failures="0" errors="0" timestamp="2026-11-21T14:46:12" hostname="runnervmeozm8" time="0.002">
+  <properties/>
+  <testcase name="theRealListAnswersAsTheAppReadsIt" classname="app.falak.player.data.SkipSegmentsLiveTest" time="0.001">
+    <skipped/>
+  </testcase>
+  <testcase name="providerTitlesAreFound" classname="app.falak.player.data.SkipSegmentsLiveTest" time="0.001">
+    <skipped/>
+  </testcase>
+  <testcase name="waysToFindTheImdbNumber" classname="app.falak.player.data.SkipSegmentsLiveTest" time="0.0">
+    <skipped/>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

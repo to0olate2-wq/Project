@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.ConnectionCheckTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-21T14:45:44" hostname="runnervmeozm8" time="0.01">
+  <properties/>
+  <testcase name="whichPartIsSlow" classname="app.falak.player.data.ConnectionCheckTest" time="0.006"/>
+  <testcase name="speedsInPlainWords" classname="app.falak.player.data.ConnectionCheckTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

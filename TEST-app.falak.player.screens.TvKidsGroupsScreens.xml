@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.screens.TvKidsGroupsScreens" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-21T15:01:09" hostname="runnervmeozm8" time="9.038">
+  <properties/>
+  <testcase name="tvKidsGroups" classname="app.falak.player.screens.TvKidsGroupsScreens" time="9.038"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

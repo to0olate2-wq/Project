@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.PortalTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-21T14:46:00" hostname="runnervmeozm8" time="3.53">
+  <properties/>
+  <testcase name="playsAPortalThroughTheLinkServer" classname="app.falak.player.data.PortalTest" time="3.351"/>
+  <testcase name="readsPlayCommandsAndDates" classname="app.falak.player.data.PortalTest" time="0.032"/>
+  <testcase name="saysPlainlyWhenTheMacIsRefused" classname="app.falak.player.data.PortalTest" time="0.049"/>
+  <testcase name="readsMacAddresses" classname="app.falak.player.data.PortalTest" time="0.025"/>
+  <testcase name="readsArchiveDepths" classname="app.falak.player.data.PortalTest" time="0.03"/>
+  <testcase name="findsWhereTheApiIs" classname="app.falak.player.data.PortalTest" time="0.043"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

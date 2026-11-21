@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.RamadanTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-21T14:46:06" hostname="runnervmeozm8" time="3.398">
+  <properties/>
+  <testcase name="ummAlQuraDates" classname="app.falak.player.data.RamadanTest" time="3.19"/>
+  <testcase name="phasesThroughTheDay" classname="app.falak.player.data.RamadanTest" time="0.088"/>
+  <testcase name="ramadanSeriesShelf" classname="app.falak.player.data.RamadanTest" time="0.052"/>
+  <testcase name="countdownAndDays" classname="app.falak.player.data.RamadanTest" time="0.036"/>
+  <testcase name="datesMovedByHand" classname="app.falak.player.data.RamadanTest" time="0.032"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

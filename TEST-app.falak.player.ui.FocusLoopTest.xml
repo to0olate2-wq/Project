@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.ui.FocusLoopTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-21T15:07:44" hostname="runnervmeozm8" time="5.613">
+  <properties/>
+  <testcase name="gridComesBackToTheFirstFromTheLastRow" classname="app.falak.player.ui.FocusLoopTest" time="4.672"/>
+  <testcase name="cinemaRowsButtonsAndMenu" classname="app.falak.player.ui.FocusLoopTest" time="0.287"/>
+  <testcase name="listGoesRoundBothWays" classname="app.falak.player.ui.FocusLoopTest" time="0.102"/>
+  <testcase name="longListComesBackToTheTop" classname="app.falak.player.ui.FocusLoopTest" time="0.55"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

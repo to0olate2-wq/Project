@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.torrent.TorrentServerTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-21T15:07:42" hostname="runnervmeozm8" time="0.667">
+  <properties/>
+  <testcase name="readsHashesAndMagnets" classname="app.falak.player.torrent.TorrentServerTest" time="0.023"/>
+  <testcase name="servesAnyPartWaitingForWhatHasNotArrived" classname="app.falak.player.torrent.TorrentServerTest" time="0.644"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
