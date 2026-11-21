@@ -410,7 +410,11 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   "Who's watching?" to change it (`ProfileCard(onLongClick)`). **App shortcuts** `AppShortcuts.kt` (phones only,
   dynamic, set at start): Live TV / Last channel / Search → `EXTRA` → `vm.openShortcut` (waits in `shortcutWaiting`
   for the playlist or "Who's watching?"; Search bumps `vm.searchAsked`, which focuses the top bar's box).
-  Icons `res/drawable/shortcut_*.xml`.
+  Icons `res/drawable/shortcut_*.xml`. **8.41:** 8.40 alone got Play Protect's "might be harmful" on the owner's
+  phone (Thailand; 8.39 installed fine; same key, same permissions and components, checked with androguard). The
+  only new behaviour Play Protect could weigh: shortcuts made by code at every start (adware trait) and the photo
+  picker. Now the shortcuts are static (`res/xml/shortcuts.xml`, meta-data on MainActivity, same extra); no
+  ShortcutManager code. Not proven to be the cause: the owner tries 8.41.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

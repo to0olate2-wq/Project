@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app icon's long-press menu (8.41; phones show it, TVs have no such menu). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="live"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_live"
+        android:shortcutShortLabel="@string/shortcut_live"
+        android:shortcutLongLabel="@string/shortcut_live_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.falak.player"
+            android:targetClass="app.falak.player.ui.MainActivity">
+            <extra android:name="app.falak.player.SHORTCUT" android:value="LIVE" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="last"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_last"
+        android:shortcutShortLabel="@string/shortcut_last"
+        android:shortcutLongLabel="@string/shortcut_last_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.falak.player"
+            android:targetClass="app.falak.player.ui.MainActivity">
+            <extra android:name="app.falak.player.SHORTCUT" android:value="LAST" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.falak.player"
+            android:targetClass="app.falak.player.ui.MainActivity">
+            <extra android:name="app.falak.player.SHORTCUT" android:value="SEARCH" />
+        </intent>
+    </shortcut>
+</shortcuts>

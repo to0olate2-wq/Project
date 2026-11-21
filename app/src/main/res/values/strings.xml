@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">The Player</string>
+    <string name="shortcut_live">Live TV</string>
+    <string name="shortcut_live_long">Open Live TV</string>
+    <string name="shortcut_last">Last channel</string>
+    <string name="shortcut_last_long">Play the channel watched last</string>
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_search_long">Search channels, films and series</string>
 </resources>
