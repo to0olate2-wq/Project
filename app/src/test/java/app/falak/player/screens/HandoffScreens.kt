@@ -70,7 +70,7 @@ class PhoneFinishScreens : ScreenshotBase() {
                 settle()
                 settle()
                 val d = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-                check(d != null && d.isShowing) { "\"What can I finish?\" didn't open (latest dialog: $d; ${finishTrace})" }
+                check(d != null && d.isShowing) { "\"What can I finish?\" didn't open (latest dialog: $d; set ${finishOpenForTest}; ${finishTrace})" }
                 val dv = d.window?.decorView
                 check(dv != null && dv.width > 0 && dv.height > 0) { "The dialog isn't laid out: ${dv?.width} × ${dv?.height}" }
                 shoot("phone-home-what-can-i-finish")

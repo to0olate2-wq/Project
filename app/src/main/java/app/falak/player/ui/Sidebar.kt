@@ -758,7 +758,7 @@ fun ContinueRow(
     val tv = isTv()
     // "What can I finish?" (8.42): the row's last card, once there are two films or episodes to choose from.
     var finishOpen by remember { mutableStateOf(finishOpenForTest != null) }
-    if (finishOpenForTest != null) androidx.compose.runtime.SideEffect { finishTrace += "row(open=$finishOpen) " }
+    androidx.compose.runtime.SideEffect { if (finishTrace.length < 400) finishTrace += "row(open=$finishOpen,test=$finishOpenForTest,n=${items.size}) " }
     val canFinish = items.count { it.kind != Kind.LIVE } >= 2
     val scroller = LocalHomeScroller.current
     val rowState = LocalRowStates.current?.invoke(title) ?: androidx.compose.foundation.lazy.rememberLazyListState()
