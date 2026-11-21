@@ -576,6 +576,11 @@ class MainActivity : ComponentActivity() {
             vm.query = text
         }
 
+        override fun handOff(playlistId: String, item: app.falak.player.data.HandItem) {
+            toFront()
+            vm.playHandedOff(playlistId, item)
+        }
+
         override fun home() {
             toFront()
             vm.screen = Screen.LIBRARY

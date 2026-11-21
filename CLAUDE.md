@@ -416,6 +416,34 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   picker. Now the shortcuts are static (`res/xml/shortcuts.xml`, meta-data on MainActivity, same extra); no
   ShortcutManager code. **Confirmed by the owner: 8.41 installs without the warning.** Never create shortcuts (or
   icons) from code; keep them static in the manifest.
+- **8.42 (the owner picked 2 3 4 5 7 of "things other apps don't have", plus: player buttons better organized
+  especially on phones, TV menu on top, "just the logo" for the menu on TV and phone; he OK'd the sketch):**
+  (1) **Menu as icons:** TV = `ShellMode.TOP` in both looks (`TopMenu`, sections are `MenuTool` icons with an
+  underline when selected, the name shows on focus); phones' `BarTab` icons only (name in `contentDescription`).
+  Tablets/phones on their side keep the rail. (2) **Player buttons:** phone top bar = home, the name with what's
+  on under it (two lines, smaller, "N min left"), a plain star, then ONE rounded group (Cast, Picture size, Sleep,
+  Lock, Player; lock left its spot at the left edge); the row under the seek bar = 40 dp pills (13 sp):
+  `pills()` = Back to live, Channels, Audio and subtitles, Record, Two screens, Back in…, Speed, On TV. TV keeps
+  actions left, icons right; `tvShortPills` (twoButton, handoffButton, hop when idle) go icon-only when crowded.
+  (3) **Half-time hop** (`hop`, `Hop`, live only): "Back in…" → 5/10/15/20 min or when the next programme starts;
+  the channel list opens; the button counts down; at the time `hopBack()` (rememberPrevious, then the hop's list);
+  tap while running = Go back now / cancel; ends with the player (onStop). (4) **Still watching?**
+  (`Settings.stillWatchingHours` 0/2/3/4, default 3, this device's; Settings → Player → Watching):
+  `onUserInteraction` stamps `lastTouchMs`; paused/casting/PiP don't count; a 60 s dialog, then `stopForNow`
+  (shared with the sleep timer: live lets go of the connection, OK/Play carries on). (5) **Hand-off and second
+  screen** over Wi-Fi linking: `AutoSync` serves sealed `POST /link` (`data/Handoff.kt`: `LinkAsk` op now / play /
+  key / stop, sent time ±5 min, `LinkAnswer`, `NowState`, `HandItem` = playlist SYNC id + the Channel + pos/dur +
+  seriesId) answered by `sync/LinkCommands.kt`; `autoSync.nearby()` (names from `sync.peers` by id prefix),
+  `ask()`. The player's "On TV" / "On phone" (`handoffButton`, only while a linked device is found; not for
+  127.0.0.1 links except a MAC portal's) → the other side `RemoteHandler.handOff` → `vm.playHandedOff` (writes
+  the progress 5 s back, then `autoPlay`); this side closes its player. `linkTick` keeps `repo.handNow`.
+  **Second screen** (`ui/SecondScreen.kt`, phones: More → Second screen, only when linked): asks "now" every 3 s;
+  live: now/next from the TV's guide; films/series: `repo.imdbMeta` (Cinemeta: rating, story, cast → actor page);
+  `RemotePad` keys via `RemoteServer.pressKey` (now in its companion); "Play it on this phone" (asks "stop" there).
+  Both apps must be open (sync runs only on screen). (6) **What can I finish?** (`data/Finish.kt`, `FinishTest`):
+  last card of `ContinueRow` (2+ films/episodes) → `FinishDialog` (30 min–3 h): time left, next episodes guessed
+  from the series' watched episodes; films not started have no length (said in the dialog).
+  Tests: `HandoffScreens.kt` (`previewHop`, `askStillWatchingForTest`, `finishOpenForTest`, `SecondScreenTest`).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

@@ -633,6 +633,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
         }
         item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("Ask “Still watching?”", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "After this long with no button pressed or screen touched, the player asks. With no answer in a minute it " +
+                        "stops (a live channel lets go of your provider's connection). This device only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    listOf(0, 2, 3, 4).forEach { h ->
+                        TagChip(if (h == 0) "Never" else "$h hours", s.stillWatchingHours == h) {
+                            vm.updateSettings { it.copy(stillWatchingHours = h) }
+                        }
+                    }
+                }
+            }
+        }
+        item {
             SwitchRow(
                 "Skip intro and credits buttons",
                 "A button shows while the intro, a recap or the end credits play; press it to skip, or leave it and it plays on. " +

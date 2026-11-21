@@ -173,6 +173,46 @@ class AutoSync(private val context: Context, private val repo: Repository) {
         crypto = null
     }
 
+    /**
+     * The linked devices found on the network now (8.42, hand-off and the second screen): their
+     * name (as they last synced) and address.
+     */
+    fun nearby(): List<Pair<String, String>> {
+        val known = repo.state.value.sync.peers
+        return peers.entries.sortedBy { it.key }.map { (service, address) ->
+            val id = app.falak.player.data.Handoff.idPrefix(service)
+            val name = known.entries.firstOrNull { it.key.startsWith(id) }?.value?.name?.takeIf { it.isNotBlank() } ?: "Another device"
+            name to address
+        }
+    }
+
+    /** True when at least one linked device is on the network (cheap: for showing a button). */
+    val anyNearby: Boolean get() = peers.isNotEmpty()
+
+    /** Asks a linked device something (hand-off, what plays, a key). Blocking: off the main thread. */
+    fun ask(address: String, ask: app.falak.player.data.LinkAsk): app.falak.player.data.LinkAnswer {
+        val c = crypto ?: return app.falak.player.data.LinkAnswer(false, "Linking is off")
+        val j = app.falak.player.data.Handoff.json
+        val body = c.seal(j.encodeToString(app.falak.player.data.LinkAsk.serializer(), ask.copy(from = me)).toByteArray())
+        val req = Request.Builder()
+            .url("http://$address/link")
+            .header("X-Group", c.tag)
+            .post(body.toRequestBody("application/octet-stream".toMediaType()))
+            .build()
+        return try {
+            http.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return app.falak.player.data.LinkAnswer(false, if (res.code == 404) "Update The Player there first" else "It didn't answer")
+                val bytes = res.body?.bytes() ?: return app.falak.player.data.LinkAnswer(false, "It didn't answer")
+                j.decodeFromString(app.falak.player.data.LinkAnswer.serializer(), String(c.open(bytes), Charsets.UTF_8))
+            }
+        } catch (e: Exception) {
+            app.falak.player.data.LinkAnswer(false, "It can't be reached. Is The Player open there?")
+        }
+    }
+
+    /** What a linked device asked (set by the app; answers on this thread, see LinkCommands). */
+    @Volatile var onAsk: ((app.falak.player.data.LinkAsk) -> app.falak.player.data.LinkAnswer)? = null
+
     /** Sync with every linked device found, now. */
     fun syncNow() {
         kick.trySend(Unit)
@@ -251,8 +291,9 @@ class AutoSync(private val context: Context, private val repo: Repository) {
                 }
                 val out = s.getOutputStream()
                 val parts = first.split(' ')
-                if (parts.size < 2 || parts[0] != "POST" || parts[1] != "/sync") return reply(out, 404, ByteArray(0))
+                if (parts.size < 2 || parts[0] != "POST" || (parts[1] != "/sync" && parts[1] != "/link")) return reply(out, 404, ByteArray(0))
                 if (headers["x-group"] != c.tag) return reply(out, 403, ByteArray(0))
+                val link = parts[1] == "/link"
                 val length = headers["content-length"]?.toIntOrNull() ?: return reply(out, 411, ByteArray(0))
                 if (length !in 1..MAX_BODY) return reply(out, 413, ByteArray(0))
                 val body = ByteArray(length)
@@ -261,6 +302,21 @@ class AutoSync(private val context: Context, private val repo: Repository) {
                     val n = input.read(body, read, length - read)
                     if (n < 0) return
                     read += n
+                }
+                if (link) {
+                    // 8.42: hand-off, the second screen's questions and keys (small JSON, sealed too).
+                    if (length > MAX_LINK) return reply(out, 413, ByteArray(0))
+                    val j = app.falak.player.data.Handoff.json
+                    val ask = try {
+                        j.decodeFromString(app.falak.player.data.LinkAsk.serializer(), String(c.open(body), Charsets.UTF_8))
+                    } catch (e: Exception) {
+                        return reply(out, 403, ByteArray(0)) // not from a linked device
+                    }
+                    val answer = when {
+                        !app.falak.player.data.Handoff.fresh(ask, System.currentTimeMillis()) -> app.falak.player.data.LinkAnswer(false, "The clocks of the two devices differ too much")
+                        else -> onAsk?.invoke(ask) ?: app.falak.player.data.LinkAnswer(false, "The Player isn't ready there")
+                    }
+                    return reply(out, 200, c.seal(j.encodeToString(app.falak.player.data.LinkAnswer.serializer(), answer.copy(device = me)).toByteArray()))
                 }
                 val theirs = try {
                     unpack(c.open(body))
@@ -313,5 +369,6 @@ class AutoSync(private val context: Context, private val repo: Repository) {
         private const val EVERY_MS = 5 * 60_000L
         private const val SOON_MS = 20_000L
         private const val MAX_BODY = 16 * 1024 * 1024
+        private const val MAX_LINK = 256 * 1024
     }
 }

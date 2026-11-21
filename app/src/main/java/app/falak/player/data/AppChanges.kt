@@ -107,6 +107,28 @@ object AppChanges {
             "Hold a profile on \"Who's watching?\" to change its picture: 25 characters, or a photo of your own on a phone. " +
                 "On a phone, hold the app's icon for Live TV, your last channel or Search.",
         ),
+        Change(
+            "8.42",
+            "The menu as icons",
+            "On a TV the menu is now along the top: icons, with the name of the one the remote is on. " +
+                "On a phone the bar at the bottom shows icons only.",
+            keys = listOf("Home"),
+        ),
+        Change(
+            "8.42",
+            "Tidier player buttons, and \"Back in…\"",
+            "On a phone the tools you set once (Cast, Picture size, Sleep, Lock, Player) sit together at the top right; the rest are one row " +
+                "under the progress bar. On a live channel, \"Back in…\" lets you watch something else and brings you back after " +
+                "5 to 20 minutes, or when the next programme starts. After 3 hours without a button pressed, the player asks " +
+                "\"Still watching?\" (Settings → Player).",
+        ),
+        Change(
+            "8.42",
+            "Phone and TV together",
+            "With your phone and TV linked, \"On TV\" in the player moves what you watch to the TV, at the same place " +
+                "(\"On phone\" the other way). More → Second screen shows what the TV plays, with a remote. " +
+                "And Continue watching ends with \"What can I finish?\": pick the time you have.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

@@ -27,7 +27,9 @@ class FalakApp : Application(), ImageLoaderFactory {
         private set
 
     /** Sync with linked devices; runs only while the app is on screen and sync is on. */
-    val autoSync: AutoSync by lazy { AutoSync(this, repo) }
+    val autoSync: AutoSync by lazy {
+        AutoSync(this, repo).also { a -> a.onAsk = { ask -> app.falak.player.sync.LinkCommands.answer(this, repo, ask) } }
+    }
 
     /** The phone remote's server: while the app is on screen and a phone is paired (or pairing). */
     val remote: RemoteServer by lazy { RemoteServer(this, repo) }

@@ -562,6 +562,32 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    /**
+     * Hand-off (8.42): a linked device sent what it plays; it plays here from (a little before) the
+     * same place. The channel is this playlist's own when it has it (episodes come as sent).
+     */
+    fun playHandedOff(playlistId: String, item: app.falak.player.data.HandItem) {
+        repo.autoPlayChecked = true
+        val p = state.value.playlists.firstOrNull { it.id == playlistId } ?: return
+        val sent = item.channel
+        viewModelScope.launch {
+            if (playlist?.id != p.id) open(p)
+            withTimeoutOrNull(30_000) {
+                while (index.byId[sent.id] == null && (loading || index.all.isEmpty())) delay(200)
+            }
+            if (playlist?.id != p.id) return@launch
+            val ch = index.byId[sent.id] ?: sent.copy(url = app.falak.player.data.PortalLinks.fix(sent.url))
+            if (ch.group.isNotEmpty() && ch.group in currentExclusions()) return@launch
+            val live = ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")
+            val start = app.falak.player.data.Handoff.startAt(item)
+            if (!live && start > 0) {
+                repo.saveProgress(progressKey(state.value.mine(p.id), ch.id), start, item.dur, ch, item.seriesId)
+            }
+            screen = Screen.LIBRARY
+            autoPlay = (if (live) index.groupsOf(Kind.LIVE)[ch.group] ?: listOf(ch) else listOf(ch)) to ch
+        }
+    }
+
     fun playFromAlert(playlistId: String, channelId: String) {
         repo.autoPlayChecked = true
         val p = state.value.playlists.firstOrNull { it.id == playlistId } ?: return

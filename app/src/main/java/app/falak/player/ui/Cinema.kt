@@ -98,12 +98,14 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            // Icons (8.42, the owner: "just the logo is enough"): the name shows on the one the remote is on.
             sections.forEach { s ->
-                MenuWord(navLabel(s), selected = screen == Screen.LIBRARY && !searching && s == current) {
+                MenuTool(navIcon(s), navLabel(s), selected = screen == Screen.LIBRARY && !searching && s == current, mark = true) {
                     cinemaSearchOpen = false
                     vm.openSection(s)
                 }
             }
+            Spacer(Modifier.width(8.dp))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             MenuTool(rememberVectorPainter(Icons.Outlined.Search), "Search", selected = searching) {
@@ -143,47 +145,6 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
     }
 }
 
-/** One section of the menu, as a word. */
-@Composable
-private fun MenuWord(label: String, selected: Boolean, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(50)
-    Column(
-        Modifier
-            .guideAnchor(label)
-            .onFocusChanged { focused = it.isFocused }
-            .clip(shape)
-            .background(if (focused) Paper else Color.Transparent)
-            // TalkBack says which page is open.
-            .semantics { this.selected = selected }
-            .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 12.dp, top = 7.dp, bottom = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            label,
-            fontFamily = Sans,
-            fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
-            fontSize = 16.sp,
-            color = when {
-                focused -> Ink
-                selected -> Paper
-                else -> Muted
-            },
-            maxLines = 1,
-        )
-        // Where you are: a short orange line under the word.
-        Box(
-            Modifier
-                .padding(top = 3.dp)
-                .width(18.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(if (selected && !focused) Signal else Color.Transparent),
-        )
-    }
-}
-
 /** One tool of the menu: its icon, and its name beside it while the remote is on it. */
 @Composable
 private fun MenuTool(
@@ -192,10 +153,13 @@ private fun MenuTool(
     selected: Boolean = false,
     dot: Boolean = false,
     enabled: Boolean = true,
+    /** A section (8.42): where you are also gets the short orange line under it. */
+    mark: Boolean = false,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Row(
         Modifier
             .height(36.dp)
@@ -226,6 +190,17 @@ private fun MenuTool(
             Spacer(Modifier.width(6.dp))
             Text(label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink, maxLines = 1)
         }
+    }
+    if (mark) {
+        Box(
+            Modifier
+                .padding(top = 2.dp)
+                .width(16.dp)
+                .height(2.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(if (selected && !focused) Signal else Color.Transparent),
+        )
+    }
     }
 }
 

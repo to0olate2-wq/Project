@@ -32,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -47,6 +49,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,7 +76,7 @@ enum class ShellMode { NONE, RAIL, BAR, TOP }
 val LocalShell = staticCompositionLocalOf { ShellMode.NONE }
 
 /** Height of the bottom bar (phones held upright). */
-val BAR_HEIGHT = 64.dp
+val BAR_HEIGHT = 56.dp
 
 /** The pages drawn inside the menu: the lists, More, and the pages opened from them. */
 // (Not Add-ons since 8.23: it is a portal of its own, with its own Home, Films, Series and My list.)
@@ -82,8 +85,10 @@ val SHELL_SCREENS: Set<Screen> = setOf(Screen.LIBRARY, Screen.MORE, Screen.RECOR
 /** The menu for [screen]: none before a playlist is open, or on full-screen pages. */
 fun shellMode(hasPlaylist: Boolean, screen: Screen, tv: Boolean, width: Dp, cinema: Boolean = false): ShellMode = when {
     !hasPlaylist || screen !in SHELL_SCREENS -> ShellMode.NONE
-    tv && cinema -> ShellMode.TOP
-    tv || width >= 600.dp -> ShellMode.RAIL
+    // TVs (8.42; the owner: the menu "up, not down or on the side", icons only): both looks use the
+    // menu along the top; tablets and phones on their side keep the rail.
+    tv -> ShellMode.TOP
+    width >= 600.dp -> ShellMode.RAIL
     else -> ShellMode.BAR
 }
 
@@ -231,6 +236,7 @@ internal fun BarTab(
     dot: Boolean = false,
     onClick: () -> Unit,
 ) {
+    // Icons only (8.42, the owner: "just the logo is enough"); the name is still read out by TalkBack.
     val tint = if (selected) Signal else Muted
     Column(
         modifier
@@ -244,18 +250,18 @@ internal fun BarTab(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box {
+        Box(Modifier.semantics { contentDescription = label }) {
             icon(tint)
             if (dot) Box(Modifier.align(Alignment.TopEnd).padding(start = 18.dp).size(7.dp).clip(CircleShape).background(Signal))
         }
-        Spacer(Modifier.height(3.dp))
-        Text(
-            label,
-            fontFamily = Sans,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) Paper else Muted,
-            maxLines = 1,
+        // Where you are: a short orange line under the icon.
+        Box(
+            Modifier
+                .padding(top = 5.dp)
+                .width(16.dp)
+                .height(2.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(if (selected) Signal else Color.Transparent),
         )
     }
 }
@@ -288,6 +294,8 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
     val unread = state.notices.count { !it.read }
     val hasLive = vm.index.live.isNotEmpty()
     val kids = vm.kidsActive
+    var secondScreen by remember { mutableStateOf(SecondScreenTest.answer != null) }
+    if (secondScreen) SecondScreenDialog(vm) { secondScreen = false }
     // A page opened from here: Back there comes back here.
     fun open(screen: Screen) {
         vm.backToMore = true
@@ -339,6 +347,12 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
                         open(Screen.ADDONS)
                     }
                 }
+            }
+        }
+        // 8.42: the linked TV's second screen (once this phone is linked with a device).
+        if (state.sync.key.isNotEmpty()) {
+            item(key = "second") {
+                MoreRow(painterResource(R.drawable.ic_pl_tv), "Second screen", detail = "What the TV plays, and its remote") { secondScreen = true }
             }
         }
         item(key = "gap") { Spacer(Modifier.height(14.dp)) }
