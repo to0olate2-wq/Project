@@ -103,15 +103,53 @@ object HomeRows {
 
     private val keys = ALL.map { it.first }
 
+    /**
+     * Home for someone who never changed its rows (8.46; the owner OK'd "a shorter Home": it had up to 15
+     * rows with Favorite channels 13th). Your own things first; the rows only filled by what you made
+     * (pinned groups, your lists, downloads, recordings, favorite films) stay: empty, they don't show.
+     */
+    val DEFAULT_ORDER = listOf(
+        "continue", "favLive", "recentLive", "pinned", "top", "newMovies", "newSeries", "sports", "because",
+        "favVod", "lists", "downloads", "recordings", "popular", "forThisHour",
+    )
+
+    /** Hidden until turned on in Settings → Look & start → Home rows (filled by the app, not by you). */
+    val DEFAULT_HIDDEN = setOf("popular", "forThisHour")
+
+    /** Never changed here (or "Default rows" pressed): the defaults above apply. */
+    fun untouched(s: Settings): Boolean = s.homeRows.isEmpty() && s.homeHidden.isEmpty()
+
     fun label(key: String): String = ALL.firstOrNull { it.first == key }?.second ?: key
 
-    /** Every row, in the order chosen (new rows from a later version go at the end). */
+    /**
+     * Every row, in the order chosen (new rows from a later version go at the end). Someone who only hid
+     * rows before 8.46 keeps the old order ([ALL]'s), so nothing they set moves.
+     */
     fun order(s: Settings): List<String> {
+        val base = if (untouched(s)) DEFAULT_ORDER.filter { it in keys } + keys.filter { it !in DEFAULT_ORDER } else keys
         val chosen = s.homeRows.filter { it in keys }.distinct()
-        return chosen + keys.filter { it !in chosen }
+        return chosen + base.filter { it !in chosen }
     }
 
-    fun shown(s: Settings): List<String> = order(s).filter { it !in s.homeHidden }
+    fun hidden(s: Settings): Set<String> = if (untouched(s)) DEFAULT_HIDDEN else s.homeHidden.toSet()
+
+    fun shown(s: Settings): List<String> {
+        val hidden = hidden(s)
+        return order(s).filter { it !in hidden }
+    }
+
+    /**
+     * [key] shown or hidden. The order and what's hidden are both written, so the defaults stop
+     * applying from the first change (and nothing else changes with it).
+     */
+    fun toggled(s: Settings, key: String): Settings {
+        val hidden = hidden(s)
+        return s.copy(homeRows = order(s), homeHidden = (if (key in hidden) hidden - key else hidden + key).toList())
+    }
+
+    /** [key] moved [delta] places (−1 up, +1 down), what's hidden kept as it is. */
+    fun movedSettings(s: Settings, key: String, delta: Int): Settings =
+        s.copy(homeRows = moved(s, key, delta), homeHidden = hidden(s).toList())
 
     /** [key] moved [delta] places (−1 up, +1 down). */
     fun moved(s: Settings, key: String, delta: Int): List<String> {

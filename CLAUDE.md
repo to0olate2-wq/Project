@@ -480,6 +480,13 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   and speed, sound and subtitles; the name always. `DEFAULT` = everything that showed before except the new
   clock, so nothing changed for anyone. Read by `renderBanner` and `updateTopBar` (the clock redraws when the
   minute turns, `clockShownAt` in `linkTick`). Tests: `PlayerInfoTest`, `AccentScreens.kt` (`previewBanner`).
+- **8.46 (the owner asked my opinion of his layout against TiviMate, iMPlayer, Smarters, Sparkle and OTT Navigator;
+  he OK'd "a shorter Home"):** `HomeRows.DEFAULT_ORDER` (Continue watching, Favorite channels, Recently watched,
+  pinned groups, Top 10, new films, new series, sports, because, then the rows only filled by what you made) and
+  `DEFAULT_HIDDEN` (Popular now, For this hour) apply while `untouched` (homeRows and homeHidden both empty).
+  Someone who only hid rows before keeps the old order (`ALL`'s); any change in the dialog writes both lists
+  (`toggled` / `movedSettings`), so the defaults stop applying without moving anything else. "Default rows" empties
+  both. Test: `HomeRowsTest`. AppChanges entry "A shorter Home".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

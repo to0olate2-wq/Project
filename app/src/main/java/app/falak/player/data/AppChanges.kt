@@ -140,6 +140,14 @@ object AppChanges {
             "New icons",
             "The player's buttons are icons now (on a TV the name shows on the one the remote is on), and every icon has a new, cleaner look.",
         ),
+        Change(
+            "8.46",
+            "A shorter Home",
+            "Home starts with what's yours: Continue watching, your favorite channels and what you watched lately. " +
+                "\"Popular now\" and \"For this hour\" are off; turn them on in Settings → Look & start → Home rows. " +
+                "If you had arranged Home yourself, it stays as you set it.",
+            keys = listOf("Home"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */
