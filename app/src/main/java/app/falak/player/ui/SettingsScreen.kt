@@ -426,14 +426,16 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     color = Muted,
                 )
                 Spacer(Modifier.height(10.dp))
+                // (The previews' dot in the colour picked below.)
+                val accentNow = Accents.of(s.accent)
                 Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette, DarkPalette), Modifier.weight(1f).then(focusAt("first"))) {
+                    ThemeOption("Automatic", s.themeMode == "auto", listOf(LightPalette.withAccent(accentNow), DarkPalette.withAccent(accentNow)), Modifier.weight(1f).then(focusAt("first"))) {
                         vm.updateSettings { it.copy(themeMode = "auto") }
                     }
-                    ThemeOption("Light", s.themeMode == "light", listOf(LightPalette), Modifier.weight(1f)) {
+                    ThemeOption("Light", s.themeMode == "light", listOf(LightPalette.withAccent(accentNow)), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "light") }
                     }
-                    ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette), Modifier.weight(1f)) {
+                    ThemeOption("Dark", s.themeMode == "dark", listOf(DarkPalette.withAccent(accentNow)), Modifier.weight(1f)) {
                         vm.updateSettings { it.copy(themeMode = "dark") }
                     }
                 }
