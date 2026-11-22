@@ -43,7 +43,7 @@ class TvLiveScreens : ScreenshotBase() {
                 shoot("tv-live-1-your-channels")
                 shoot("tv-live-1-your-channels")
                 // 8.43: the remote on a channel of the list: its row white ("Full screen"), what's on above.
-                peekFocusedForTest = vm.index.live.first { it.name == "Pulse Sports 1" }.id
+                peekFocusedForTest = vm.index.live.first { it.name == "Harbor News" }.id
                 shoot("tv-live-1b-list-peek")
                 shoot("tv-live-1b-list-peek")
                 peekFocusedForTest = null

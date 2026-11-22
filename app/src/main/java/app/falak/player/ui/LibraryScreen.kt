@@ -487,7 +487,8 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         // Opened full screen from here: no picture until the remote moves on.
                                         var opened by remember { mutableStateOf(false) }
                                         LaunchedEffect(focusedId) { opened = false }
-                                        val at = remember(list, focusedId) { list.indexOfFirst { it.id == (focusedId ?: peekFocusedForTest) }.coerceAtLeast(0) }
+                                        val wanted = focusedId ?: peekFocusedForTest
+                                        val at = remember(list, wanted) { list.indexOfFirst { it.id == wanted }.coerceAtLeast(0) }
                                         val focusedCh = list.getOrNull(at)
                                         Column(m.onFocusChanged { here = it.hasFocus }) {
                                             LivePeekHead(
