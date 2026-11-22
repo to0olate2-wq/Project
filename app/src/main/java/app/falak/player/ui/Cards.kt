@@ -272,6 +272,8 @@ fun MatchCard(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     width: Dp = 220.dp,
+    /** In place of "LIVE" (8.44, films on now: "1 h 20 min left"). */
+    label: String? = null,
 ) {
     val ch = m.channels.first()
     val shape = RoundedCornerShape(8.dp)
@@ -304,7 +306,9 @@ fun MatchCard(
                 )
             }
             Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (live) {
+                if (label != null) {
+                    CardBadge(label, Paper)
+                } else if (live) {
                     LiveDot(6.dp)
                     Spacer(Modifier.width(5.dp))
                     Text("LIVE", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, letterSpacing = 1.2.sp, color = Paper)

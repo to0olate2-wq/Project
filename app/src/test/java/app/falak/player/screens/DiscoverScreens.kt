@@ -40,6 +40,12 @@ class PhoneDiscoverScreens : ScreenshotBase() {
                 vm.openDetails(vm.index.all.first { it.name == "Copper Valley 2" })
                 shoot("phone-98d-film-collection")
                 shoot("phone-98d-film-collection")
+                // 8.44: Live TV's front page with "Films on now".
+                vm.leaveTitle()
+                vm.section = Section.LIVE
+                vm.group = null
+                shoot("phone-98e-live-films")
+                shoot("phone-98e-live-films")
             }
         } finally {
             discoverSample = false

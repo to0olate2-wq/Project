@@ -160,6 +160,7 @@ object Epg {
             var stop = 0L
             var title = ""
             var desc = ""
+            var film = false
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
                 if ((++events and 4095) == 0 && cancelled()) break
@@ -201,13 +202,16 @@ object Epg {
                             }
                             title = ""
                             desc = ""
+                            film = false
                         }
                         "title" -> if (targets.isNotEmpty() && title.isEmpty()) title = shared(parser.nextText().trim())
                         "desc" -> if (keepDesc && targets.isNotEmpty() && desc.isEmpty()) desc = shared(parser.nextText().trim().take(240))
+                        // 8.44: "Movie", "Movie / Drama", "Film", "Spielfilm", "أفلام"… (only to tell films).
+                        "category" -> if (targets.isNotEmpty() && !film) film = FilmsOnNow.isFilmCategory(parser.nextText())
                     }
                 } else if (event == XmlPullParser.END_TAG && parser.name == "programme") {
                     if (targets.isNotEmpty()) {
-                        val prog = Program(start, stop, title, desc)
+                        val prog = Program(start, stop, title, desc, film)
                         for (k in targets) out.getOrPut(k) { ArrayList() }.add(prog)
                     }
                     targets = emptySet()

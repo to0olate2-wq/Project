@@ -90,6 +90,7 @@ internal fun LiveRows(
     // (Hidden and locked groups' channels stay out of it.)
     val notShown = remember(groups, locked, vm.index) { vm.index.groupsOf(app.falak.player.data.Kind.LIVE).keys.filterTo(HashSet()) { it !in groups } + locked }
     val sports = if (vm.kidsActive) emptyList() else rememberSports(vm, epg, now, notShown)
+    val films = if (vm.kidsActive) emptyList() else rememberFilmsOnNow(vm, epg, now, notShown)
     // (A phone held upright shows three channels of a row and the edge of the fourth.)
     val width = if (tv) 168.dp else 118.dp
     val card: @Composable (Channel, List<Channel>) -> Unit = { ch, row ->
@@ -116,6 +117,10 @@ internal fun LiveRows(
         // 8.34: the sports hub's matches, from the guide.
         if (folder == null && sports.isNotEmpty()) {
             item(key = "sports") { SportsShelf(vm, appState, sports, now, onPlay) }
+        }
+        // 8.44: films on now, from the guide's types or the film channels.
+        if (folder == null && films.isNotEmpty()) {
+            item(key = "films-now") { FilmsShelf(films, now, onPlay) }
         }
         if (folder == null && often.isNotEmpty()) {
             item(key = "often") {

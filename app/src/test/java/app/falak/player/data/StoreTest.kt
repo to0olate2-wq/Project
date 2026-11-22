@@ -48,4 +48,18 @@ class StoreTest {
         // "d" was never looked for: a download is needed before it can have a guide.
         assertTrue("d" !in some.scope)
     }
+
+    @Test
+    fun filmsStayFilmsInTheSavedGuide() {
+        // 8.44: the film mark rides on the length's sign; an older file (no marks) still reads the same.
+        val programs = mapOf(
+            "a" to listOf(Program(0, 5_400_000, "A Film", "", film = true), Program(5_400_000, 7_200_000, "The News", "")),
+        )
+        val f = tmp("guide")
+        Store.writeGuide(f, GuideCache(1_000, programs, 1, 1, emptyList(), scope = setOf("a")))
+        val back = Store.readGuide(f).programs.getValue("a")
+        assertEquals(programs.getValue("a"), back)
+        assertEquals(listOf(true, false), back.map { it.film })
+        assertEquals(listOf(5_400_000L, 7_200_000L), back.map { it.stop })
+    }
 }

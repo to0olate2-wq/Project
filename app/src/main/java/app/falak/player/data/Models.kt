@@ -106,7 +106,14 @@ data class Channel(
 }
 
 @Serializable
-data class Program(val start: Long, val stop: Long, val title: String, val desc: String)
+data class Program(
+    val start: Long,
+    val stop: Long,
+    val title: String,
+    val desc: String,
+    /** The guide says it's a film (its XMLTV <category>, 8.44): "Films on now". */
+    val film: Boolean = false,
+)
 
 class GuideCache(
     val savedAt: Long,

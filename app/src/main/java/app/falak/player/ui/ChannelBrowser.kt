@@ -105,6 +105,7 @@ fun ChannelBrowser(
     onClose: () -> Unit,
 ) {
     val tv = isTv()
+    val timeFormat = rememberTimeFormat()
     AnimatedVisibility(
         visible = open,
         enter = slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 3 } + fadeIn(tween(220)),
@@ -332,6 +333,20 @@ fun ChannelBrowser(
                                         val length = (prog.stop - prog.start).coerceAtLeast(1L).toFloat()
                                         Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(2.dp).background(Hairline)) {
                                             Box(Modifier.fillMaxWidth(((now - prog.start) / length).coerceIn(0f, 1f)).height(2.dp).background(Signal))
+                                        }
+                                    }
+                                    // TV (8.44, the owner): what's on next too, as in Live TV's list.
+                                    if (tv) {
+                                        Epg.next(epg[ch.epgKey], now)?.let { next ->
+                                            Text(
+                                                "Next ${timeFormat.format(java.util.Date(next.start))}  ${next.title}",
+                                                fontFamily = Sans,
+                                                fontSize = 12.sp,
+                                                color = Faint,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 4.dp),
+                                            )
                                         }
                                     }
                                 }

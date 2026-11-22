@@ -145,7 +145,9 @@ object Store {
                 out.writeInt(list.size)
                 for (p in list) {
                     out.writeLong(p.start)
-                    out.writeInt(((p.stop - p.start) / 1000).toInt())
+                    // The length in seconds; negative = a film (8.44), so copies saved before still read.
+                    val secs = ((p.stop - p.start) / 1000).toInt().coerceAtLeast(1)
+                    out.writeInt(if (p.film) -secs else secs)
                     str(out, p.title)
                     str(out, p.desc)
                 }
@@ -191,8 +193,9 @@ object Store {
                 val list = ArrayList<Program>(n)
                 repeat(n) {
                     val start = inp.readLong()
-                    val stop = start + inp.readInt() * 1000L
-                    list += Program(start, stop, str(inp), str(inp))
+                    val secs = inp.readInt()
+                    val stop = start + kotlin.math.abs(secs) * 1000L
+                    list += Program(start, stop, str(inp), str(inp), film = secs < 0)
                 }
                 programs[key] = list
             }
