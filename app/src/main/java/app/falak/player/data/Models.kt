@@ -348,6 +348,10 @@ data class Settings(
      * a minute without an answer (a live channel lets go of its connection). 0 = never. This device's.
      */
     val stillWatchingHours: Int = 3,
+    /** The accent colour (8.45): a key of ui.Accents ("orange", "blue"…). Syncs, like the theme. */
+    val accent: String = "orange",
+    /** What the player's info shows (8.45), keys of [PlayerInfo]; syncs. */
+    val playerInfo: List<String> = PlayerInfo.DEFAULT,
     /** Decode all audio in software (FFmpeg). Fixes silent Dolby/DTS on boxes whose HDMI passthrough fails. */
     val softwareAudio: Boolean = false,
     val preferHls: Boolean = false,

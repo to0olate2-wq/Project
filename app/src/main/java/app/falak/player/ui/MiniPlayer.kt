@@ -303,7 +303,7 @@ internal fun BoxScope.MiniPlayer(r: MiniPlayerState.Request, onOpen: () -> Unit,
         }
         Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5A3C)))
+                Box(Modifier.size(7.dp).clip(CircleShape).background(Signal))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     ch.name,

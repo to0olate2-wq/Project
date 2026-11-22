@@ -43,6 +43,14 @@ class LiveTimeline(
     private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFFFFF }
     private val held = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66FFFFFF }
     private val played = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFF5A3C.toInt() }
+
+    /** The accent colour (8.45: picked in Settings): what's played and LIVE. */
+    var accent: Int = 0xFFFF5A3C.toInt()
+        set(value) {
+            field = value
+            played.color = value
+            invalidate()
+        }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xE6FFFFFF.toInt()
@@ -121,7 +129,7 @@ class LiveTimeline(
         val lw = liveWidth()
         val lx = width - paddingRight - lw
         val lh = dp(22f)
-        liveBg.color = if (atLive(behind)) 0xFFFF5A3C.toInt() else 0x40FFFFFF
+        liveBg.color = if (atLive(behind)) accent else 0x40FFFFFF
         box.set(lx, y - lh / 2, lx + lw, y + lh / 2)
         canvas.drawRoundRect(box, dp(5f), dp(5f), liveBg)
         canvas.drawText("LIVE", lx + dp(9f), y + liveText.textSize * 0.36f, liveText)

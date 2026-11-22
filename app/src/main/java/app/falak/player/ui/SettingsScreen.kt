@@ -2,6 +2,9 @@
 
 package app.falak.player.ui
 
+import app.falak.player.data.PlayerInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import app.falak.player.data.Addons
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -437,6 +440,26 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
 
+        // 8.45: the accent colour (what's live, progress, the selected item).
+        item {
+            val dark = LocalPalette.current.dark
+            val picked = Accents.of(s.accent)
+            Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
+                Text("Colour", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "${picked.name}. For what's live, progress bars and what's selected, in the app and the player.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(10.dp))
+                ChipFlow {
+                    Accents.ALL.forEach { a ->
+                        AccentDot(a, dark, a.key == picked.key) { vm.updateSettings { it.copy(accent = a.key) } }
+                    }
+                }
+            }
+        }
+
         item {
             Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 4.dp)) {
                 Text("Look", style = MaterialTheme.typography.bodyLarge, color = Paper)
@@ -449,12 +472,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 Row(Modifier.fillMaxWidth().widthIn(max = 440.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LookOption(
                         "Spotlight",
-                        if (tvLayout) "The menu at the side. A panel shows what the remote is on." else "A featured title, then rows of what to watch.",
+                        if (tvLayout) "A panel shows what the remote is on, then rows." else "A featured title, then rows of what to watch.",
                         s.appLook != "cinema", cinema = false, Modifier.weight(1f).then(focusAt("look")),
                     ) { vm.updateSettings { it.copy(appLook = "spotlight") } }
                     LookOption(
                         "Cinema",
-                        if (tvLayout) "The menu along the top. A full-screen picture and a big Up next row." else "A bigger picture and a big Up next row.",
+                        if (tvLayout) "A full-screen picture and a big Up next row." else "A bigger picture and a big Up next row.",
                         s.appLook == "cinema", cinema = true, Modifier.weight(1f),
                     ) { vm.updateSettings { it.copy(appLook = "cinema") } }
                 }
@@ -631,6 +654,25 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 "Series: the next episode starts 10 seconds into the credits (OK plays it now, Back keeps watching)",
                 s.autoNextEpisode,
             ) { vm.updateSettings { it.copy(autoNextEpisode = !it.autoNextEpisode) } }
+        }
+        // 8.45: what the player's information shows.
+        item {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                Text("What the player shows", style = MaterialTheme.typography.bodyLarge, color = Paper)
+                Text(
+                    "When you change channel and at the top of the controls. The name always shows.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    PlayerInfo.CHOICES.forEach { (key, label) ->
+                        TagChip(label, key in s.playerInfo) {
+                            vm.updateSettings { it.copy(playerInfo = PlayerInfo.toggled(it.playerInfo, key)) }
+                        }
+                    }
+                }
+            }
         }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
@@ -1980,6 +2022,25 @@ private fun PhoneGlyph(color: androidx.compose.ui.graphics.Color) {
 }
 
 /** A theme to pick: a small preview (both halves for Automatic) and its name. */
+/** One accent colour to pick: a round swatch, ticked when it's the one (its name is read out). */
+@Composable
+private fun AccentDot(a: Accent, dark: Boolean, selected: Boolean, onClick: () -> Unit) {
+    val shape = androidx.compose.foundation.shape.CircleShape
+    Box(
+        Modifier
+            .size(40.dp)
+            .focusRing(shape)
+            .clip(shape)
+            .background(if (dark) a.dark else a.light)
+            .border(if (selected) 3.dp else 0.dp, if (selected) Paper else Color.Transparent, shape)
+            .clickable(onClickLabel = a.name, onClick = onClick)
+            .semantics { contentDescription = a.name + if (selected) ", chosen" else "" },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) Text("✓", fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color.White)
+    }
+}
+
 @Composable
 private fun ThemeOption(label: String, selected: Boolean, palettes: List<Palette>, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)

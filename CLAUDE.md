@@ -469,6 +469,17 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (ChannelBrowser, `tv` only). (3) **Ambient screen** (`ui/Ambient.kt`, Settings `ambient`, 5 min idle on the lists)
   existed; it now waits while a channel plays small on the page (`repo.previewOpen`): it used to cover Live TV's
   peek picture and the channel went on playing under it.
+- **8.45 (the owner picked 2 and 3 of a list of what premium IPTV apps have):** (1) **Colour** (`Settings.accent`,
+  syncs like `themeMode`; Settings → Look & start → Colour, `AccentDot` swatches): `Accents` in Theme.kt (orange =
+  the app's own, red, pink, purple, blue, teal, green; a dark- and a light-page shade each, ARGB too);
+  `FalakTheme(accent)` → `Palette.withAccent` (remembered: a new palette each time would redraw everything).
+  The player's own views use `accentInt` (banner number, sound level bar, loading dots, a lit icon) and
+  `LiveTimeline.accent`. Not changed: the launcher icon and the phone-remote web pages (the brand's orange).
+  (2) **What the player shows** (`data/PlayerInfo.kt`, `Settings.playerInfo`, syncs; Settings → Player →
+  "What the player shows" chips): clock, channel number, what's on now, time left, what's next, picture quality
+  and speed, sound and subtitles; the name always. `DEFAULT` = everything that showed before except the new
+  clock, so nothing changed for anyone. Read by `renderBanner` and `updateTopBar` (the clock redraws when the
+  minute turns, `clockShownAt` in `linkTick`). Tests: `PlayerInfoTest`, `AccentScreens.kt` (`previewBanner`).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
