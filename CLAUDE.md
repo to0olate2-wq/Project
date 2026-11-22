@@ -458,6 +458,17 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (incl. new home/favorites/search/guide), `ic_pl_live` (Back to live), and Media3's middle buttons overridden by
   name (`exo_styled_controls_play/pause/next/previous/rewind/fastforward`, Media3 1.5.1's names). Made by a
   script (kept in the 8.43 chat): keep new icons in the same style.
+- **8.44 (the owner picked, of a list of what premium apps have: "Films" of "On now by type", the in-player list's
+  next programme on TV only; and asked to check the ambient screen):** (1) **Films on now** (`data/Discover.kt`
+  `FilmsOnNow`, `FilmsOnNowTest`): a programme is a film when the XMLTV `<category>` says so (`Program.film`, read in
+  `Epg.parse`; saved as a NEGATIVE length in the guide cache, so older copies still read: `StoreTest`) or the channel
+  is a film channel by group/name ("Movies", "Cinema", "أفلام"…); trailers/promos out, < 10 min left out; one card
+  per title (`Sports.Match`, `MatchCard(label = "1 h 20 min left")`). Live TV's front page row after sports
+  (`FilmsShelf`, TV and phone; not in Kids, not hidden/locked/adult groups). Xtream's and portals' own guides
+  carry no types: only film channels count there. (2) **TV player's channel list**: a "Next 21:00 Title" line
+  (ChannelBrowser, `tv` only). (3) **Ambient screen** (`ui/Ambient.kt`, Settings `ambient`, 5 min idle on the lists)
+  existed; it now waits while a channel plays small on the page (`repo.previewOpen`): it used to cover Live TV's
+  peek picture and the channel went on playing under it.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

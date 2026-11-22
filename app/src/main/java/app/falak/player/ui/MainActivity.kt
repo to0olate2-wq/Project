@@ -340,7 +340,10 @@ class MainActivity : ComponentActivity() {
                             kotlinx.coroutines.delay(15_000)
                             val idle = android.os.SystemClock.elapsedRealtime() - lastInput
                             val calm = vm.screen in AMBIENT_SCREENS && !vm.choosingProfile && vm.guidePreview == null &&
-                                vm.listSheetFor == null && !vm.confirmExit && MiniPlayerState.request.value == null
+                                vm.listSheetFor == null && !vm.confirmExit && MiniPlayerState.request.value == null &&
+                                // 8.44: not over a channel playing small on the page (Live TV's list on a TV):
+                                // that is someone watching, and it went on playing under the pictures.
+                                !repo.previewOpen
                             if (!ambient && vm.state.value.settings.ambient && idle >= AMBIENT_IDLE_MS && calm &&
                                 lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
                             ) {

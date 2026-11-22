@@ -67,6 +67,44 @@ fun rememberSports(vm: LibraryViewModel, epg: Map<String, List<Program>>, now: L
     return list
 }
 
+/** Films on now on the live channels (8.44), worked out every 5 minutes and when the guide changes. */
+@Composable
+fun rememberFilmsOnNow(vm: LibraryViewModel, epg: Map<String, List<Program>>, now: Long, excluded: Set<String>): List<Sports.Match> {
+    val index = vm.index
+    val slot = now / 300_000
+    val list by produceState(emptyList<Sports.Match>(), index, Same(epg), slot, excluded) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                val live = index.live.filter { (excluded.isEmpty() || it.group !in excluded) && !ADULT_GROUP.containsMatchIn(it.group) }
+                app.falak.player.data.FilmsOnNow.find(live, epg, System.currentTimeMillis())
+            }.getOrDefault(emptyList())
+        }
+    }
+    // (A film that ended since: out at once, not at the next 5 minutes.)
+    return list.filter { it.stop - now >= app.falak.player.data.FilmsOnNow.MIN_LEFT_MS / 2 }
+}
+
+/** Live TV's row of films on now (8.44): OK plays it (the other channels showing it come next when zapping). */
+@Composable
+fun FilmsShelf(films: List<Sports.Match>, now: Long, onPlay: (List<Channel>, Channel) -> Unit) {
+    if (films.isEmpty()) return
+    Shelf("Films on now", key = "films-now") {
+        items(films, key = { "f:" + it.title + "|" + it.channels.first().id }) { m ->
+            MatchCard(
+                m, now, reminded = false,
+                onClick = { onPlay(m.channels, m.channels.first()) },
+                label = filmLeft(m.stop - now),
+            )
+        }
+    }
+}
+
+/** "1 h 20 min left" / "45 min left". */
+private fun filmLeft(ms: Long): String {
+    val m = ((ms + 59_999) / 60_000).toInt().coerceAtLeast(1)
+    return (if (m >= 60) "${m / 60} h ${m % 60} min" else "$m min") + " left"
+}
+
 /** What a match does when chosen: on now, it plays; later, a reminder (or none). */
 private fun openMatch(vm: LibraryViewModel, m: Sports.Match, now: Long, context: android.content.Context, onPlay: (List<Channel>, Channel) -> Unit) {
     val ch = m.channels.first()

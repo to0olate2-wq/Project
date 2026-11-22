@@ -580,6 +580,9 @@ abstract class ScreenshotBase {
                 !discoverSample -> null
                 ch.name == "Pulse Sports 1" || ch.name == "Pulse Sports 2" -> Program(now - 30 * 60_000L, now + 75 * 60_000L, "Harbour FC v City Rovers", "")
                 ch.name == "Arena Live" -> Program(now + 3 * 3_600_000L, now + 5 * 3_600_000L, "Northside v Valley United", "")
+                // 8.44: films on now (the guide marks them), for Live TV's "Films on now".
+                ch.name == "Northwind World" -> Program(now - 20 * 60_000L, now + 95 * 60_000L, "The Long Voyage", "", film = true)
+                ch.name == "Civic Report" -> Program(now - 50 * 60_000L, now + 40 * 60_000L, "Quiet Harbour", "", film = true)
                 else -> null
             }
             ch.epgKey to if (match == null) list else (list.filter { it.stop <= match.start || it.start >= match.stop } + match).sortedBy { it.start }

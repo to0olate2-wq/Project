@@ -226,3 +226,43 @@ object Sports {
         }.sortedWith(compareBy<Match>({ !it.live(now) }, { it.start }, { it.title })).take(limit)
     }
 }
+
+/**
+ * Films on now (8.44; the owner picked "Films" of "On now by type"): live channels showing a film at
+ * this moment. A film = the guide says so (its <category>, see [Program.film]) or the channel is a film
+ * channel by its group or name ("UK | Movies", "Cinema 1", "أفلام"), when the guide gives no types.
+ */
+object FilmsOnNow {
+    private val CATEGORY = Regex("(?i)\\b(movies?|films?|feature film|spielfilm|pel[ií]culas?|filmes?|cin[eé]ma)\\b|فيلم|أفلام|افلام|سينما")
+    private val CHANNEL = Regex("(?i)(movies?|\\bfilms?|film\\d|\\bcin[eé]ma|cinemax|\\bkino|pel[ií]culas|filmes|فيلم|أفلام|افلام|سينما)")
+    /** Not a film even on a film channel: trailers, promos, the shop. */
+    private val NOT_FILM = Regex(
+        "(?i)(trailer|making of|behind the scenes|coming soon|coming up|promo|teleshopping|infomercial|\\bclosedown\\b|" +
+            "off air|إعلان|اعلان|برومو)",
+    )
+
+    /** Less than this left: nearly over, not worth starting. */
+    const val MIN_LEFT_MS = 10 * 60_000L
+
+    fun isFilmCategory(text: String): Boolean = CATEGORY.containsMatchIn(text)
+
+    fun isFilmChannel(ch: Channel): Boolean = CHANNEL.containsMatchIn(ch.group) || CHANNEL.containsMatchIn(ch.name)
+
+    /** On now, the most left to watch first; the same film on several channels is one card. */
+    fun find(live: List<Channel>, epg: Map<String, List<Program>>, now: Long, limit: Int = 30): List<Sports.Match> {
+        if (epg.isEmpty()) return emptyList()
+        val byTitle = LinkedHashMap<String, MutableList<Pair<Channel, Program>>>()
+        for (ch in live) {
+            if (ch.kind != Kind.LIVE) continue
+            val p = Epg.current(epg[ch.epgKey], now) ?: continue
+            if (!p.film && !isFilmChannel(ch)) continue
+            val title = p.title.trim()
+            if (title.length < 2 || p.stop - now < MIN_LEFT_MS || NOT_FILM.containsMatchIn(title)) continue
+            byTitle.getOrPut(TitleMatch.norm(title).ifEmpty { title.lowercase(Locale.ROOT) }) { ArrayList(2) } += ch to p
+        }
+        return byTitle.values.map { l ->
+            val first = l.first().second
+            Sports.Match(first.title.trim(), l.minOf { it.second.start }, l.maxOf { it.second.stop }, l.map { it.first }.distinctBy { it.id }, first)
+        }.sortedWith(compareByDescending<Sports.Match> { it.stop }.thenBy { it.title }).take(limit)
+    }
+}
