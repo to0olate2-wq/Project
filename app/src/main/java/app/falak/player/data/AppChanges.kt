@@ -129,6 +129,17 @@ object AppChanges {
                 "(\"On phone\" the other way). More → Second screen shows what the TV plays, with a remote. " +
                 "And Continue watching ends with \"What can I finish?\": pick the time you have.",
         ),
+        Change(
+            "8.43",
+            "Live TV's list on a TV",
+            "The channel the remote is on plays small at the top right, with what's on, what's next and the time left beside it. " +
+                "OK opens it full screen. The bar above the list picks the group, List, Grid or the TV guide, and Search.",
+        ),
+        Change(
+            "8.43",
+            "New icons",
+            "The player's buttons are icons now (on a TV the name shows on the one the remote is on), and every icon has a new, cleaner look.",
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

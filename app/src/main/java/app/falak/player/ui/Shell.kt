@@ -317,7 +317,7 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
             }
         }
         if (hasLive) {
-            item(key = "guide") { MoreRow(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide") { open(Screen.GUIDE) } }
+            item(key = "guide") { MoreRow(painterResource(R.drawable.ic_nav_guide), "TV guide") { open(Screen.GUIDE) } }
         }
         if (Section.RECENT in sections) {
             item(key = "recent") { MoreRow(painterResource(R.drawable.ic_nav_recent), "Recently watched") { vm.openSection(Section.RECENT) } }

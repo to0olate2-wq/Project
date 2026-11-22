@@ -108,11 +108,11 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
             Spacer(Modifier.width(8.dp))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MenuTool(rememberVectorPainter(Icons.Outlined.Search), "Search", selected = searching) {
+            MenuTool(painterResource(R.drawable.ic_nav_search), "Search", selected = searching) {
                 vm.screen = Screen.LIBRARY
                 cinemaSearchOpen = true
             }
-            if (hasLive) MenuTool(rememberVectorPainter(Icons.Outlined.DateRange), "TV guide") { vm.screen = Screen.GUIDE }
+            if (hasLive) MenuTool(painterResource(R.drawable.ic_nav_guide), "TV guide") { vm.screen = Screen.GUIDE }
             // Recordings and Add-ons: never in the Kids profile (as on the rail).
             if (hasLive && !kids) {
                 MenuTool(painterResource(R.drawable.ic_pl_record), "Recordings", selected = screen == Screen.RECORDINGS, dot = recordingNow) {

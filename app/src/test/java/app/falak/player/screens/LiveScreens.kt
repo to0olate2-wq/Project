@@ -3,6 +3,7 @@ package app.falak.player.screens
 import app.falak.player.ui.ALL_FILTER
 import app.falak.player.ui.Section
 import app.falak.player.ui.groupFinderOpen
+import app.falak.player.ui.peekFocusedForTest
 import app.falak.player.ui.groupFinderTyped
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +42,11 @@ class TvLiveScreens : ScreenshotBase() {
                 vm.group = ALL_FILTER
                 shoot("tv-live-1-your-channels")
                 shoot("tv-live-1-your-channels")
+                // 8.43: the remote on a channel of the list: its row white ("Full screen"), what's on above.
+                peekFocusedForTest = vm.index.live.first { it.name == "Harbor News" }.id
+                shoot("tv-live-1b-list-peek")
+                shoot("tv-live-1b-list-peek")
+                peekFocusedForTest = null
                 vm.group = "UK | Sports"
                 shoot("tv-live-2-folder-open")
                 groupFinderOpen = true
@@ -48,6 +54,7 @@ class TvLiveScreens : ScreenshotBase() {
                 groupFinderTyped = "s"
                 shoot("tv-live-4-finder-typed")
             } finally {
+                peekFocusedForTest = null
                 groupFinderOpen = false
                 groupFinderTyped = ""
                 vm.liveFolder = null

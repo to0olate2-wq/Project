@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Material icon (Apache 2.0), tinted in code. -->
+<!-- Player and its settings: sliders. Our own line icons (8.43), tinted in code. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M21 3H3c-1.11 0-2 .89-2 2v12c0 1.1.89 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.11-.9-2-2-2zm0 14H3V5h18v12zm-5-6l-7 4V7z" />
+        android:pathData="M4,7.5 H12.5 M17.5,7.5 H20 M4,16.5 H6.5 M11.5,16.5 H20M12.5,7.5 A2.5,2.5 0 1 0 17.5,7.5 A2.5,2.5 0 1 0 12.5,7.5 ZM6.5,16.5 A2.5,2.5 0 1 0 11.5,16.5 A2.5,2.5 0 1 0 6.5,16.5 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

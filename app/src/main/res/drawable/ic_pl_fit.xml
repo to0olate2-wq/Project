@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Material icon (Apache 2.0), tinted in code. -->
+<!-- Picture size. Our own line icons (8.43), tinted in code. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z" />
+        android:pathData="M5.1,5 H18.9 A2.6,2.6 0 0 1 21.5,7.6 V16.4 A2.6,2.6 0 0 1 18.9,19 H5.1 A2.6,2.6 0 0 1 2.5,16.4 V7.6 A2.6,2.6 0 0 1 5.1,5 Z M6.5,12 V9 H9.5 M17.5,12 V15 H14.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

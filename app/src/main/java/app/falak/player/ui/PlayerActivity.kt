@@ -595,7 +595,7 @@ class PlayerActivity : ComponentActivity() {
         twoButton = pill("Two screens", R.drawable.ic_pl_two) { startPickingSecond() }.apply { visibility = View.GONE }
         // Watching a show from its start: back to the live channel.
         // (Or, paused or rewound on a live channel: back to what's on now.)
-        liveButton = pill("Back to live", R.drawable.ic_nav_live) {
+        liveButton = pill("Back to live", R.drawable.ic_pl_live) {
             if (liveBeforeStartOver != null) backToLive() else shiftToLive()
         }.apply { visibility = View.GONE }
         recordButton = pill("Record", R.drawable.ic_pl_record) { showRecordDialog() }.apply { visibility = View.GONE }
@@ -2988,7 +2988,8 @@ class PlayerActivity : ComponentActivity() {
     private fun pill(label: String, icon: Int, onClick: () -> Unit): TextView = TextView(this).apply {
         tag = label
         contentDescription = label
-        text = label
+        // Icons only (8.42); a TV shows the name under the remote (applyIconLabels).
+        text = ""
         setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 15f else 13f)
         typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.inter_medium)
         setTextColor(contentColors())
@@ -3001,33 +3002,22 @@ class PlayerActivity : ComponentActivity() {
             setCompoundDrawablesRelative(it, null, null, null)
         }
         // An icon-only button (Settings) is a neat circle-ish pill with even sides.
-        compoundDrawablePadding = if (label.isEmpty()) 0 else dp(if (tvLayout) 8 else 6)
+        compoundDrawablePadding = 0
         compoundDrawableTintList = contentColors()
         background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
-        if (label.isEmpty()) {
-            // As wide as it is tall (44 dp on TV; phones' icons sit in the top group, 40 dp).
-            val side = dp(if (tvLayout) 12 else 11)
-            setPadding(side, 0, side, 0)
-        } else {
-            setPadding(dp(if (tvLayout) 18 else 12), 0, dp(if (tvLayout) 20 else 14), 0)
-        }
+        // As wide as it is tall (44 dp on TV, 40 on phones).
+        val side = dp(if (tvLayout) 12 else 11)
+        setPadding(side, 0, side, 0)
         isFocusable = true
         isClickable = true
         setOnClickListener { onClick() }
         setOnFocusChangeListener { v, focused ->
             val s = if (focused) 1.08f else 1f
             v.animate().scaleX(s).scaleY(s).setDuration(120).start()
-            // TV: the setting icon the remote is on shows its name (and, a row too long for the
-            // screen, so does a short button).
-            if (tvLayout) {
-                applyIconLabels()
-                if (tvCompact) applyTvLabels()
-            }
+            // TV: the button the remote is on shows its name.
+            if (tvLayout) applyIconLabels()
         }
     }
-
-    // Phones: when the buttons don't all fit across, they show their icons only (names are read out).
-    private var compactPills = false
 
     /** The buttons used while watching, with their names (each shows only when it applies). */
     private fun pills(): List<TextView> =
@@ -3044,103 +3034,39 @@ class PlayerActivity : ComponentActivity() {
     private fun setPillLabel(b: TextView, label: String) {
         b.tag = label
         b.contentDescription = label
-        if (::sleepButton.isInitialized && b in settingIcons()) {
-            applyIconLabels()
-            return
-        }
-        // (TV, a row too long for the screen: a short button keeps showing its icon only.)
-        val iconOnly = tvLayout && tvCompact && ::sleepButton.isInitialized && b in tvShortPills() && !b.isFocused
-        b.text = if (compactPills || iconOnly) "" else label
-        b.post { fitPills() }
+        applyIconLabels()
     }
 
     /**
-     * The setting icons show no name, except: on TV the one the remote is on, and Sleep with a timer
-     * running ("20 min"). Their full name is read out ("Picture size · Fit").
+     * 8.42 (the owner: "remove all labels beside the logo, but when I hover it, it will show the name" on
+     * a TV; on a phone just the icons): every button is its icon. A TV shows the name of the one the remote
+     * is on; Sleep and "Back in…" show their time left while they run ("20 min"). Names are read out.
      */
     private fun applyIconLabels() {
-        if (!::sleepButton.isInitialized || !::engineButton.isInitialized) return
-        for (b in settingIcons()) {
+        if (!::sleepButton.isInitialized || !::engineButton.isInitialized || !::handoffButton.isInitialized) return
+        for (b in pills() + settingIcons()) {
             val full = b.tag as? String ?: ""
             val text = when {
                 tvLayout && b.isFocused -> full
                 // "Sleep 20 min" → "20 min", "Sleep · end" → "end", "Sleep" → "".
                 b === sleepButton -> full.removePrefix("Sleep").trim().removePrefix("·").trim()
+                // "Back in 12 min" → "12 min" (nothing while no hop runs).
+                b === hopButton && hop != null -> full.removePrefix("Back in").trim()
                 else -> ""
             }
             if (b.text?.toString() == text) continue
             b.text = text
             b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(if (tvLayout) 8 else 6)
-            // Icon only: 40 dp across on phones (44 on TV), as wide as it is tall.
-            val side = if (text.isEmpty()) dp(if (tvLayout) 12 else 11) else dp(if (tvLayout) 18 else 12)
-            b.setPadding(side, 0, if (text.isEmpty()) side else dp(if (tvLayout) 20 else 14), 0)
-        }
-        if (tvLayout) fitTvPills()
-    }
-
-    /** Labels when the row fits the screen's width, icons only when it doesn't (never on TV). */
-    private fun fitPills() {
-        if (tvLayout) {
-            fitTvPills()
-            return
-        }
-        if (!::toolbar.isInitialized) return
-        val avail = toolbar.width
-        if (avail <= 0) return
-        var need = dp(32)
-        for (b in pills()) {
-            if (b.visibility != View.VISIBLE) continue
-            val label = b.tag as? String ?: ""
-            need += dp(8) + dp(12) + dp(14) + dp(17) + (if (label.isEmpty()) 0 else dp(6) + b.paint.measureText(label).toInt())
-        }
-        val compact = need > avail
-        if (compact == compactPills) return
-        compactPills = compact
-        for (b in pills()) {
-            val label = b.tag as? String ?: ""
-            b.text = if (compact) "" else label
-            b.compoundDrawablePadding = if (compact || label.isEmpty()) 0 else dp(6)
-            // Icon only: 40 dp across, as tall as it is wide.
-            if (compact) b.setPadding(dp(11), 0, dp(11), 0) else b.setPadding(dp(12), 0, dp(14), 0)
+            // Icon only: as wide as it is tall (44 dp on TV, 40 on phones).
+            val side = if (text.isEmpty()) dp(if (tvLayout) 12 else 11) else dp(if (tvLayout) 16 else 12)
+            b.setPadding(side, 0, if (text.isEmpty()) side else dp(if (tvLayout) 18 else 14), 0)
         }
     }
 
-    /** TV: the row doesn't fit across (live TV has the most buttons): these show their icon only, until the remote is on them. */
-    private var tvCompact = false
+    /** (Every button is an icon since 8.42: nothing to fit; kept for the places that ask.) */
+    private fun fitPills() = applyIconLabels()
 
-    // (8.42: with the hop and hand-off, these show their names only when the row has room or on focus;
-    // a hop counting down keeps its time showing.)
-    private fun tvShortPills(): List<TextView> = listOfNotNull(twoButton, handoffButton, hopButton.takeIf { hop == null })
-
-    private fun fitTvPills() {
-        if (!::toolbar.isInitialized || !::sleepButton.isInitialized) return
-        val avail = toolbar.width
-        if (avail <= 0) return
-        // The setting icons and the line before them, with room for one of them showing its name.
-        var need = dp(32) + dp(17) + settingIcons().size * dp(12 + 44) + dp(140)
-        for (b in pills()) {
-            if (b.visibility != View.VISIBLE) continue
-            val label = b.tag as? String ?: ""
-            need += dp(12) + dp(20) + dp(18) + dp(20) + (if (label.isEmpty()) 0 else dp(8) + b.paint.measureText(label).toInt())
-        }
-        val compact = need > avail
-        if (compact == tvCompact) return
-        tvCompact = compact
-        applyTvLabels()
-    }
-
-    private fun applyTvLabels() {
-        if (!::sleepButton.isInitialized) return
-        for (b in tvShortPills()) {
-            val label = b.tag as? String ?: ""
-            val show = !tvCompact || b.isFocused || label.isEmpty()
-            val text = if (show) label else ""
-            if (b.text?.toString() == text) continue
-            b.text = text
-            b.compoundDrawablePadding = if (text.isEmpty()) 0 else dp(8)
-            if (text.isEmpty()) b.setPadding(dp(13), 0, dp(13), 0) else b.setPadding(dp(18), 0, dp(20), 0)
-        }
-    }
+    private fun fitTvPills() = applyIconLabels()
 
     /**
      * The top of the controls: the star (Favorites), then what's playing and, on a live channel,

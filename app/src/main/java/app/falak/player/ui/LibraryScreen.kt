@@ -1,5 +1,8 @@
 package app.falak.player.ui
 
+import app.falak.player.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.border
 import androidx.compose.ui.platform.LocalContext
 import app.falak.player.data.GroupFolders
 import app.falak.player.data.isDividerName
@@ -471,10 +474,70 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             val wide = maxWidth >= 720.dp
+                            // TV, Live TV as a list (8.43, the owner's picture): the picture and what's on above
+                            // the list, one bar for the group, the view, sorting and search (no chips, no column).
+                            val peek = shown == Section.LIVE && tv && wide && noQuery && !(shown.name in state.settings.gridSections)
                             val groupsVisible = showGroups && q.isEmpty() && groupMap.size > 1
                             val content: @Composable (Modifier) -> Unit = { m ->
                                 when {
                                     visible == null -> Box(m)
+                                    peek -> {
+                                        var focusedId by remember { mutableStateOf<String?>(null) }
+                                        var here by remember { mutableStateOf(false) }
+                                        // Opened full screen from here: no picture until the remote moves on.
+                                        var opened by remember { mutableStateOf(false) }
+                                        LaunchedEffect(focusedId) { opened = false }
+                                        val wanted = focusedId ?: peekFocusedForTest
+                                        val at = remember(list, wanted) { list.indexOfFirst { it.id == wanted }.coerceAtLeast(0) }
+                                        val focusedCh = list.getOrNull(at)
+                                        Column(m.onFocusChanged { here = it.hasFocus }) {
+                                            LivePeekHead(
+                                                vm = vm,
+                                                ch = focusedCh,
+                                                number = at + 1,
+                                                epg = epg,
+                                                now = now,
+                                                active = here && !opened,
+                                                livePreview = state.settings.livePreview,
+                                                onOpen = { focusedCh?.let { ch -> opened = true; openItem(ch) } },
+                                                modifier = Modifier.fillMaxWidth().height(170.dp),
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                            PeekBar(
+                                                title = when (pickedGroup) {
+                                                    null -> "All channels"
+                                                    FAV_FILTER -> "Favorites"
+                                                    else -> liveTree.title(pickedGroup)
+                                                },
+                                                count = list.size,
+                                                onGroups = if (groupMap.size > 1 || favOfKind.isNotEmpty()) ({ groupFinderOpen = true }) else null,
+                                                sorts = sorts,
+                                                sort = sort,
+                                                onSort = { vm.sort = it },
+                                                onGrid = { vm.setGridView(shown, true) },
+                                                onGuide = { vm.screen = Screen.GUIDE },
+                                                onSearch = { cinemaSearchOpen = true },
+                                            )
+                                            if (deadHere > 0) {
+                                                androidx.compose.material3.TextButton(onClick = { showDead = !showDead }) {
+                                                    Text(
+                                                        if (showDead) "Hide the $deadHere that didn't work" else "$deadHere that didn't work ${if (deadHere == 1) "is" else "are"} hidden · Show",
+                                                        fontFamily = Sans,
+                                                        fontSize = 13.sp,
+                                                        color = Muted,
+                                                    )
+                                                }
+                                            }
+                                            ChannelList(
+                                                list = list, favIds = favSet, epg = epg, now = now, state = vm.listStateFor(shown),
+                                                progress = state.progress, playlistId = state.mine(p.id),
+                                                onOpen = { ch -> opened = true; openItem(ch) }, onFav = { ch -> vm.onStar(ch) }, onLongPress = { ch -> vm.listSheetFor = ch },
+                                                focusId = focusId, modifier = Modifier.weight(1f).fillMaxWidth(),
+                                                onFocus = { ch -> focusedId = ch.id },
+                                                peek = true,
+                                            )
+                                        }
+                                    }
                                     // TV, Live TV as a list: the channel the remote is on, beside it.
                                     shown == Section.LIVE && tv && wide && !(shown.name in state.settings.gridSections) -> {
                                         var focusedId by remember { mutableStateOf<String?>(null) }
@@ -553,6 +616,9 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                             // A header with the count, sort and grid/list, then the groups as chips
                             // with counts (the menu already takes the left).
                             Column(Modifier.fillMaxSize()) {
+                                if (peek) {
+                                    content(Modifier.weight(1f).fillMaxWidth())
+                                } else {
                                 SectionHead(
                                     title = when {
                                         !noQuery -> "Results"
@@ -629,6 +695,7 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         onPlay(row, lastWatched)
                                     }
                                 }
+                                } // (not peek)
                             }
                         }
                     }
@@ -794,6 +861,8 @@ private fun ChannelList(
     onFocus: ((Channel) -> Unit)? = null,
     /** Drawn above the first row, scrolling with the list (Live TV's tiles of your own channels). */
     header: (@Composable () -> Unit)? = null,
+    /** TV, Live TV under the picture (8.43): wide rows with now and next, the one under the remote white. */
+    peek: Boolean = false,
 ) {
     if (list.isEmpty()) {
         Box(modifier.padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
@@ -810,6 +879,14 @@ private fun ChannelList(
     ) {
         if (header != null) item(key = "__header") { header() }
         itemsIndexed(list, key = { _, ch -> ch.id }) { i, ch ->
+            if (peek) {
+                val programs = epg[ch.epgKey]
+                PeekRow(
+                    i + 1, ch, Epg.current(programs, now), Epg.next(programs, now), ch.id in favIds, now, { onOpen(ch) }, { onLongPress(ch) }, ch.id == focusId,
+                    Modifier.loopItem(loop, i).then(if (onFocus != null) Modifier.onFocusChanged { if (it.isFocused) onFocus(ch) } else Modifier),
+                )
+                return@itemsIndexed
+            }
             val current = if (ch.kind == Kind.LIVE) Epg.current(epg[ch.epgKey], now) else null
             val watched = if (ch.kind != Kind.LIVE) progress[progressKey(playlistId, ch.id)] else null
             ChannelRow(
@@ -944,6 +1021,139 @@ private fun ChannelRow(
         }
     }
 }
+
+/**
+ * TV, Live TV under the picture (8.43, the owner's picture): number, logo, name and quality, what's on now
+ * with how far it is, then what's next. The row the remote is on turns white and says "Full screen"
+ * (OK opens it); a favorite has its star.
+ */
+@Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun PeekRow(
+    number: Int,
+    ch: Channel,
+    current: Program?,
+    next: Program?,
+    isFav: Boolean,
+    now: Long,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    focusMe: Boolean,
+    modifier: Modifier,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    val focus = remember { FocusRequester() }
+    var hasFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(focusMe) {
+        if (focusMe) {
+            delay(120)
+            runCatching { focus.requestFocus() }
+        }
+    }
+    val timeFormat = rememberTimeFormat()
+    // (Screen tests: rows can't take the focus in touch mode, so the one named is drawn as if it had.)
+    val focused = hasFocus || (peekFocusedForTest != null && ch.id == peekFocusedForTest)
+    val dark = Color(0xFF121110)
+    val ink = if (focused) dark else Paper
+    val soft = if (focused) dark.copy(alpha = 0.62f) else Muted
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp)
+            .height(40.dp)
+            .focusRequester(focus)
+            .onFocusChanged { hasFocus = it.isFocused }
+            .clip(shape)
+            .background(
+                when {
+                    focused -> Color.White
+                    focusMe -> Signal.copy(alpha = 0.10f)
+                    else -> Color.Transparent
+                },
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("$number", style = Tabular.copy(fontSize = 13.sp), color = if (focused) soft else Faint, maxLines = 1, modifier = Modifier.width(40.dp))
+        Box(
+            Modifier.size(30.dp).clip(RoundedCornerShape(7.dp)).background(Ink3),
+            contentAlignment = Alignment.Center,
+        ) {
+            LogoOr(
+                url = ch.logo,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().padding(3.dp),
+            ) { Initials(ch.name, 10.sp) }
+        }
+        Spacer(Modifier.width(10.dp))
+        Row(Modifier.weight(0.30f), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                ch.name,
+                fontFamily = Sans,
+                fontSize = 15.sp,
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            ch.tidyQuality?.let { q ->
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    q,
+                    fontFamily = Sans,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 9.sp,
+                    color = soft,
+                    maxLines = 1,
+                    modifier = Modifier.border(1.dp, soft.copy(alpha = 0.6f), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(0.38f)) {
+            Text(
+                current?.title ?: "",
+                fontFamily = Sans,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (current != null && current.stop > current.start) {
+                val done = ((now - current.start).toFloat() / (current.stop - current.start)).coerceIn(0f, 1f)
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (focused) dark.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.14f))) {
+                    Box(Modifier.fillMaxWidth(done).fillMaxHeight().background(if (focused) dark else Amber))
+                }
+            }
+        }
+        Spacer(Modifier.width(18.dp))
+        Box(Modifier.weight(0.32f), contentAlignment = Alignment.CenterEnd) {
+            if (focused) {
+                Text("Full screen", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = dark, maxLines = 1)
+            } else if (next != null) {
+                Text(
+                    "${timeFormat.format(java.util.Date(next.start))} ${next.title}",
+                    fontFamily = Sans,
+                    fontSize = 13.sp,
+                    color = soft,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+            if (isFav) Icon(painterResource(R.drawable.ic_pl_star_outline), contentDescription = "Favorite", tint = if (focused) dark else Amber, modifier = Modifier.size(17.dp))
+        }
+    }
+}
+
+/** Screen tests: the TV list row drawn as under the remote (see [PeekRow]). */
+internal var peekFocusedForTest by mutableStateOf<String?>(null)
 
 /** One quiet line above the lists about the playlist's update. */
 @Composable
