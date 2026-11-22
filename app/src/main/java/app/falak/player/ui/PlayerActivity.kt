@@ -89,6 +89,7 @@ import app.falak.player.player.CaptionLayout
 import app.falak.player.player.CaptionText
 import app.falak.player.player.Word
 import app.falak.player.data.Settings
+import app.falak.player.data.PlayerInfo
 import app.falak.player.R
 import app.falak.player.player.CaptionSniffer
 import app.falak.player.player.Captions
@@ -709,7 +710,7 @@ class PlayerActivity : ComponentActivity() {
         }
         levelBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFF4F2E.toInt())
+            progressTintList = android.content.res.ColorStateList.valueOf(accentInt)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x40FFFFFF)
         }
         levelView = LinearLayout(this).apply {
@@ -837,7 +838,7 @@ class PlayerActivity : ComponentActivity() {
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             setContent {
                 val app by repo.state.collectAsState()
-                FalakTheme(dark = true, layout = app.settings.layout) {
+                FalakTheme(dark = true, layout = app.settings.layout, accent = app.settings.accent) {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                         SkipIntroButton(skipIntroShown && upNext == null, skipLabel) { skipIntro() }
                         val offer = startOverOffer
@@ -875,7 +876,7 @@ class PlayerActivity : ComponentActivity() {
                     repo.currentPlaylist?.let { app.favorites[app.mine(it.id)] }.orEmpty().toHashSet()
                 }
                 // Over the picture the channel list is always dark, whatever the time of day.
-                FalakTheme(dark = true, layout = app.settings.layout) {
+                FalakTheme(dark = true, layout = app.settings.layout, accent = app.settings.accent) {
                     ChannelBrowser(
                         open = browserOpen,
                         showGroups = browserShowGroups,
@@ -2964,6 +2965,9 @@ class PlayerActivity : ComponentActivity() {
     /** Dark text and icons on the white highlight. */
     private val focusInk = 0xFF121110.toInt()
 
+    /** The accent colour picked in Settings (8.45), for the player's own views. */
+    private val accentInt: Int get() = Accents.of(repo.state.value.settings.accent).darkArgb.toInt()
+
     /** White when the remote is on it, soft white while pressed, [normal] otherwise. */
     private fun focusBackground(oval: Boolean, normal: Int = Color.TRANSPARENT, edge: Int = 0): android.graphics.drawable.StateListDrawable {
         fun shape(color: Int, stroke: Int = 0) = GradientDrawable().apply {
@@ -3118,21 +3122,42 @@ class PlayerActivity : ComponentActivity() {
     private fun updateTopBar() {
         if (!::titleView.isInitialized) return
         val ch = queue.getOrNull(index) ?: return
+        val info = repo.state.value.settings.playerInfo
+        val nowMs = System.currentTimeMillis()
         val text = SpannableStringBuilder()
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (PlayerInfo.CLOCK in info) appendClock(text, nowMs)
         if (ch.kind == Kind.LIVE) {
-            val nowMs = System.currentTimeMillis()
             Epg.current(repo.epg.value[ch.epgKey], nowMs)?.let { now ->
-                // 8.42: on its own line under the name, smaller, with the time left.
-                text.append("\n")
-                val start = text.length
+                // 8.42: on its own line under the name, smaller, with the time left (8.45: each can be off).
                 val left = ((now.stop - nowMs) / 60_000).coerceAtLeast(0)
-                text.append(now.title + if (left > 0) "  ·  $left min left" else "")
-                text.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                text.setSpan(android.text.style.RelativeSizeSpan(0.82f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                val line = listOfNotNull(
+                    now.title.takeIf { PlayerInfo.NOW in info },
+                    "$left min left".takeIf { PlayerInfo.LEFT in info && left > 0 },
+                ).joinToString("  ·  ")
+                if (line.isNotEmpty()) {
+                    text.append("\n")
+                    val start = text.length
+                    text.append(line)
+                    text.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    text.setSpan(android.text.style.RelativeSizeSpan(0.82f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
         }
         titleView.text = text
+        clockShownAt = if (PlayerInfo.CLOCK in info) nowMs / 60_000 else -1
+    }
+
+    /** The minute the top bar's clock shows (-1: no clock); the tick redraws it when the minute turns. */
+    private var clockShownAt = -1L
+
+    /** "   21:42", quieter than the name it follows. */
+    private fun appendClock(text: SpannableStringBuilder, now: Long) {
+        text.append("   ")
+        val start = text.length
+        text.append(time(now))
+        text.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(android.text.style.RelativeSizeSpan(0.85f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     /** Controls shown: the top says what's playing, so the zap banner (same place) goes. */
@@ -3971,6 +3996,7 @@ class PlayerActivity : ComponentActivity() {
         }
         // Live from the buffer: how far back it goes, where the picture is, and LIVE.
         liveBar = LiveTimeline(this, onSeek = { behind -> shiftToBehind(behind) }, onLive = { shiftToLive() }).apply {
+            accent = accentInt
             visibility = View.GONE
             val pad = dp(if (tvLayout) 40 else 20)
             setPadding(pad, 0, pad, 0)
@@ -4042,14 +4068,17 @@ class PlayerActivity : ComponentActivity() {
         val current = Epg.current(programs, now)
         val next = Epg.next(programs, now)
 
+        // What shows is picked in Settings → Player (8.45; all of it but the clock unless changed).
+        val info = repo.state.value.settings.playerInfo
         val text = SpannableStringBuilder()
-        if (ch.kind == Kind.LIVE) {
-            text.append("${index + 1}   ", ForegroundColorSpan(0xFFFF4F2E.toInt()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (ch.kind == Kind.LIVE && PlayerInfo.NUMBER in info) {
+            text.append("${index + 1}   ", ForegroundColorSpan(accentInt), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (PlayerInfo.CLOCK in info) appendClock(text, now)
         // The picture's real quality, from the video being played (not from the channel's name), and
         // how fast the stream is coming in.
-        listOfNotNull(qualityLabel(), rateLabel()).joinToString(" · ").takeIf { it.isNotEmpty() }?.let { q ->
+        (if (PlayerInfo.QUALITY in info) listOfNotNull(qualityLabel(), rateLabel()).joinToString(" · ") else "").takeIf { it.isNotEmpty() }?.let { q ->
             text.append("   ")
             val start = text.length
             text.append(q)
@@ -4057,14 +4086,21 @@ class PlayerActivity : ComponentActivity() {
             text.setSpan(StyleSpan(Typeface.BOLD), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             text.setSpan(android.text.style.RelativeSizeSpan(0.85f), start, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (current != null) {
-            text.append("\nNow   ${time(current.start)}–${time(current.stop)}   ${current.title}")
+        val showNow = PlayerInfo.NOW in info
+        val showLeft = PlayerInfo.LEFT in info
+        if (current != null && (showNow || showLeft)) {
+            val left = ((current.stop - now) / 60_000).coerceAtLeast(0)
+            val leftText = if (showLeft && left > 0) "$left min left" else ""
+            text.append(
+                if (showNow) "\nNow   ${time(current.start)}–${time(current.stop)}   ${current.title}" + (if (leftText.isNotEmpty()) "   ·   $leftText" else "")
+                else if (leftText.isNotEmpty()) "\n$leftText" else "",
+            )
         }
-        if (next != null) {
+        if (next != null && PlayerInfo.NEXT in info) {
             text.append("\nNext  ${time(next.start)}   ${next.title}")
         }
-        if (current == null && next == null) text.append("\n${ch.group}")
-        val tracks = trackSummary()
+        if (current == null && next == null && (showNow || PlayerInfo.NEXT in info)) text.append("\n${ch.group}")
+        val tracks = if (PlayerInfo.TRACKS in info) trackSummary() else ""
         if (tracks.isNotEmpty()) text.append("\n$tracks")
 
         bannerView.text = text
@@ -4097,7 +4133,7 @@ class PlayerActivity : ComponentActivity() {
             View(this).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(0xFFFF4F2E.toInt())
+                    setColor(accentInt)
                 }
                 alpha = 0.28f
             }.also { dot -> dots.addView(dot, LinearLayout.LayoutParams(dp(7), dp(7)).apply { setMargins(dp(4), 0, dp(4), 0) }) }
@@ -5118,6 +5154,8 @@ class PlayerActivity : ComponentActivity() {
     /** Once a second: what plays, for a linked phone's second screen; the hand-off button. */
     private fun linkTick() {
         updateHandoffButton()
+        // The top bar's clock (8.45), when the minute turns while the controls are up.
+        if (clockShownAt >= 0 && clockShownAt != System.currentTimeMillis() / 60_000 && playerView.isControllerFullyVisible) updateTopBar()
         val item = handItem()
         if (item == null) {
             repo.handNow = null
@@ -6042,6 +6080,16 @@ class PlayerActivity : ComponentActivity() {
         return (hopButton.tag as? String).orEmpty() to (handoffButton.tag as? String).orEmpty()
     }
 
+    /** Screen tests (8.45): the channel banner as it shows now (its text, to check what's in it). */
+    internal fun previewBanner(): String {
+        playerView.hideController()
+        val ch = queue.getOrNull(index) ?: return ""
+        renderBanner(ch)
+        bannerView.visibility = View.VISIBLE
+        handler.removeCallbacks(hideBanner)
+        return bannerView.text.toString()
+    }
+
     /** Screen tests: "Still watching?" as it asks. */
     internal fun askStillWatchingForTest(): Boolean {
         playerView.hideController()
@@ -6344,7 +6392,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun TextView.setColorFilterTint(on: Boolean) {
-        compoundDrawablesRelative.firstOrNull()?.setTint(if (on) 0xFFFF4F2E.toInt() else Color.WHITE)
+        compoundDrawablesRelative.firstOrNull()?.setTint(if (on) accentInt else Color.WHITE)
     }
 
     /**

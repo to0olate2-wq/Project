@@ -64,6 +64,34 @@ class Palette(
     val grain: Float,
 )
 
+/**
+ * The accent colour (8.45; the owner picked "colour themes" of what premium apps have): what's live,
+ * progress and the selected item. Orange is the app's own; the dark and light pages each get a shade
+ * that reads on them. Kept as ARGB numbers too, for the player's own (non-Compose) views.
+ */
+class Accent(val key: String, val name: String, val darkArgb: Long, val lightArgb: Long) {
+    val dark: Color get() = Color(darkArgb)
+    val light: Color get() = Color(lightArgb)
+}
+
+object Accents {
+    val ALL = listOf(
+        Accent("orange", "Orange", 0xFFFF5A3C, 0xFFDC3A1C),
+        Accent("red", "Red", 0xFFFF4D5E, 0xFFD01F35),
+        Accent("pink", "Pink", 0xFFFF5FA2, 0xFFCC2A72),
+        Accent("purple", "Purple", 0xFFB384FF, 0xFF7446D1),
+        Accent("blue", "Blue", 0xFF4FA3FF, 0xFF1B68CF),
+        Accent("teal", "Teal", 0xFF2CCBC0, 0xFF0B857D),
+        Accent("green", "Green", 0xFF4CD787, 0xFF168A4C),
+    )
+
+    fun of(key: String): Accent = ALL.firstOrNull { it.key == key } ?: ALL[0]
+}
+
+/** This palette with [a] as its accent (the same palette for Orange). */
+fun Palette.withAccent(a: Accent): Palette =
+    if (a.key == "orange") this else Palette(name, dark, ink, ink2, ink3, hairline, paper, muted, faint, if (dark) a.dark else a.light, amber, grain)
+
 /** Evenings and night: warm near-black, like a screening room. */
 val DarkPalette = Palette(
     "Dark", true,
@@ -164,8 +192,9 @@ private val Type = Typography().let { t ->
 }
 
 @Composable
-fun FalakTheme(dark: Boolean = true, layout: String = "auto", cinema: Boolean = false, content: @Composable () -> Unit) {
-    val palette = if (dark) DarkPalette else LightPalette
+fun FalakTheme(dark: Boolean = true, layout: String = "auto", cinema: Boolean = false, accent: String = "orange", content: @Composable () -> Unit) {
+    // (Remembered: a new palette each time would redraw every page.)
+    val palette = remember(dark, accent) { (if (dark) DarkPalette else LightPalette).withAccent(Accents.of(accent)) }
     val scheme = remember(palette) { schemeFor(palette) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val tv = when (layout) {
