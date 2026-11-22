@@ -147,8 +147,9 @@ fun HomeRowsDialog(vm: LibraryViewModel, state: AppState, onDismiss: () -> Unit)
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                 Text("Tick the rows Home shows; Up and Down move them. Rows with nothing in them stay hidden.", fontFamily = Sans, fontSize = 13.sp, color = Muted)
                 Spacer(Modifier.height(8.dp))
+                val hidden = HomeRows.hidden(s)
                 order.forEachIndexed { i, key ->
-                    val on = key !in s.homeHidden
+                    val on = key !in hidden
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Row(
                             Modifier
@@ -156,7 +157,7 @@ fun HomeRowsDialog(vm: LibraryViewModel, state: AppState, onDismiss: () -> Unit)
                                 .focusRing(RoundedCornerShape(6.dp))
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable {
-                                    vm.updateSettings { it.copy(homeHidden = if (key in it.homeHidden) it.homeHidden - key else it.homeHidden + key) }
+                                    vm.updateSettings { HomeRows.toggled(it, key) }
                                 }
                                 .padding(vertical = 9.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -165,16 +166,16 @@ fun HomeRowsDialog(vm: LibraryViewModel, state: AppState, onDismiss: () -> Unit)
                             Spacer(Modifier.width(12.dp))
                             Text(HomeRows.label(key), fontFamily = Sans, fontSize = 15.sp, color = if (on) Paper else Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        if (i > 0) TagChip("Up", false) { vm.updateSettings { it.copy(homeRows = HomeRows.moved(it, key, -1)) } }
+                        if (i > 0) TagChip("Up", false) { vm.updateSettings { HomeRows.movedSettings(it, key, -1) } }
                         Spacer(Modifier.width(6.dp))
-                        if (i < order.lastIndex) TagChip("Down", false) { vm.updateSettings { it.copy(homeRows = HomeRows.moved(it, key, 1)) } }
+                        if (i < order.lastIndex) TagChip("Down", false) { vm.updateSettings { HomeRows.movedSettings(it, key, 1) } }
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
         dismissButton = if (s.homeRows.isNotEmpty() || s.homeHidden.isNotEmpty()) {
-            { TextButton(onClick = { vm.updateSettings { it.copy(homeRows = emptyList(), homeHidden = emptyList()) } }) { Text("As it was") } }
+            { TextButton(onClick = { vm.updateSettings { it.copy(homeRows = emptyList(), homeHidden = emptyList()) } }) { Text("Default rows") } }
         } else {
             null
         },
