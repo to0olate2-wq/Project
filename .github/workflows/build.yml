@@ -212,6 +212,16 @@ jobs:
           set +f
           ./gradlew testPlayDebugUnitTest "${picks[@]}" --no-daemon --stacktrace 2>&1 | tee screens.log | tail -60
 
+      # Android's own code check over every file, when "[lint]" is in the commit's first line (its
+      # findings go to the screenshots branch as lint-results-*.xml).
+      - name: Check the code (lint)
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          if git log -1 --format=%s | grep -q '\[lint\]'; then
+            ./gradlew lintGithubDebug --no-daemon 2>&1 | tail -30
+          fi
+
       # main's screens go to "screenshots"; another branch's (work in progress) to "screenshots-<branch>".
       - name: Publish to the screenshots branch
         if: always()
@@ -225,6 +235,7 @@ jobs:
           # Compile errors first, then the end of the run (the last test started is the one that stuck).
           { grep -E "^e: |^w: .*screens" screens.log | head -40; echo "----- last lines -----"; grep -E "STARTED|PASSED|FAILED|SKIPPED|Exception|Error:|at app\.falak|Caused by" screens.log | tail -120; } > /tmp/screens/log.txt || true
           find app/build/test-results -name "*.xml" -exec cp {} /tmp/screens/ \; 2>/dev/null || true
+          cp app/build/reports/lint-results*.xml /tmp/screens/ 2>/dev/null || true
           # A test that crashed in native code (the torrent library): where, from Java's own crash report.
           find . /tmp -maxdepth 4 -name "hs_err_pid*.log" 2>/dev/null | head -3 | while read -r f; do head -150 "$f" > "/tmp/screens/crash-$(basename "$f" .log).txt"; done || true
           grep -n -B2 -A12 "^# \|fatal error\|exit value 13" screens.log | head -120 > /tmp/screens/crash-log.txt || true

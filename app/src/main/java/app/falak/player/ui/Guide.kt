@@ -136,7 +136,7 @@ object Guide {
         GuideStep(
             emptyList(),
             "While you watch",
-            "The house at the top of the player takes you straight back to Home. \"Skip intro\" shows while an intro plays: press it to skip, or let it play. " +
+            "On a phone, the house at the top of the player takes you straight back to Home. \"Skip intro\" shows while an intro plays: press it to skip, or let it play. " +
                 "You can see this guide again in Settings → Help and about.",
         ),
     )

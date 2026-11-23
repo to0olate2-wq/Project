@@ -295,7 +295,7 @@ class AutoSync(private val context: Context, private val repo: Repository) {
                 if (headers["x-group"] != c.tag) return reply(out, 403, ByteArray(0))
                 val link = parts[1] == "/link"
                 val length = headers["content-length"]?.toIntOrNull() ?: return reply(out, 411, ByteArray(0))
-                if (length !in 1..MAX_BODY) return reply(out, 413, ByteArray(0))
+                if (length !in 1..(if (link) MAX_LINK else MAX_BODY)) return reply(out, 413, ByteArray(0))
                 val body = ByteArray(length)
                 var read = 0
                 while (read < length) {
@@ -305,7 +305,6 @@ class AutoSync(private val context: Context, private val repo: Repository) {
                 }
                 if (link) {
                     // 8.42: hand-off, the second screen's questions and keys (small JSON, sealed too).
-                    if (length > MAX_LINK) return reply(out, 413, ByteArray(0))
                     val j = app.falak.player.data.Handoff.json
                     val ask = try {
                         j.decodeFromString(app.falak.player.data.LinkAsk.serializer(), String(c.open(body), Charsets.UTF_8))
