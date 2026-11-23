@@ -1075,6 +1075,21 @@ private fun PeekRow(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The provider's divider lines ("##### NEWS #####"): a quiet heading, no number, logo or programmes.
+        if (isDividerName(ch.name)) {
+            Spacer(Modifier.width(40.dp))
+            Text(
+                ch.name.trim { !it.isLetterOrDigit() }.ifBlank { ch.name },
+                fontFamily = Sans,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                letterSpacing = 1.2.sp,
+                color = if (focused) soft else Faint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
         Text("$number", style = Tabular.copy(fontSize = 13.sp), color = if (focused) soft else Faint, maxLines = 1, modifier = Modifier.width(40.dp))
         Box(
             Modifier.size(30.dp).clip(RoundedCornerShape(7.dp)).background(Ink3),
@@ -1149,6 +1164,7 @@ private fun PeekRow(
         Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
             if (isFav) Icon(painterResource(R.drawable.ic_pl_star_outline), contentDescription = "Favorite", tint = if (focused) dark else Amber, modifier = Modifier.size(17.dp))
         }
+        } // (not a divider)
     }
 }
 

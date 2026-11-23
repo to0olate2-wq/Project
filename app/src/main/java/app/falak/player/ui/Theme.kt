@@ -88,6 +88,13 @@ object Accents {
     fun of(key: String): Accent = ALL.firstOrNull { it.key == key } ?: ALL[0]
 }
 
+/** The accent of the theme around (for a theme drawn inside another, e.g. an alert's buttons). */
+@Composable
+fun currentAccentKey(): String {
+    val signal = LocalPalette.current.signal
+    return Accents.ALL.firstOrNull { it.dark == signal || it.light == signal }?.key ?: "orange"
+}
+
 /** This palette with [a] as its accent (the same palette for Orange). */
 fun Palette.withAccent(a: Accent): Palette =
     if (a.key == "orange") this else Palette(name, dark, ink, ink2, ink3, hairline, paper, muted, faint, if (dark) a.dark else a.light, amber, grain)

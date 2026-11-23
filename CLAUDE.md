@@ -487,6 +487,15 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   Someone who only hid rows before keeps the old order (`ALL`'s); any change in the dialog writes both lists
   (`toggled` / `movedSettings`), so the defaults stop applying without moving anything else. "Default rows" empties
   both. Test: `HomeRowsTest`. AppChanges entry "A shorter Home".
+- **8.47 (the owner: "line by line review… fix it all"):** an all-over check of the CI pictures, the code and
+  Android lint (`[lint]` in a commit's first line runs `lintGithubDebug`; `lint-results-*.xml` go to the screenshots
+  branch). Fixed: the 3–4 screens' names went under the hint bar (now at the top of a bottom pane); the tour named
+  the player's house on a TV (phones only); alert windows ignored the colour; the second screen's "stop" could be
+  cut off as its page closed; `/link` read an oversized body before refusing it (`MAX_LINK` first); divider lines in
+  the TV peek list looked like channels (now a quiet heading). Lint's remaining errors were checked: Media3
+  opt-ins, `dispatchKeyEvent`, tvprovider builders (guarded by `WatchNext.supported`, API 26), a `Map.get` read as
+  a regex group (false), BOM literals on purpose. Screen tests count as a TV with no touchscreen (`detectTv`), so
+  pictures of a "phone" in the default layout show the TV top menu: not a real-phone fault.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

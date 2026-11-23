@@ -142,9 +142,10 @@ fun SecondScreenDialog(vm: LibraryViewModel, onClose: () -> Unit) {
                             scope.launch {
                                 val fresh = if (at == null) null else withContext(Dispatchers.IO) { sync.ask(at, LinkAsk("now", System.currentTimeMillis())) }
                                 val item = fresh?.now?.item?.takeIf { it.channel.id == now2.item.channel.id } ?: now2.item
-                                if (at != null) launch(Dispatchers.IO) { sync.ask(at, LinkAsk("stop", System.currentTimeMillis())) }
-                                onClose()
+                                // The TV stops first (and surely: this page closes next, which would cancel a call left running).
+                                if (at != null) withContext(Dispatchers.IO) { sync.ask(at, LinkAsk("stop", System.currentTimeMillis())) }
                                 vm.playHandedOff(local.id, item)
+                                onClose()
                             }
                         }
                     }

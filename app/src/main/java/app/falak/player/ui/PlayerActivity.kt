@@ -4567,7 +4567,17 @@ class PlayerActivity : ComponentActivity() {
             val rect = r.getOrNull(i) ?: none
             val lp = label.layoutParams as FrameLayout.LayoutParams
             lp.leftMargin = rect[0] + dp(10)
-            lp.bottomMargin = (h - rect[3]) + dp(10)
+            // A picture reaching the bottom of the screen (three or four screens) has its name at its top:
+            // the keys' hint (TV) and the buttons (phone) sit along the bottom and covered it.
+            if (h - rect[3] < dp(120) && rect[1] > dp(40)) {
+                lp.gravity = Gravity.TOP or Gravity.START
+                lp.topMargin = rect[1] + dp(10)
+                lp.bottomMargin = 0
+            } else {
+                lp.gravity = Gravity.BOTTOM or Gravity.START
+                lp.topMargin = 0
+                lp.bottomMargin = (h - rect[3]) + dp(10)
+            }
             label.layoutParams = lp
             label.maxWidth = (rect[2] - rect[0] - dp(20)).coerceAtLeast(dp(80))
             label.visibility = if (showing && rect[2] > rect[0]) View.VISIBLE else View.GONE

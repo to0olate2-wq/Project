@@ -140,7 +140,7 @@ fun BoxScope.ProgramAlertCard(
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Always light on dark here (over the picture or either theme).
-                    FalakTheme(dark = true, layout = if (tv) "tv" else "phone") {
+                    FalakTheme(dark = true, layout = if (tv) "tv" else "phone", accent = currentAccentKey()) {
                         PaperButton("Watch now", Icons.Filled.PlayArrow, Modifier.focusRequester(watch)) { onWatch(a) }
                         GhostButton("Close") { onDismiss() }
                     }
@@ -199,7 +199,7 @@ fun BoxScope.SubscriptionCard(text: String?, onDismiss: () -> Unit) {
                 color = Color.White,
             )
             Spacer(Modifier.height(12.dp))
-            FalakTheme(dark = true, layout = if (tv) "tv" else "phone") {
+            FalakTheme(dark = true, layout = if (tv) "tv" else "phone", accent = currentAccentKey()) {
                 PaperButton("OK", modifier = Modifier.focusRequester(ok)) { onDismiss() }
             }
         }
