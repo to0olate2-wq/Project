@@ -97,9 +97,9 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     }
     // Its collection (8.34), found away from the screen (8.49): the first time it cleans every film's name.
     val index = vm.index
-    val collectionNow by androidx.compose.runtime.produceState<app.falak.player.data.Collections.Collection?>(null, index, ch.id) {
+    val collectionNow = androidx.compose.runtime.produceState<app.falak.player.data.Collections.Collection?>(null, index, ch.id) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { index.collectionFor(ch) }.getOrNull() }
-    }
+    }.value
     TitleStage(info?.backdrop, poster, ch.name, list, onBack = { vm.leaveTitle() }) { stage ->
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "head") {
