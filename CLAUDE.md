@@ -510,6 +510,23 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   at the right of `PageHeader` (not where the TV top menu is shown; `search = false` in the portal, which has its
   own; also the TV guide, Groups and Kids pages, which have their own search or filter box), top right of `TitleStage`, a "Search" row first on More; the TV menu's Search from another page; the
   remote's search key opens the box where there is no voice recognizer. AppChanges entry "Search from any page".
+- **8.49 (the owner sent a freeze report from a Formuler Z11 Pro MAX, Android 11, "screen froze 8+ s" opening
+  Series/Films; "after the last update the app only crashes"; the playlist slow to open):** the report showed
+  `LibraryIndex.collections` (lazy) made **on the main thread** in `MarqueeBrowse` (Films page) → `Collections.find`
+  → `Versions.title` → `TitleMatch.clean` for every film. Now `produceState` + `Dispatchers.Default` there, and a
+  film page's `collectionFor` too; `allCount` as well. **Never touch `index.collections` (or anything that cleans
+  every name) on the main thread.** Cleaning is quicker: `TitleMatch.clean` runs each pattern only where a quick
+  look at the letters says it can match (`leadMark`, `oddSpaces`, `[`), stops checking trailing tags once none is
+  left, and `Versions.withoutTags` runs `LEAD` only with a mark followed by a space (`markThenSpace`); the same
+  results as before on 408,000 names (old vs new compared on the sandbox), plain names ~3.5× quicker on a desktop
+  JVM. Opening a playlist notes "playlist ready: read … ms, lists made in … ms, N items" in the freeze report's
+  steps. **Player:** a Search button (`searchButton`, `goHome("SEARCH")` → `vm.navigate("SEARCH")` → `openSearch`;
+  phones after Home, TV after the star); no names on the player's buttons under the remote any more (the owner),
+  only Sleep's and "Back in…"'s time left. **TV, open on rest** (`Modifier.openOnRest`, `OPEN_ON_REST_MS` 400): the
+  top menu's sections and the add-on portal's tabs open when the remote rests on them; the sections row has
+  `focusRestorer(current section)` so coming up from the page lands on the open one. **TV Settings:** `HubRow`
+  on a TV = one 46 dp line (icon, name; the page shown: fill + accent mark; no summary, no arrow), tighter `HubGap`, list 300 dp, so
+  all eight pages show without scrolling. AppChanges entry "Pages open as you move".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
@@ -587,6 +604,9 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - A picture asked for the first time is not in the frame drawn then (a page opened in a screen test shows
   without its artwork): `shoot` the page twice (`TitlePageScreens.kt`).
 - `capture` draws an open dialog (`ShadowDialog.getLatestDialog()`) centred over the dimmed page.
+- CI's Robolectric sometimes can't fetch `android-all-instrumented` ("Failed to fetch maven artifact"): a test
+  infrastructure hiccup, not the app. Rerun the whole run; in 8.49 `[only …]` runs kept failing that way three
+  times in a row while full runs passed.
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens

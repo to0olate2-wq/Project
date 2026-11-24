@@ -95,6 +95,11 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
         val (name, year) = app.falak.player.data.TitleMatch.clean(ch.name)
         repo.imdbFor("movie", name, year ?: info?.year?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toInt() } ?: repo.providerYears["m" + ch.id.removePrefix("m")])
     }
+    // Its collection (8.34), found away from the screen (8.49): the first time it cleans every film's name.
+    val index = vm.index
+    val collectionNow = androidx.compose.runtime.produceState<app.falak.player.data.Collections.Collection?>(null, index, ch.id) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { index.collectionFor(ch) }.getOrNull() }
+    }.value
     TitleStage(info?.backdrop, poster, ch.name, list, onBack = { vm.leaveTitle() }) { stage ->
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "head") {
@@ -158,7 +163,7 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 }
             }
             // 8.34: the other films of its collection ("Toy Story 2" on Toy Story's page).
-            val collection = vm.index.collectionFor(ch)
+            val collection = collectionNow
             if (collection != null) {
                 val same = vm.index.copiesOf(ch).mapTo(HashSet()) { it.id } + ch.id
                 val others = collection.films.filter { it.id !in same && it.group !in excluded }

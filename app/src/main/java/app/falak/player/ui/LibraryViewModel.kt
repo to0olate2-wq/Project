@@ -854,11 +854,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 // The saved copy shows at once; a fresh one is fetched only if it is missing or old.
+                val t0 = android.os.SystemClock.elapsedRealtime()
                 val cached = if (refresh) null else repo.cachedChannels(p)
                 val data = cached ?: repo.loadChannels(p, refresh = true, keep = index.byId) { step ->
                     if (loadToken === token) loadProgress.value = step
                 }
+                val t1 = android.os.SystemClock.elapsedRealtime()
                 val added = show(data, announce = refresh)
+                // (8.49) How long opening took, in a freeze report's steps: reading vs making the lists.
+                app.falak.player.FreezeWatch.note(
+                    "playlist ready: ${if (cached != null) "saved copy read" else "downloaded"} in ${t1 - t0} ms, " +
+                        "lists made in ${android.os.SystemClock.elapsedRealtime() - t1} ms, ${data.channels.size} items",
+                )
                 if (loadToken === token) loading = false
                 if (updating) noteUpdate(UpdateNote(ok = true, added = added, auto = false))
                 maybeStartLastChannel(p)
@@ -1432,6 +1439,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             "RECORDINGS" -> screen = Screen.RECORDINGS
             "MORE" -> if (playlist != null) screen = Screen.MORE
             "GUIDE" -> if (playlist != null) screen = Screen.GUIDE
+            // The player's Search (8.49): Home's search, its box ready.
+            "SEARCH" -> openSearch()
             // The player's Home button: the add-ons' portal and any page left as they were, Home shown.
             "HOME" -> {
                 if (playlist == null) {

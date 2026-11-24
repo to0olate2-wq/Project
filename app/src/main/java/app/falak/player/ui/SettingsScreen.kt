@@ -1635,12 +1635,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
     if (twoPane) {
         // TV: the list on the left, the page on the right.
         Column(Modifier.fillMaxSize().padding(horizontal = if (shell == ShellMode.RAIL || shell == ShellMode.TOP) 28.dp else pageMargin())) {
-            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Settings",
                     fontFamily = Serif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     color = Paper,
                     modifier = Modifier.weight(1f),
                 )
@@ -1648,8 +1648,9 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
             Row(Modifier.fillMaxSize()) {
                 LazyColumn(
-                    Modifier.width(330.dp).fillMaxHeight(),
-                    contentPadding = PaddingValues(bottom = 32.dp),
+                    Modifier.width(300.dp).fillMaxHeight(),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) { hubItems() }
                 Spacer(Modifier.width(18.dp))
                 Box(Modifier.width(1.dp).fillMaxHeight().background(Hairline))
@@ -1933,10 +1934,12 @@ private fun SubtitlePreview(
 /** Space and a hairline between the groups of the Settings list. */
 @Composable
 private fun HubGap() {
+    // (TV, 8.49: tighter, so the whole list fits the screen.)
+    val gap = if (isTv()) 3.dp else 8.dp
     Column {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(gap))
         Rule(Modifier.padding(horizontal = 4.dp))
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(gap))
     }
 }
 
@@ -1951,6 +1954,41 @@ private fun HubRow(
     selected: Boolean = false,
     onClick: () -> Unit,
 ) {
+    if (isTv()) {
+        // TV (8.49, the owner: the list looked awkward): one line per page, all eight in view without
+        // scrolling; the page shown has a fill and an accent mark, nothing moves when it changes, and
+        // there is no arrow (the page is already beside it). What's set shows on the page itself.
+        val shape = RoundedCornerShape(12.dp)
+        Row(
+            modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .focusRing(shape)
+                .clip(shape)
+                .background(if (selected) Ink3 else androidx.compose.ui.graphics.Color.Transparent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.width(3.dp).height(22.dp).clip(RoundedCornerShape(2.dp))
+                    .background(if (selected) Signal else androidx.compose.ui.graphics.Color.Transparent),
+            )
+            Spacer(Modifier.width(12.dp))
+            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { icon() }
+            Spacer(Modifier.width(14.dp))
+            Text(
+                title,
+                fontFamily = Sans,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = Paper,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier

@@ -38,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -79,6 +81,7 @@ internal var cinemaSearchOpen by mutableStateOf(false)
  * page's picture shows behind it.
  */
 @Composable
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier) {
     val sections = rememberSections(vm, state)
     val screen = vm.screen
@@ -94,14 +97,18 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
         BrandMark(28.dp)
         Spacer(Modifier.width(12.dp))
         // (Scrolls sideways if a narrow screen can't hold every section: none is ever out of reach.)
+        // 8.49: the remote resting on a section opens it; coming up from the page lands on the one open.
+        val requesters = remember(sections) { sections.associateWith { androidx.compose.ui.focus.FocusRequester() } }
+        val fallback = requesters[current] ?: androidx.compose.ui.focus.FocusRequester.Default
         Row(
-            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            Modifier.weight(1f).focusRestorer(fallback).horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             // Icons (8.42, the owner: "just the logo is enough"): the name shows on the one the remote is on.
             sections.forEach { s ->
-                MenuTool(navIcon(s), navLabel(s), selected = screen == Screen.LIBRARY && !searching && s == current, mark = true) {
+                val selected = screen == Screen.LIBRARY && !searching && s == current
+                MenuTool(navIcon(s), navLabel(s), selected = selected, mark = true, requester = requesters.getValue(s), openOnFocus = !selected) {
                     cinemaSearchOpen = false
                     vm.openSection(s)
                 }
@@ -156,6 +163,9 @@ private fun MenuTool(
     enabled: Boolean = true,
     /** A section (8.42): where you are also gets the short orange line under it. */
     mark: Boolean = false,
+    requester: androidx.compose.ui.focus.FocusRequester? = null,
+    /** A section not open yet (8.49): the remote resting on it opens it. */
+    openOnFocus: Boolean = false,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -182,6 +192,8 @@ private fun MenuTool(
         Modifier
             .height(36.dp)
             .guideAnchor(label)
+            .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
+            .openOnRest(openOnFocus && enabled && mark, onClick)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .drawBehind { if (lit > 0.01f) drawRect(paper.copy(alpha = lit)) }

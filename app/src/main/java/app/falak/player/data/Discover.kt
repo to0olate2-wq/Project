@@ -22,10 +22,24 @@ object Versions {
 
     /** "MULTI-SUB | Dune (2021)", "4K-AR - Dune" → "Dune (2021)", "Dune": a provider's tags in front, gone. */
     fun withoutTags(name: String): String {
+        // (8.49) The pattern only where a mark followed by a space is there at all: most names have none.
+        if (!markThenSpace(name)) return name
         val m = LEAD.find(name) ?: return name
         val words = m.groupValues[1].split('-', '+', '/', '_', ' ').filter { it.isNotEmpty() }
         val tags = words.isNotEmpty() && words.all { w -> w.uppercase(Locale.ROOT) in TAGS || (w.length in 2..3 && w.all { it.isUpperCase() }) }
         return if (tags && m.range.last + 1 < name.length) name.substring(m.range.last + 1) else name
+    }
+
+    /** One of [LEAD]'s marks followed by a space (or a no-break space) somewhere in [s]. */
+    internal fun markThenSpace(s: String): Boolean {
+        for (i in 0 until s.length - 1) {
+            val c = s[i]
+            if (c == '|' || c == ':' || c == '-' || c == '–' || c == '—') {
+                val d = s[i + 1]
+                if (d.isWhitespace() || Character.isSpaceChar(d)) return true
+            }
+        }
+        return false
     }
 
     /** A title's cleaned name and year. */
@@ -95,12 +109,14 @@ object Collections {
             "(?:\\d{1,2}|[ivx]{1,5}|one|two|three|four|five|six|seven|eight|nine|ten|الأول|الثاني|الثالث|الرابع|الخامس)\\s*$",
     )
 
+    private val SUBTITLE_DASH = Regex("\\s[-–—]\\s")
+
     /** "John Wick: Chapter 3 - Parabellum" → ("John Wick", true); "Heat" → ("Heat", false). */
     fun stem(title: String): Pair<String, Boolean> {
         var s = title.trim()
         var marked = false
         // A subtitle after " - ".
-        val dash = Regex("\\s[-–—]\\s").find(s)
+        val dash = SUBTITLE_DASH.find(s)
         if (dash != null && dash.range.first >= 3) {
             s = s.substring(0, dash.range.first).trim()
             marked = true

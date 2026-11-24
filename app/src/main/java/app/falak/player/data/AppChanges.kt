@@ -155,6 +155,13 @@ object AppChanges {
                 "on a phone also under More). It searches every channel, film and series.",
             keys = listOf("Search"),
         ),
+        Change(
+            "8.49",
+            "Pages open as you move",
+            "On a TV, resting the remote on Home, Live TV, Films or Series in the menu opens it: no need to press OK. " +
+                "The player has a Search button too.",
+            keys = listOf("Home"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */
