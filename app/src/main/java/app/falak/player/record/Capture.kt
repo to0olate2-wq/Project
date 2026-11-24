@@ -95,6 +95,12 @@ internal class Capture(
     @Volatile var state = State.STARTING
         private set
     @Volatile var problem: String? = null
+
+    /**
+     * The channel's list has subtitles or other sound tracks of its own (8.50): saved as one file they're
+     * left out, so the player plays such a channel directly (a recording still works, without them).
+     */
+    @Volatile var extras: Boolean = false
         private set
     val ring: Ring? = ringDir?.let { Ring(it) }
 
@@ -323,7 +329,9 @@ internal class Capture(
         var (list, base) = if (given != null) given to at else text(at)
         if (!Hls.isPlaylist(list)) throw IOException("The provider didn't send a list of parts")
         if (Hls.isMaster(list)) {
-            val v = Hls.pick(Hls.parseMaster(list, base)) ?: throw Unsupported("This channel's sound comes separately, so it can't be saved")
+            val master = Hls.parseMaster(list, base)
+            extras = master.extras
+            val v = Hls.pick(master) ?: throw Unsupported("This channel's sound comes separately, so it can't be saved")
             val t = text(v.uri)
             list = t.first
             base = t.second

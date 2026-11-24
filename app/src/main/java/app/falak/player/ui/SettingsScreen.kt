@@ -278,7 +278,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                 HubRow(
                     { ThemeGlyph(Paper) },
                     "Look & start",
-                    "$theme theme · ${if (s.appLook == "cinema") "Cinema" else "Spotlight"} look · Opens on ${if (s.startOn == "live") "Live TV" else "Home"}",
+                    "$theme theme · ${if (s.appLook == "spotlight") "Spotlight" else "Cinema"} look · Opens on ${if (s.startOn == "live") "Live TV" else "Home"}",
                     hubAt(SettingsPage.APPEARANCE.name),
                     selected = twoPane && (page == SettingsPage.APPEARANCE || page?.parent == SettingsPage.APPEARANCE),
                 ) { openPage(SettingsPage.APPEARANCE) }
@@ -475,12 +475,12 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
                     LookOption(
                         "Spotlight",
                         if (tvLayout) "A panel shows what the remote is on, then rows." else "A featured title, then rows of what to watch.",
-                        s.appLook != "cinema", cinema = false, Modifier.weight(1f).then(focusAt("look")),
+                        s.appLook == "spotlight", cinema = false, Modifier.weight(1f).then(focusAt("look")),
                     ) { vm.updateSettings { it.copy(appLook = "spotlight") } }
                     LookOption(
                         "Cinema",
                         if (tvLayout) "A full-screen picture and a big Up next row." else "A bigger picture and a big Up next row.",
-                        s.appLook == "cinema", cinema = true, Modifier.weight(1f),
+                        s.appLook != "spotlight", cinema = true, Modifier.weight(1f),
                     ) { vm.updateSettings { it.copy(appLook = "cinema") } }
                 }
             }

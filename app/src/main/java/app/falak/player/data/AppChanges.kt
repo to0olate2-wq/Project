@@ -162,6 +162,13 @@ object AppChanges {
                 "The player has a Search button too.",
             keys = listOf("Home"),
         ),
+        Change(
+            "8.50",
+            "The Cinema look",
+            "The app now uses the Cinema look: big pictures and the menu along the top. " +
+                "Settings → Look & start → Look switches back to Spotlight.",
+            keys = listOf("Settings"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

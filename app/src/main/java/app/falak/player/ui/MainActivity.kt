@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
             val state by vm.state.collectAsStateWithLifecycle()
             val s = state.settings
             val dark = rememberDarkTheme(s.themeMode)
-            FalakTheme(dark, s.layout, cinema = s.appLook == "cinema", accent = s.accent) {
+            FalakTheme(dark, s.layout, cinema = s.appLook != "spotlight", accent = s.accent) {
                 // Status-bar icons follow the theme (dark icons on the light theme).
                 LaunchedEffect(dark) {
                     val transparent = android.graphics.Color.TRANSPARENT
@@ -544,6 +544,7 @@ class MainActivity : ComponentActivity() {
 
     /** While the ambient screen shows, the first key only brings the lists back. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) NavKeys.pressed(event.keyCode)
         if (ambient) {
             if (event.action == android.view.KeyEvent.ACTION_UP) leaveAmbient()
             return true
