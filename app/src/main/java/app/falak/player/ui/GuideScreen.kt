@@ -185,7 +185,7 @@ fun GuideScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, C
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = back) {
+        PageHeader(if (group != null) "TV Guide · $group" else "TV Guide", onBack = back, search = false) {
             IconButton(onClick = { vm.guideSearch = if (searching) null else "" }) {
                 Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = "Search programmes", tint = Paper)
             }

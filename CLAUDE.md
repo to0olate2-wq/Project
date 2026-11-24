@@ -508,7 +508,7 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   **Search from any page:** `vm.openSearch()` = Home's search of everything with the box ready (TV menu box /
   phone cursor via `searchAsked`); `LocalOpenSearch` (MainActivity, only with a playlist) → `SearchAnywhereButton`
   at the right of `PageHeader` (not where the TV top menu is shown; `search = false` in the portal, which has its
-  own), top right of `TitleStage`, a "Search" row first on More; the TV menu's Search from another page; the
+  own; also the TV guide, Groups and Kids pages, which have their own search or filter box), top right of `TitleStage`, a "Search" row first on More; the TV menu's Search from another page; the
   remote's search key opens the box where there is no voice recognizer. AppChanges entry "Search from any page".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
