@@ -116,6 +116,11 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INDEX = "index"
+        /** The picture-in-picture window's buttons (8.50). */
+        private const val PIP_ACTION = "app.falak.player.PIP"
+        private const val PIP_TOGGLE = 1
+        private const val PIP_NEXT = 2
+        private const val PIP_PREVIOUS = 3
         /** The half-time hop's button (8.42). */
         private const val HOP_LABEL = "Back in…"
         /** "Still watching?": seconds to answer before it stops. */
@@ -373,6 +378,15 @@ class PlayerActivity : ComponentActivity() {
             val ch = queue.getOrNull(index)
             if (t != null && t.failed && ch != null) {
                 FreezeWatch.note("buffer couldn't start: " + t.capture.problem)
+                noShift += ch.id
+                releaseShift()
+                playCurrent(showInfo = false)
+                return
+            }
+            // (8.50) Its own subtitles or languages would be lost through the buffer (the owner: "this
+            // channel has subtitles"): it plays directly, with all of them; pausing live isn't offered.
+            if (t != null && t.capture.extras && ch != null) {
+                FreezeWatch.note("buffer left out: the channel has its own subtitles or languages")
                 noShift += ch.id
                 releaseShift()
                 playCurrent(showInfo = false)
@@ -1049,6 +1063,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (pipReceiverOn) {
+            runCatching { unregisterReceiver(pipReceiver) }
+            pipReceiverOn = false
+        }
         if (listening) {
             listening = false
             app.falak.player.ListenService.handBack(currentUrl)
@@ -1691,7 +1709,10 @@ class PlayerActivity : ComponentActivity() {
             ) {
                 updateTimeViews()
             }
-            if (events.contains(Player.EVENT_IS_PLAYING_CHANGED)) updatePipParams()
+            if (events.contains(Player.EVENT_IS_PLAYING_CHANGED)) {
+                updatePipParams()
+                updatePipButtons()
+            }
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -2268,13 +2289,70 @@ class PlayerActivity : ComponentActivity() {
         ratio = ratio.coerceIn(0.42f, 2.38f)
         return PictureInPictureParams.Builder()
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+            .setActions(pipActions())
             .apply { if (Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(pipAuto()) }
             .build()
+    }
+
+    /**
+     * The small window's buttons (8.50; it had none, so nothing could be paused or changed there):
+     * previous, play / pause, next — channels for live TV, episodes or the list's next item otherwise.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun pipActions(): List<android.app.RemoteAction> {
+        fun action(code: Int, icon: Int, title: String): android.app.RemoteAction {
+            val intent = Intent(PIP_ACTION).setPackage(packageName).putExtra("do", code)
+            val pending = android.app.PendingIntent.getBroadcast(
+                this, code, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+            )
+            return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, icon), title, title, pending)
+        }
+        val out = ArrayList<android.app.RemoteAction>()
+        val several = queue.size > 1
+        if (several) out += action(PIP_PREVIOUS, R.drawable.exo_styled_controls_previous, "Previous")
+        out += if (player?.isPlaying == true) {
+            action(PIP_TOGGLE, R.drawable.exo_styled_controls_pause, "Pause")
+        } else {
+            action(PIP_TOGGLE, R.drawable.exo_styled_controls_play, "Play")
+        }
+        if (several) out += action(PIP_NEXT, R.drawable.exo_styled_controls_next, "Next")
+        return out
+    }
+
+    private var pipReceiverOn = false
+
+    private val pipReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            when (intent?.getIntExtra("do", 0)) {
+                PIP_TOGGLE -> player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+                PIP_NEXT -> zap(1)
+                PIP_PREVIOUS -> zap(-1)
+            }
+            updatePipButtons()
+        }
+    }
+
+    /** The window's play / pause button follows the player (any Android with picture-in-picture). */
+    private fun updatePipButtons() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !inPip) return
+        runCatching { setPictureInPictureParams(pipParams()) }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
+        // The window's buttons are heard only while it's open.
+        if (isInPictureInPictureMode && !pipReceiverOn) {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this, pipReceiver, android.content.IntentFilter(PIP_ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            pipReceiverOn = true
+            updatePipButtons()
+        } else if (!isInPictureInPictureMode && pipReceiverOn) {
+            runCatching { unregisterReceiver(pipReceiver) }
+            pipReceiverOn = false
+        }
         playerView.useController = !isInPictureInPictureMode
         updateTimeViews()
         // Captions are too small to read in the little window: they pause meanwhile.

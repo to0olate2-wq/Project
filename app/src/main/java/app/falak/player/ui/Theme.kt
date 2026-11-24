@@ -343,15 +343,33 @@ internal const val OPEN_ON_REST_MS = 400L
  */
 @Composable
 fun Modifier.openOnRest(enabled: Boolean, onOpen: () -> Unit): Modifier {
-    var focused by remember { mutableStateOf(false) }
+    // Moved here by Left / Right (8.50): focus that only lands here (a page or a window closing and
+    // the focus falling back to the menu) opens nothing. In 8.49 it did, and some Settings went Home.
+    var arrived by remember { mutableStateOf(false) }
     val open = androidx.compose.runtime.rememberUpdatedState(onOpen)
-    androidx.compose.runtime.LaunchedEffect(focused, enabled) {
-        if (focused && enabled) {
+    androidx.compose.runtime.LaunchedEffect(arrived, enabled) {
+        if (arrived && enabled) {
             kotlinx.coroutines.delay(OPEN_ON_REST_MS)
             open.value()
         }
     }
-    return this.onFocusChanged { focused = it.hasFocus }
+    return this.onFocusChanged { arrived = it.hasFocus && NavKeys.sideways() }
+}
+
+/** The last key the remote pressed and when (MainActivity): tells a move along a row from focus just landing. */
+object NavKeys {
+    @Volatile private var code = 0
+    @Volatile private var at = 0L
+
+    fun pressed(keyCode: Int) {
+        code = keyCode
+        at = android.os.SystemClock.uptimeMillis()
+    }
+
+    /** Left or Right pressed in the last moment. */
+    fun sideways(): Boolean =
+        (code == android.view.KeyEvent.KEYCODE_DPAD_LEFT || code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) &&
+            android.os.SystemClock.uptimeMillis() - at < 500
 }
 
 /** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */

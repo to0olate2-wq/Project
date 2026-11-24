@@ -527,6 +527,17 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `focusRestorer(current section)` so coming up from the page lands on the open one. **TV Settings:** `HubRow`
   on a TV = one 46 dp line (icon, name; the page shown: fill + accent mark; no summary, no arrow), tighter `HubGap`, list 300 dp, so
   all eight pages show without scrolling. AppChanges entry "Pages open as you move".
+- **8.50 (the owner: a live channel "has subtitles" but the app said it sends none; some Settings went back to
+  Home; picture-in-picture "has some issues"; "make the default view Cinema"):** (1) **The live buffer dropped a
+  channel's own subtitles and other languages** (HLS `#EXT-X-MEDIA` SUBTITLES / several AUDIO: `Capture` saves one
+  variant as one TS): `Hls.Master.extras` → `Capture.extras` → the player's `shiftTick` plays such a channel
+  directly (`noShift`, "buffer left out" in the steps); recordings still work, without them. `HlsTest`. Teletext
+  is still VLC only (ExoPlayer has no teletext). (2) **`openOnRest` (8.49) opened Home by itself** when a Settings
+  page or window closed and the focus fell back to the menu: now only focus reached by Left/Right opens
+  (`NavKeys`, set in MainActivity's `dispatchKeyEvent`). (3) **PiP window buttons** (`pipActions`: previous,
+  play/pause, next; `pipReceiver` registered only while in PiP, `PIP_ACTION`); it had none. (4) **Cinema is the
+  default look** (`Settings.appLook` default "cinema"; code tests `!= "spotlight"`); screen tests seed
+  "spotlight" (`seed`), Cinema keeps its own tests. AppChanges entry "The Cinema look".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

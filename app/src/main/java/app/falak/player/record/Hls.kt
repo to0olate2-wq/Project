@@ -10,7 +10,12 @@ internal object Hls {
     class Variant(val uri: String, val bandwidth: Long, val audioGroup: String?)
 
     /** A master playlist: its versions, and the audio groups whose sound comes as separate parts. */
-    class Master(val variants: List<Variant>, val separateAudio: Set<String>)
+    class Master(
+        val variants: List<Variant>,
+        val separateAudio: Set<String>,
+        /** Subtitles or more than one sound track of their own (8.50): the buffer would drop them. */
+        val extras: Boolean = false,
+    )
 
     class Key(val method: String, val uri: String?, val iv: ByteArray?)
 
@@ -32,6 +37,8 @@ internal object Hls {
     fun parseMaster(text: String, base: String): Master {
         val variants = ArrayList<Variant>()
         val separate = HashSet<String>()
+        var audioTracks = 0
+        var subtitles = false
         var pending: Map<String, String>? = null
         for (raw in text.lineSequence()) {
             val line = raw.trim()
@@ -39,7 +46,11 @@ internal object Hls {
                 line.startsWith("#EXT-X-STREAM-INF:") -> pending = attributes(line.substringAfter(':'))
                 line.startsWith("#EXT-X-MEDIA:") -> {
                     val a = attributes(line.substringAfter(':'))
-                    if (a["TYPE"].equals("AUDIO", ignoreCase = true) && !a["URI"].isNullOrBlank()) a["GROUP-ID"]?.let { separate += it }
+                    if (a["TYPE"].equals("AUDIO", ignoreCase = true)) {
+                        audioTracks++
+                        if (!a["URI"].isNullOrBlank()) a["GROUP-ID"]?.let { separate += it }
+                    }
+                    if (a["TYPE"].equals("SUBTITLES", ignoreCase = true) && !a["URI"].isNullOrBlank()) subtitles = true
                 }
                 line.isEmpty() || line.startsWith("#") -> Unit
                 pending != null -> {
@@ -49,7 +60,7 @@ internal object Hls {
                 }
             }
         }
-        return Master(variants, separate)
+        return Master(variants, separate, extras = subtitles || (audioTracks > 1 && separate.isNotEmpty()))
     }
 
     /**

@@ -300,6 +300,8 @@ abstract class ScreenshotBase {
                 settings = s.settings.copy(
                     layout = layout, player = "exo", openLast = true, themeMode = theme,
                     hiddenGroups = mapOf(p.id to hidden), look = look,
+                    // (The pictures were made in Spotlight; Cinema has its own tests. Cinema is the default since 8.50.)
+                    appLook = "spotlight",
                     kidsGroups = if (kids == null) emptyMap() else mapOf(p.id to kids),
                     kidsMode = kidsOn, pin = if (kidsOn) "1234" else "",
                     profilesOn = profiles.isNotEmpty(),

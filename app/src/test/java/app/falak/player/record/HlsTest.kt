@@ -34,6 +34,18 @@ class HlsTest {
     }
 
     @Test
+    fun tellsWhenTheListHasItsOwnSubtitlesOrLanguages() {
+        val subs = "#EXTM3U\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"s\",LANGUAGE=\"ar\",URI=\"subs/ar.m3u8\"\n" +
+            "#EXT-X-STREAM-INF:BANDWIDTH=1,SUBTITLES=\"s\"\nv.m3u8\n"
+        assertTrue(Hls.parseMaster(subs, "http://h/x.m3u8").extras)
+        val languages = "#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"English\",URI=\"en.m3u8\"\n" +
+            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"Arabic\",URI=\"ar.m3u8\"\n#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO=\"a\"\nv.m3u8\n"
+        assertTrue(Hls.parseMaster(languages, "http://h/x.m3u8").extras)
+        val plain = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2\nw.m3u8\n"
+        assertEquals(false, Hls.parseMaster(plain, "http://h/x.m3u8").extras)
+    }
+
+    @Test
     fun readsPartsKeysHeadersAndTheEnd() {
         val media = """
             #EXTM3U
