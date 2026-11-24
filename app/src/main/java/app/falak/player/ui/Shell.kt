@@ -311,6 +311,8 @@ fun MoreScreen(vm: LibraryViewModel, state: AppState) {
                 Text(p.name, fontFamily = Sans, fontSize = 13.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        // Search from here too (8.48): Home's search, through everything.
+        item(key = "search") { MoreRow(painterResource(R.drawable.ic_nav_search), "Search") { vm.openSearch() } }
         if (Section.FAVORITES in sections) {
             item(key = "fav") {
                 MoreRow(rememberVectorPainter(Icons.Outlined.Star), "Favorites & lists", count = favCount) { vm.openSection(Section.FAVORITES) }

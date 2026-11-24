@@ -162,7 +162,12 @@ class MainActivity : ComponentActivity() {
                             (if (vm.group != null) " · one group" else "") + " · " + if (tvNow) "TV" else "phone",
                     )
                 }
-                androidx.compose.runtime.CompositionLocalProvider(LocalVoiceSearch provides voiceSearch) {
+                // Search from any page (8.48), once a playlist is open.
+                val openSearch = remember { { vm.openSearch() } }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalVoiceSearch provides voiceSearch,
+                    LocalOpenSearch provides openSearch.takeIf { vm.playlist != null && vm.index.all.isNotEmpty() },
+                ) {
                 Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
                         // Pages slide and fade: forward from the right, back from the left.
@@ -188,8 +193,12 @@ class MainActivity : ComponentActivity() {
                             targetState = vm.screen,
                             transitionSpec = {
                                 if (tv) {
-                                    // TV boxes: a short fade only; sliding two full pages at once stutters there.
-                                    fadeIn(tween(160)).togetherWith(ExitTransition.None)
+                                    // TV boxes: no sliding (two full pages at once stutters there); the new page
+                                    // fades in growing from 98% (8.48): one layer, drawn by the GPU, ~0.2 s.
+                                    (
+                                        fadeIn(tween(180)) +
+                                            androidx.compose.animation.scaleIn(tween(220, easing = FastOutSlowInEasing), initialScale = 0.98f)
+                                        ).togetherWith(ExitTransition.None)
                                 } else {
                                     val forward = depth(targetState) >= depth(initialState)
                                     val dir = if (forward) 1 else -1
@@ -540,9 +549,10 @@ class MainActivity : ComponentActivity() {
             return true
         }
         // The remote's search (microphone) key, when Android passes it to the app: voice search.
+        // Without a speech recognizer (some TV boxes) the key opens the search box instead (8.48).
         val speak = voiceSearch
-        if (event.keyCode == android.view.KeyEvent.KEYCODE_SEARCH && speak != null && vm.playlist != null) {
-            if (event.action == android.view.KeyEvent.ACTION_UP) speak()
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_SEARCH && vm.playlist != null) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) speak?.invoke() ?: vm.openSearch()
             return true
         }
         return super.dispatchKeyEvent(event)

@@ -496,6 +496,20 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   opt-ins, `dispatchKeyEvent`, tvprovider builders (guarded by `WatchNext.supported`, API 26), a `Map.get` read as
   a regex group (false), BOM literals on purpose. Screen tests count as a TV with no touchscreen (`detectTv`), so
   pictures of a "phone" in the default layout show the TV top menu: not a real-phone fault.
+- **8.48 (the owner: animations on TV when moving, without lag; up/down in the portal "better and faster";
+  search "from anywhere"):** **Focus on a TV** (Theme.kt): `focusRing` fades its outline in (`FOCUS_IN_MS` 140 /
+  `FOCUS_OUT_MS` 110) and grows the element at most 8 dp across (graphicsLayer, TV only; the chain's kinds never
+  change); `cardFocus` springs quicker (StiffnessMedium) with outline and shadow fading with it; `focusOutline`
+  draws the 2 dp outline in the draw phase. ChannelBrowser's `rowFocus` and the top menu's `MenuTool` (pill fade,
+  tint, the name sliding out) fade too. Rule: animate only on a focus change, read animated values in
+  graphicsLayer/draw lambdas, no endless animations. TV page change = fade + grow from 98% (220 ms, no sliding).
+  **Rows glide** (`HomeScroller.pin`, `PIN_MS` 240, tween) and the **add-on portal on a TV** now uses the same
+  `HomeScroller` (rows slide to the top whole; its search box, hero, Reload and the "no films" note `pinToTop`).
+  **Search from any page:** `vm.openSearch()` = Home's search of everything with the box ready (TV menu box /
+  phone cursor via `searchAsked`); `LocalOpenSearch` (MainActivity, only with a playlist) → `SearchAnywhereButton`
+  at the right of `PageHeader` (not where the TV top menu is shown; `search = false` in the portal, which has its
+  own; also the TV guide, Groups and Kids pages, which have their own search or filter box), top right of `TitleStage`, a "Search" row first on More; the TV menu's Search from another page; the
+  remote's search key opens the box where there is no voice recognizer. AppChanges entry "Search from any page".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

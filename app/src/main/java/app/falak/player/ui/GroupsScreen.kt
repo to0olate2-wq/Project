@@ -69,7 +69,7 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     val tv = isTv()
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader("Show & hide groups", onBack = back, subtitle = p.name)
+        PageHeader("Show & hide groups", onBack = back, subtitle = p.name, search = false)
         Spacer(Modifier.height(10.dp))
         ChipFlow {
             kinds.forEach { k ->

@@ -10,7 +10,6 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -386,9 +386,17 @@ fun ChannelBrowser(
 @Composable
 private fun Modifier.rowFocus(shape: Shape, base: Color): Modifier {
     var focused by remember { mutableStateOf(false) }
+    // (8.48) The fill and the outline fade in; only the drawing follows the animation.
+    val lit by androidx.compose.animation.core.animateFloatAsState(
+        if (focused) 1f else 0f,
+        androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
+        label = "rowFocus",
+    )
+    val paper = Paper
     return this
         .onFocusChanged { focused = it.isFocused }
         .clip(shape)
-        .background(if (focused) Paper.copy(alpha = 0.16f) else base)
-        .then(if (focused) Modifier.border(2.dp, Paper, shape) else Modifier)
+        .background(base)
+        .drawBehind { if (lit > 0.01f) drawRect(paper.copy(alpha = 0.16f * lit)) }
+        .focusOutline(shape, paper) { lit }
 }

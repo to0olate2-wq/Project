@@ -175,7 +175,7 @@ private fun GroupPickerPage(
     val suggested = remember(groups) { groups.keys.filter { suggest(it) } }
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader(title, onBack = back, subtitle = p.name)
+        PageHeader(title, onBack = back, subtitle = p.name, search = false)
         Spacer(Modifier.height(10.dp))
         Text(note, fontFamily = Sans, fontSize = 13.sp, color = Muted)
         top?.invoke()

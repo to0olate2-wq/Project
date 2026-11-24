@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -276,22 +281,43 @@ fun Modifier.panel(shape: Shape, raised: Boolean = false): Modifier = this
     .background(if (raised) Ink3 else Ink2)
     .border(1.dp, Hairline, shape)
 
-/** Remote-control focus for rows and buttons: a clean paper outline. */
+/**
+ * Remote-control focus for rows and buttons: a clean paper outline. On a TV (8.48) the outline
+ * fades in and the element grows a little (8 dp across at most, so wide rows barely move). Only
+ * the drawing follows the animation (graphicsLayer / draw phase): nothing is measured or composed
+ * again while it runs, and it runs only when the focus moves, never on its own.
+ */
 @Composable
 fun Modifier.focusRing(shape: Shape = RoundedCornerShape(8.dp)): Modifier {
     var focused by remember { mutableStateOf(false) }
+    val tv = isTv()
+    val lit by animateFloatAsState(if (focused) 1f else 0f, tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS), label = "focusRing")
+    val grow = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
+    // (The same kinds of modifiers whatever the focus: a changing chain can lose the focus.)
     return this
+        .zIndex(if (focused) 1f else 0f)
+        .then(
+            if (tv) {
+                Modifier.graphicsLayer {
+                    val s = 1f + lit * minOf(0.05f, if (size.width > 0f) grow / size.width else 0f)
+                    scaleX = s
+                    scaleY = s
+                }
+            } else {
+                Modifier
+            },
+        )
         .onFocusChanged { focused = it.isFocused }
-        .then(if (focused) Modifier.border(2.dp, Paper, shape) else Modifier)
+        .focusOutline(shape, Paper) { if (tv) lit else if (focused) 1f else 0f }
 }
 
-/** Remote-control focus for cards: lifts slightly with a spring, paper outline. */
+/** Remote-control focus for cards: lifts with a quick spring, the outline and shadow fading in with it. */
 @Composable
 fun Modifier.cardFocus(shape: Shape): Modifier {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         if (focused) 1.06f else 1f,
-        spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
         label = "cardFocus",
     )
     return this
@@ -299,10 +325,29 @@ fun Modifier.cardFocus(shape: Shape): Modifier {
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            shadowElevation = if (focused) 18f else 0f
+            shadowElevation = 18f * ((scale - 1f) / 0.06f).coerceIn(0f, 1f)
             this.shape = shape
             clip = false
         }
         .onFocusChanged { focused = it.isFocused }
-        .then(if (focused) Modifier.border(2.dp, Paper, shape) else Modifier)
+        .focusOutline(shape, Paper) { ((scale - 1f) / 0.06f).coerceIn(0f, 1f) }
+}
+
+/** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */
+internal const val FOCUS_IN_MS = 140
+internal const val FOCUS_OUT_MS = 110
+
+/**
+ * A 2 dp paper outline inside the edge, as `border` drew it, at the strength [alpha] gives (read
+ * while drawing, so an animated value only redraws).
+ */
+internal fun Modifier.focusOutline(shape: Shape, color: Color, alpha: () -> Float): Modifier = drawWithContent {
+    drawContent()
+    val a = alpha()
+    if (a > 0.01f) {
+        val w = 2.dp.toPx()
+        inset(w / 2f) {
+            drawOutline(shape.createOutline(size, layoutDirection, this), color.copy(alpha = a.coerceAtMost(1f)), style = Stroke(w))
+        }
+    }
 }

@@ -356,6 +356,8 @@ fun PageHeader(
     title: String,
     onBack: () -> Unit,
     subtitle: String? = null,
+    /** The search of everything at the right (8.48), unless the menu on show has it or the page has its own. */
+    search: Boolean = true,
     actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -376,7 +378,27 @@ fun PageHeader(
             )
             if (subtitle != null) Text(subtitle, fontFamily = Sans, fontSize = 12.sp, color = Faint, maxLines = 1)
         }
-        Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
+        Row(Modifier.offset(x = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            actions()
+            if (search && LocalShell.current != ShellMode.TOP) SearchAnywhereButton()
+        }
+    }
+}
+
+/** Opens the search of everything from any page (8.48); null while no playlist is open. */
+val LocalOpenSearch = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/** A magnifier that opens the search of everything ([LocalOpenSearch]); nothing when there is none. */
+@Composable
+fun SearchAnywhereButton(modifier: Modifier = Modifier) {
+    val open = LocalOpenSearch.current ?: return
+    androidx.compose.material3.IconButton(onClick = open, modifier = modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) {
+        androidx.compose.material3.Icon(
+            androidx.compose.ui.res.painterResource(app.falak.player.R.drawable.ic_nav_search),
+            contentDescription = "Search",
+            tint = Paper,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

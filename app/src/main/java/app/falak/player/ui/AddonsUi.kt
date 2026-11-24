@@ -52,6 +52,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -291,6 +292,8 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                 PageHeader(
                     m.portalName(),
                     onBack = leave,
+                    // (The portal searches its add-ons in its own box.)
+                    search = false,
                     subtitle = when {
                         links.isEmpty() -> null
                         m.loading && m.addons.isEmpty() -> "Reading your add-ons…"
@@ -404,6 +407,7 @@ private fun AddonsIntro(onAdd: () -> Unit) {
 
 /** The add-ons' lists, and a search across those that can search. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun AddonsBrowse(
     m: AddonsModel,
     tab: AddonsModel.Tab,
@@ -427,7 +431,22 @@ private fun AddonsBrowse(
             runCatching { searchFocus.requestFocus() }
         }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
+    // TV (8.48): as on Home, a row the remote moves to glides to the top of the page, whole, rather
+    // than being nudged just into view (HomeScroller); the page itself never scrolls on its own.
+    val tv = isTv()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pageScope = androidx.compose.runtime.rememberCoroutineScope()
+    val inheritedSpec = androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current
+    val scroller = remember(listState, tv) { if (tv) HomeScroller(listState, pageScope, inheritedSpec) else null }
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalHomeScroller provides scroller,
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides (scroller?.manual ?: inheritedSpec),
+    ) {
+    LazyColumn(
+        Modifier.fillMaxSize().onGloballyPositioned { scroller?.viewport = it },
+        state = listState,
+        contentPadding = PaddingValues(bottom = 28.dp),
+    ) {
         if (m.canSearch && searchShown) {
             item(key = "search") {
                 OutlinedTextField(
@@ -448,7 +467,7 @@ private fun AddonsBrowse(
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { m.search(text) }),
-                    modifier = Modifier.fillMaxWidth().padding(top = if (heroStyle == HeroStyle.CARD) 2.dp else 8.dp, bottom = 4.dp).focusRequester(searchFocus),
+                    modifier = Modifier.pinToTop().fillMaxWidth().padding(top = if (heroStyle == HeroStyle.CARD) 2.dp else 8.dp, bottom = 4.dp).focusRequester(searchFocus),
                 )
             }
         }
@@ -475,7 +494,9 @@ private fun AddonsBrowse(
             val lead = rows.firstNotNullOfOrNull { m.rows[it.key]?.firstOrNull() }
             if (lead != null) {
                 item(key = "hero") {
+                    Box(Modifier.pinToTop()) {
                     PortalHero(lead, saved.any { it.type == lead.type && it.id == lead.id }, onOpen = { m.openItem(lead) }, onList = { onList(lead) }, style = heroStyle)
+                    }
                 }
             }
             val going = watch.filter {
@@ -529,14 +550,14 @@ private fun AddonsBrowse(
             item(key = "nokind") { Note("Your add-ons have no lists of ${if (tab == AddonsModel.Tab.SERIES) "series" else "films"}.") }
         }
         if (tab == AddonsModel.Tab.HOME && rows.isNotEmpty()) {
-            item(key = "reload") { TextButton(onClick = onReload) { Text("Reload the lists") } }
+            item(key = "reload") { TextButton(onClick = onReload, modifier = Modifier.pinToTop()) { Text("Reload the lists") } }
         }
         if (!m.loading && m.addons.isNotEmpty() && m.rowsToShow().isEmpty()) {
             item(key = "norows") {
                 if (m.canSearch) {
                     Note("Your add-ons have no lists to show: search them above.")
                 } else {
-                    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    Column(Modifier.pinToTop().fillMaxWidth().padding(top = 16.dp)) {
                         Text("No films to pick from yet", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = Paper)
                         Spacer(Modifier.size(6.dp))
                         Text(
@@ -557,6 +578,7 @@ private fun AddonsBrowse(
                 }
             }
         }
+    }
     }
 }
 
@@ -828,7 +850,7 @@ private fun AddonDiscover(m: AddonsModel, r: AddonsModel.Row) {
         }.collect { (near, size) -> if (near && size > 0) m.loadMore() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader(r.name, onBack = { m.closeDiscover() }, subtitle = r.addon.name)
+        PageHeader(r.name, onBack = { m.closeDiscover() }, subtitle = r.addon.name, search = false)
         val picks = r.catalog.genres
         if (picks.isNotEmpty()) {
             androidx.compose.foundation.lazy.LazyRow(
@@ -936,6 +958,7 @@ private fun AddonDetails(
             PageHeader(
                 meta?.name?.ifBlank { null } ?: item.name,
                 onBack = onBack,
+                search = false,
                 subtitle = listOfNotNull(
                     (meta?.year ?: item.year).ifBlank { null },
                     meta?.runtime?.ifBlank { null },
