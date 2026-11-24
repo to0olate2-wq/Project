@@ -418,10 +418,22 @@ fun MarqueeBrowse(
     // 8.34: popular now, "Because you watched", and (films) the collections found in the names.
     val popular = rememberPopular(vm, kind, excluded)
     val because = rememberBecause(vm, state, me, kind, excluded)
-    val collections = remember(index, excluded, films) {
-        if (!films) emptyList() else index.collections.filter { c -> c.films.all(::ok) && c.films.none { ADULT_GROUP.containsMatchIn(it.group) } }.take(30)
+    // (8.49) Worked out away from the screen: finding the collections cleans every film's name, which
+    // froze a TV box for 8 s and more on a big playlist when it ran here.
+    val collections by androidx.compose.runtime.produceState(emptyList<app.falak.player.data.Collections.Collection>(), index, excluded, films) {
+        value = if (!films) {
+            emptyList()
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                index.collections.filter { c -> c.films.all(::ok) && c.films.none { ADULT_GROUP.containsMatchIn(it.group) } }.take(30)
+            }
+        }
     }
-    val allCount = remember(groups, index) { app.falak.player.data.Versions.oneEach(groups.values.flatten(), index.titleKeys).size }
+    val allCount by androidx.compose.runtime.produceState(0, groups, index) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            app.falak.player.data.Versions.oneEach(groups.values.flatten(), index.titleKeys).size
+        }
+    }
     LaunchedEffect(featured, continueOfKind) { vm.loadHeroArt((if (films) featured else emptyList()) + continueOfKind) }
     val watched = { ch: Channel -> state.progress[progressKey(me, ch.id)] }
     val sheet: (Channel) -> Unit = { ch -> vm.listSheetFor = ch }

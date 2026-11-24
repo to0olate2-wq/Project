@@ -333,6 +333,27 @@ fun Modifier.cardFocus(shape: Shape): Modifier {
         .focusOutline(shape, Paper) { ((scale - 1f) / 0.06f).coerceIn(0f, 1f) }
 }
 
+/** How long the remote rests on a tab before it opens (TV, 8.49): passing over one opens nothing. */
+internal const val OPEN_ON_REST_MS = 400L
+
+/**
+ * TV (8.49, the owner: Live, Films, Series… "only hover it should open its content"): the remote
+ * resting on this tab for [OPEN_ON_REST_MS] opens it, no OK needed; [enabled] off (where it is open
+ * already) does nothing.
+ */
+@Composable
+fun Modifier.openOnRest(enabled: Boolean, onOpen: () -> Unit): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    val open = androidx.compose.runtime.rememberUpdatedState(onOpen)
+    androidx.compose.runtime.LaunchedEffect(focused, enabled) {
+        if (focused && enabled) {
+            kotlinx.coroutines.delay(OPEN_ON_REST_MS)
+            open.value()
+        }
+    }
+    return this.onFocusChanged { focused = it.hasFocus }
+}
+
 /** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */
 internal const val FOCUS_IN_MS = 140
 internal const val FOCUS_OUT_MS = 110

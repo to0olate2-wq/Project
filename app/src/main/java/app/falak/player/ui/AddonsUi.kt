@@ -797,7 +797,8 @@ private fun PortalRail(
 @Composable
 private fun PortalTabs(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AddonsModel.Tab.entries.forEach { t -> TagChip(t.label, t == tab) { onTab(t) } }
+        // TV (8.49): the remote resting on a tab opens it.
+        AddonsModel.Tab.entries.forEach { t -> TagChip(t.label, t == tab, modifier = Modifier.openOnRest(isTv() && t != tab) { onTab(t) }) { onTab(t) } }
     }
 }
 

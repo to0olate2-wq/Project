@@ -129,11 +129,15 @@ object TitleMatch {
     /** "EN - The Matrix (1999) 4K" → ("The Matrix", 1999); "|AR| Breaking Bad" → ("Breaking Bad", null). */
     fun clean(raw: String, thisYear: Int = currentYear()): Pair<String, Int?> {
         var s = raw.trim()
-        repeat(3) {
-            s = s.replace(LEAD_BRACKET, "")
-            s = s.replace(LEAD_CODE, "")
+        // (8.49) Each pattern only where a quick look at the letters says it can match: a TV box spent
+        // seconds on the patterns of a big playlist's names, most of which have no tags at all.
+        for (round in 0 until 3) {
+            val before = s
+            if (leadMark(s, bracket = true)) s = s.replace(LEAD_BRACKET, "")
+            if (leadMark(s, bracket = false)) s = s.replace(LEAD_CODE, "")
+            if (s == before) break
         }
-        repeat(4) { if (endsWithTag(s)) s = s.replace(TRAIL_TAG, "") }
+        trailTags@ for (k in 0 until 4) { if (!endsWithTag(s)) break@trailTags; s = s.replace(TRAIL_TAG, "") }
         val year = Trending.yearIn(s, thisYear)
         if (year != null) {
             val y = year.toString()
@@ -146,8 +150,40 @@ object TitleMatch {
             }
             if (norm(without).isNotEmpty()) s = without
         }
-        repeat(4) { if (endsWithTag(s)) s = s.replace(TRAIL_TAG, "") }
-        s = s.replace(BRACKETED, " ").replace(SPACES, " ").trim().trim('-', '|', ':', '•', '·').trim()
+        trailTags@ for (k in 0 until 4) { if (!endsWithTag(s)) break@trailTags; s = s.replace(TRAIL_TAG, "") }
+        if (s.indexOf('[') >= 0) s = s.replace(BRACKETED, " ")
+        if (oddSpaces(s)) s = s.replace(SPACES, " ")
+        s = s.trim().trim('-', '|', ':', '•', '·').trim()
         return s to year
+    }
+
+    /** A space as the patterns' \s may see it (wider than isWhitespace: no-break spaces too). */
+    private fun spaceLike(c: Char) = c.isWhitespace() || Character.isSpaceChar(c)
+
+    /**
+     * Whether [LEAD_BRACKET] ([bracket]) or [LEAD_CODE] could match at the start of [s]: its first
+     * mark after spaces opens a bracket, or it starts with two capitals (or 4K / 8K).
+     */
+    internal fun leadMark(s: String, bracket: Boolean): Boolean {
+        var i = 0
+        while (i < s.length && spaceLike(s[i])) i++
+        if (i >= s.length) return false
+        val c = s[i]
+        if (bracket) return c == '[' || c == '|' || c == '{'
+        val d = s.getOrNull(i + 1) ?: return false
+        return (c in 'A'..'Z' && d in 'A'..'Z') || ((c == '4' || c == '8') && d == 'K')
+    }
+
+    /** Spaces other than single plain ones between words (what [SPACES] would change). */
+    internal fun oddSpaces(s: String): Boolean {
+        for (i in s.indices) {
+            val c = s[i]
+            if (c == ' ') {
+                if (i + 1 < s.length && spaceLike(s[i + 1])) return true
+            } else if (spaceLike(c)) {
+                return true
+            }
+        }
+        return false
     }
 }

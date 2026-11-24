@@ -163,6 +163,7 @@ class PlayerActivity : ComponentActivity() {
     /** The star before the name at the top of the controls: Favorites. */
     private lateinit var favButton: TextView
     private lateinit var homeButton: TextView
+    private lateinit var searchButton: TextView
     /** Half-time hop (8.42): "Back in 15", then the time left; live channels only. */
     private lateinit var hopButton: TextView
     /** Hand-off (8.42): "On TV" on a phone, "On phone" on a TV, when a linked device is near. */
@@ -608,6 +609,12 @@ class PlayerActivity : ComponentActivity() {
         homeButton = pill("", R.drawable.ic_pl_home) { goHome() }.apply {
             tag = "Home"
             contentDescription = "Home"
+        }
+        // The search of everything from the player (8.49, the owner asked; phones and TV): like Home, a
+        // live channel carries on in the mini player and a film or episode keeps its place.
+        searchButton = pill("", R.drawable.ic_nav_search) { goHome("SEARCH") }.apply {
+            tag = "Search"
+            contentDescription = "Search"
         }
         // Phones (8.28): lock the screen while watching (a pocket, a child's hands), and Chromecast.
         lockButton = pill("", R.drawable.ic_pl_lock) { lockScreen() }.apply {
@@ -3042,16 +3049,15 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * 8.42 (the owner: "remove all labels beside the logo, but when I hover it, it will show the name" on
-     * a TV; on a phone just the icons): every button is its icon. A TV shows the name of the one the remote
-     * is on; Sleep and "Back in…" show their time left while they run ("20 min"). Names are read out.
+     * 8.42 / 8.49 (the owner): every button is its icon only, also under the remote on a TV; Sleep and
+     * "Back in…" show their time left while they run ("20 min"). Names are read out.
      */
     private fun applyIconLabels() {
         if (!::sleepButton.isInitialized || !::engineButton.isInitialized || !::handoffButton.isInitialized) return
         for (b in pills() + settingIcons()) {
             val full = b.tag as? String ?: ""
+            // (8.49, the owner: no names when the remote is on a button, only the icons.)
             val text = when {
-                tvLayout && b.isFocused -> full
                 // "Sleep 20 min" → "20 min", "Sleep · end" → "end", "Sleep" → "".
                 b === sleepButton -> full.removePrefix("Sleep").trim().removePrefix("·").trim()
                 // "Back in 12 min" → "12 min" (nothing while no hop runs).
@@ -3082,8 +3088,13 @@ class PlayerActivity : ComponentActivity() {
         clipToPadding = false
         clipChildren = false
         if (!tvLayout) addView(homeButton, pillParams())
-        // TV: the star first (the remote starts on the left); phones: after the name, as a plain star.
-        if (tvLayout) addView(favButton, pillParams())
+        // TV: the star first (the remote starts on the left), then Search; phones: after the name, as a plain star.
+        if (tvLayout) {
+            addView(favButton, pillParams())
+            addView(searchButton, pillParams())
+        } else {
+            addView(searchButton, pillParams())
+        }
         titleView = TextView(this@PlayerActivity).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, if (tvLayout) 18f else 15f)
@@ -6410,12 +6421,12 @@ class PlayerActivity : ComponentActivity() {
      * (a film's page, the add-ons' portal, the guide). A live channel carries on in the mini
      * player, as with Back (Settings → Mini player).
      */
-    private fun goHome() {
+    private fun goHome(where: String = "HOME") {
         saveProgress()
         offerMini()
         startActivity(
             Intent(this, MainActivity::class.java)
-                .putExtra(app.falak.player.data.Notifier.EXTRA_OPEN, "HOME")
+                .putExtra(app.falak.player.data.Notifier.EXTRA_OPEN, where)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
         )
         finish()
