@@ -604,6 +604,9 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - A picture asked for the first time is not in the frame drawn then (a page opened in a screen test shows
   without its artwork): `shoot` the page twice (`TitlePageScreens.kt`).
 - `capture` draws an open dialog (`ShadowDialog.getLatestDialog()`) centred over the dimmed page.
+- CI's Robolectric sometimes can't fetch `android-all-instrumented` ("Failed to fetch maven artifact"): a test
+  infrastructure hiccup, not the app. Rerun the whole run; in 8.49 `[only …]` runs kept failing that way three
+  times in a row while full runs passed.
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens
