@@ -77,6 +77,8 @@ internal fun TitleStage(
         IconButton(onClick = onBack, modifier = Modifier.padding(start = pageMargin() - 12.dp, top = 6.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper)
         }
+        // The search of everything, opposite Back (8.48).
+        SearchAnywhereButton(Modifier.align(Alignment.TopEnd).padding(end = pageMargin() - 12.dp, top = 6.dp))
     }
 }
 

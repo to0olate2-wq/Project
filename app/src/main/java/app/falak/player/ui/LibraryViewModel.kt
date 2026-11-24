@@ -1555,6 +1555,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Counts the times the search box was asked for (the search shortcut): the box takes it. */
     var searchAsked by mutableStateOf(0)
 
+    /**
+     * Search from any page (8.48): Home's search, which looks through every channel, film and
+     * series, with its box ready to type in (a TV's menu opens its search box; a phone's box takes
+     * the cursor). Whatever page was open is left as it was.
+     */
+    fun openSearch() {
+        if (playlist == null || index.all.isEmpty() || choosingProfile) return
+        navigate("HOME")
+        cinemaSearchOpen = true
+        searchAsked++
+    }
+
     /** [app.falak.player.AppShortcuts]: "LIVE" (Live TV), "LAST" (the last channel), "SEARCH". */
     fun openShortcut(what: String) {
         repo.autoPlayChecked = true // the shortcut decides what opens, not "open the last channel"

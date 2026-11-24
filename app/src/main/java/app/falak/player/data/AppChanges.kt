@@ -148,6 +148,13 @@ object AppChanges {
                 "If you had arranged Home yourself, it stays as you set it.",
             keys = listOf("Home"),
         ),
+        Change(
+            "8.48",
+            "Search from any page",
+            "The magnifier is on every page now (on a TV in the menu at the top, and at the top right of a film's or a series' page; " +
+                "on a phone also under More). It searches every channel, film and series.",
+            keys = listOf("Search"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

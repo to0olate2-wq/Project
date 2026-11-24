@@ -452,7 +452,10 @@ class HomeScroller(
                 val port = viewport
                 if (me != null && port != null && me.isAttached && port.isAttached) {
                     val delta = port.localPositionOf(me, Offset.Zero).y
-                    if (kotlin.math.abs(delta) > 1f) state.animateScrollBy(delta)
+                    // A quick, even glide (8.48): the default spring took longer to settle on TV boxes.
+                    if (kotlin.math.abs(delta) > 1f) {
+                        state.animateScrollBy(delta, androidx.compose.animation.core.tween(PIN_MS, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                    }
                     return@launch
                 }
             }
@@ -461,6 +464,9 @@ class HomeScroller(
 }
 
 val LocalHomeScroller = staticCompositionLocalOf<HomeScroller?> { null }
+
+/** How long a row takes to slide to the top (TV). */
+internal const val PIN_MS = 240
 
 /** Scrolls the page so this element's top sits at the top of the screen when it gains focus. */
 @Composable

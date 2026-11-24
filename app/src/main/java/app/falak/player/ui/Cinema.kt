@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
@@ -109,8 +110,8 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             MenuTool(painterResource(R.drawable.ic_nav_search), "Search", selected = searching) {
-                vm.screen = Screen.LIBRARY
-                cinemaSearchOpen = true
+                // On the lists: their own search (this section's). From any other page (8.48): everything.
+                if (screen == Screen.LIBRARY) cinemaSearchOpen = true else vm.openSearch()
             }
             if (hasLive) MenuTool(painterResource(R.drawable.ic_nav_guide), "TV guide") { vm.screen = Screen.GUIDE }
             // Recordings and Add-ons: never in the Kids profile (as on the rail).
@@ -159,6 +160,22 @@ private fun MenuTool(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
+    // (8.48) The pill fades in and the name slides out of it; only while the focus moves.
+    val lit by androidx.compose.animation.core.animateFloatAsState(
+        if (focused) 1f else 0f,
+        androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
+        label = "menuTool",
+    )
+    val tint by androidx.compose.animation.animateColorAsState(
+        when {
+            focused -> Ink
+            selected -> Signal
+            !enabled -> Faint
+            else -> Paper
+        },
+        androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
+        label = "menuToolTint",
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Row(
         Modifier
@@ -166,7 +183,7 @@ private fun MenuTool(
             .guideAnchor(label)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(if (focused) Paper else Color.Transparent)
+            .drawBehind { if (lit > 0.01f) drawRect(Paper.copy(alpha = lit)) }
             .semantics { this.selected = selected }
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 9.dp),
@@ -176,19 +193,22 @@ private fun MenuTool(
             Icon(
                 icon,
                 contentDescription = label,
-                tint = when {
-                    focused -> Ink
-                    selected -> Signal
-                    !enabled -> Faint
-                    else -> Paper
-                },
+                tint = tint,
                 modifier = Modifier.size(20.dp),
             )
             if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(7.dp).background(Signal, CircleShape))
         }
-        if (focused) {
-            Spacer(Modifier.width(6.dp))
-            Text(label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink, maxLines = 1)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = focused,
+            enter = androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(FOCUS_IN_MS)) +
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(FOCUS_IN_MS)),
+            exit = androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(FOCUS_OUT_MS)) +
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(FOCUS_OUT_MS)),
+        ) {
+            Row {
+                Spacer(Modifier.width(6.dp))
+                Text(label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink, maxLines = 1)
+            }
         }
     }
     if (mark) {
