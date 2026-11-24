@@ -176,6 +176,7 @@ private fun MenuTool(
         androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
         label = "menuToolTint",
     )
+    val paper = Paper
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Row(
         Modifier
@@ -183,7 +184,7 @@ private fun MenuTool(
             .guideAnchor(label)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .drawBehind { if (lit > 0.01f) drawRect(Paper.copy(alpha = lit)) }
+            .drawBehind { if (lit > 0.01f) drawRect(paper.copy(alpha = lit)) }
             .semantics { this.selected = selected }
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 9.dp),

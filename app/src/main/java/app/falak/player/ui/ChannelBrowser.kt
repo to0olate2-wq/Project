@@ -392,10 +392,11 @@ private fun Modifier.rowFocus(shape: Shape, base: Color): Modifier {
         androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
         label = "rowFocus",
     )
+    val paper = Paper
     return this
         .onFocusChanged { focused = it.isFocused }
         .clip(shape)
         .background(base)
-        .drawBehind { if (lit > 0.01f) drawRect(Paper.copy(alpha = 0.16f * lit)) }
-        .focusOutline(shape) { lit }
+        .drawBehind { if (lit > 0.01f) drawRect(paper.copy(alpha = 0.16f * lit)) }
+        .focusOutline(shape, paper) { lit }
 }

@@ -407,6 +407,7 @@ private fun AddonsIntro(onAdd: () -> Unit) {
 
 /** The add-ons' lists, and a search across those that can search. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun AddonsBrowse(
     m: AddonsModel,
     tab: AddonsModel.Tab,

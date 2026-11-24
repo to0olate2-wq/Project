@@ -308,7 +308,7 @@ fun Modifier.focusRing(shape: Shape = RoundedCornerShape(8.dp)): Modifier {
             },
         )
         .onFocusChanged { focused = it.isFocused }
-        .focusOutline(shape) { if (tv) lit else if (focused) 1f else 0f }
+        .focusOutline(shape, Paper) { if (tv) lit else if (focused) 1f else 0f }
 }
 
 /** Remote-control focus for cards: lifts with a quick spring, the outline and shadow fading in with it. */
@@ -330,7 +330,7 @@ fun Modifier.cardFocus(shape: Shape): Modifier {
             clip = false
         }
         .onFocusChanged { focused = it.isFocused }
-        .focusOutline(shape) { ((scale - 1f) / 0.06f).coerceIn(0f, 1f) }
+        .focusOutline(shape, Paper) { ((scale - 1f) / 0.06f).coerceIn(0f, 1f) }
 }
 
 /** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */
@@ -341,13 +341,13 @@ internal const val FOCUS_OUT_MS = 110
  * A 2 dp paper outline inside the edge, as `border` drew it, at the strength [alpha] gives (read
  * while drawing, so an animated value only redraws).
  */
-internal fun Modifier.focusOutline(shape: Shape, alpha: () -> Float): Modifier = drawWithContent {
+internal fun Modifier.focusOutline(shape: Shape, color: Color, alpha: () -> Float): Modifier = drawWithContent {
     drawContent()
     val a = alpha()
     if (a > 0.01f) {
         val w = 2.dp.toPx()
         inset(w / 2f) {
-            drawOutline(shape.createOutline(size, layoutDirection, this), Paper.copy(alpha = a.coerceAtMost(1f)), style = Stroke(w))
+            drawOutline(shape.createOutline(size, layoutDirection, this), color.copy(alpha = a.coerceAtMost(1f)), style = Stroke(w))
         }
     }
 }
