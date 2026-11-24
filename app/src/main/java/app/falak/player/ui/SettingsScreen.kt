@@ -1648,7 +1648,7 @@ fun SettingsScreen(vm: LibraryViewModel, state: AppState) {
             }
             Row(Modifier.fillMaxSize()) {
                 LazyColumn(
-                    Modifier.width(280.dp).fillMaxHeight(),
+                    Modifier.width(300.dp).fillMaxHeight(),
                     contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) { hubItems() }
@@ -1934,10 +1934,12 @@ private fun SubtitlePreview(
 /** Space and a hairline between the groups of the Settings list. */
 @Composable
 private fun HubGap() {
+    // (TV, 8.49: tighter, so the whole list fits the screen.)
+    val gap = if (isTv()) 3.dp else 8.dp
     Column {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(gap))
         Rule(Modifier.padding(horizontal = 4.dp))
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(gap))
     }
 }
 
@@ -1960,7 +1962,7 @@ private fun HubRow(
         Row(
             modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(46.dp)
                 .focusRing(shape)
                 .clip(shape)
                 .background(if (selected) Ink3 else androidx.compose.ui.graphics.Color.Transparent)
@@ -1978,7 +1980,7 @@ private fun HubRow(
             Text(
                 title,
                 fontFamily = Sans,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = Paper,
                 maxLines = 1,

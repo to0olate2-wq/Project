@@ -525,7 +525,7 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   only Sleep's and "Back in…"'s time left. **TV, open on rest** (`Modifier.openOnRest`, `OPEN_ON_REST_MS` 400): the
   top menu's sections and the add-on portal's tabs open when the remote rests on them; the sections row has
   `focusRestorer(current section)` so coming up from the page lands on the open one. **TV Settings:** `HubRow`
-  on a TV = one 50 dp line (icon, name; the page shown: fill + accent mark; no summary, no arrow), list 280 dp, so
+  on a TV = one 46 dp line (icon, name; the page shown: fill + accent mark; no summary, no arrow), tighter `HubGap`, list 300 dp, so
   all eight pages show without scrolling. AppChanges entry "Pages open as you move".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
