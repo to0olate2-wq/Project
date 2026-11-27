@@ -103,6 +103,13 @@ class VlcPlayer(
     private var released = false
     private var speed = 1f
 
+    /** VLC's picture outputs: 0 while it draws nothing (8.52, the black-picture check). */
+    var vouts = 0
+        private set
+
+    /** The title has a picture track (not radio). */
+    fun hasVideo(): Boolean = runCatching { vlc.videoTracksCount > 0 }.getOrDefault(false)
+
     /** Called (on the main thread) when VLC finds or changes audio/subtitle tracks. */
     var onTracksChanged: (() -> Unit)? = null
 
@@ -122,6 +129,7 @@ class VlcPlayer(
     fun load(url: String, title: String, userAgent: String, referrer: String, startMs: Long, hardware: Boolean) {
         if (released) return
         val media = Media(libVlc, Uri.parse(url))
+        vouts = 0
         media.setHWDecoderEnabled(hardware, false)
         if (deinterlace && hardware) {
             media.addOption(":no-mediacodec-dr")
@@ -249,7 +257,10 @@ class VlcPlayer(
             }
             MediaPlayer.Event.LengthChanged -> lengthMs = event.lengthChanged
             MediaPlayer.Event.SeekableChanged -> seekable = event.seekable
-            MediaPlayer.Event.Vout -> updateVideoSize()
+            MediaPlayer.Event.Vout -> {
+                vouts = event.voutCount
+                updateVideoSize()
+            }
             MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted, MediaPlayer.Event.ESSelected -> {
                 updateVideoSize()
                 onTracksChanged?.invoke()
