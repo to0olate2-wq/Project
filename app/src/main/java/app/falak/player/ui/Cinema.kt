@@ -108,7 +108,8 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
             // Icons (8.42, the owner: "just the logo is enough"): the name shows on the one the remote is on.
             sections.forEach { s ->
                 val selected = screen == Screen.LIBRARY && !searching && s == current
-                MenuTool(navIcon(s), navLabel(s), selected = selected, mark = true, requester = requesters.getValue(s), openOnFocus = !selected) {
+                // (Not while searching, 8.51: passing over the sections lost the search and its results.)
+                MenuTool(navIcon(s), navLabel(s), selected = selected, mark = true, requester = requesters.getValue(s), openOnFocus = !selected && !searching) {
                     cinemaSearchOpen = false
                     vm.openSection(s)
                 }

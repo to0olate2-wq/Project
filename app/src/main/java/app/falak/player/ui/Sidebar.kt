@@ -488,6 +488,8 @@ fun SidebarTopBar(
 ) {
     val tv = isTv()
     val searchFocus = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(focusSearch, searchAsked) {
         if (focusSearch || searchAsked > 0) {
             delay(120)
@@ -504,8 +506,11 @@ fun SidebarTopBar(
             BrandMark(28.dp)
             Spacer(Modifier.width(10.dp))
         }
+        // TV with the menu along the top (8.51): the box right beside "Search", on the left, above the
+        // results, so Down from it lands on the first result (from the right it reached "See all").
+        val boxLeft = tv && !tools && title != null
         if (title != null) {
-            Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Column((if (boxLeft) Modifier else Modifier.weight(1f)).padding(end = if (boxLeft) 24.dp else 16.dp)) {
                 Text(title, fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (subtitle != null) Text(subtitle, fontFamily = Sans, fontSize = 13.sp, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -514,7 +519,7 @@ fun SidebarTopBar(
         Row(
             // Takes the free width up to a comfortable 560 dp; the buttons stay at the far right.
             // With a title beside it (TV): a narrower box.
-            (if (title != null) Modifier.width(330.dp) else Modifier.weight(1f).widthIn(max = 560.dp))
+            (if (boxLeft) Modifier.weight(1f, fill = false).widthIn(min = 360.dp, max = 640.dp) else if (title != null) Modifier.width(330.dp) else Modifier.weight(1f).widthIn(max = 560.dp))
                 .guideAnchor("Search")
                 .panel(shape)
                 .padding(start = 14.dp, end = 6.dp),
@@ -537,6 +542,12 @@ fun SidebarTopBar(
                     value = query,
                     onValueChange = onQuery,
                     singleLine = true,
+                    // The keyboard's Search key (8.51): the keyboard goes and the remote moves to the results.
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
+                        keyboard?.hide()
+                        if (tv) focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                    }),
                     textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 14.sp),
                     cursorBrush = SolidColor(Signal),
                     modifier = Modifier.fillMaxWidth().focusRequester(searchFocus).onFocusChanged { onSearchFocus(it.isFocused) },

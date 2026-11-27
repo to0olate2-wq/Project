@@ -307,7 +307,7 @@ fun AddonsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>, 
                 if (links.isEmpty()) {
                     AddonsIntro { adding = true }
                 } else {
-                    if (wide) PortalTabs(m.tab) { m.tab = it }
+                    if (wide) PortalTabs(m.tab, rest = m.query.isBlank()) { m.tab = it }
                     body()
                 }
             }
@@ -795,10 +795,10 @@ private fun PortalRail(
 
 /** The portal's pages as words over the page (a TV, a tablet, a phone on its side). */
 @Composable
-private fun PortalTabs(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
+private fun PortalTabs(tab: AddonsModel.Tab, rest: Boolean = true, onTab: (AddonsModel.Tab) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // TV (8.49): the remote resting on a tab opens it.
-        AddonsModel.Tab.entries.forEach { t -> TagChip(t.label, t == tab, modifier = Modifier.openOnRest(isTv() && t != tab) { onTab(t) }) { onTab(t) } }
+        // TV (8.49): the remote resting on a tab opens it; not while something is searched (8.51).
+        AddonsModel.Tab.entries.forEach { t -> TagChip(t.label, t == tab, modifier = Modifier.openOnRest(rest && isTv() && t != tab) { onTab(t) }) { onTab(t) } }
     }
 }
 
