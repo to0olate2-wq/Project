@@ -637,7 +637,8 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
 - `capture` draws an open dialog (`ShadowDialog.getLatestDialog()`) centred over the dimmed page.
 - CI's Robolectric sometimes can't fetch `android-all-instrumented` ("Failed to fetch maven artifact"): a test
   infrastructure hiccup, not the app. Rerun the whole run; in 8.49 `[only …]` runs kept failing that way three
-  times in a row while full runs passed.
+  times in a row while full runs passed. Since 8.52 the screens job keeps the jar (actions/cache) and fetches it
+  first with retries and its SHA-512 checked; a new Robolectric version needs the version in those two steps.
 - In `ScreenshotBase`, `app` is the FalakApp property: write imports, not `app.falak.player…` inside tests.
 
 ## Saving tokens
