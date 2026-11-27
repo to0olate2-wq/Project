@@ -538,6 +538,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   play/pause, next; `pipReceiver` registered only while in PiP, `PIP_ACTION`); it had none. (4) **Cinema is the
   default look** (`Settings.appLook` default "cinema"; code tests `!= "spotlight"`); screen tests seed
   "spotlight" (`seed`), Cinema keeps its own tests. AppChanges entry "The Cinema look".
+- **8.51 (the owner: "some videos are black screen only with sound and subtitles"; on the TV, after Search the
+  remote went to "a weird position" and the results were hard to reach, worse since sections open on rest):**
+  (1) **No picture → VLC** (PlayerActivity): `onTracksChanged` with a video group none of whose tracks the device
+  can decode → `noPictureSwitch` at once; `checkPicture` (in `freezeTick`, so not under Robolectric) = ExoPlayer
+  playing a selected video track for `NO_PICTURE_MS` (6 s) with no `onRenderedFirstFrame` → the same. `noPicture`
+  (per title, this run) wins over the player setting in `desiredEngine` (only an engine picked by hand this session
+  comes first); films keep their place. Steps note "no picture with … : VLC". (2) **TV search** (`SidebarTopBar`,
+  `boxLeft`): with the menu along the top the box sits beside "Search" on the left (it was on the right, so Down
+  reached "See all →"); the keyboard's Search key hides it and moves Down to the results. While searching, the
+  menu's sections and the portal's tabs don't open on rest (`!searching`, `PortalTabs(rest)`).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
