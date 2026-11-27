@@ -172,6 +172,34 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Robolectric's own download of its Android jar (~150 MB) kept failing ("Failed to fetch maven
+      # artifact"), taking whole test classes with it. Kept between runs, and fetched here with retries;
+      # Robolectric uses a jar already in ~/.m2. (The version follows Robolectric 4.15.1 and SDK 35.)
+      - name: Keep Robolectric's Android jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-android-all-15-robolectric-12650502-i7
+
+      - name: Fetch Robolectric's Android jar (retried)
+        continue-on-error: true
+        run: |
+          v=15-robolectric-12650502-i7
+          d=~/.m2/repository/org/robolectric/android-all-instrumented/$v
+          base=https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/$v/android-all-instrumented-$v
+          mkdir -p "$d"
+          for i in 1 2 3 4 5 6; do
+            if [ -s "$d/android-all-instrumented-$v.jar" ]; then break; fi
+            if curl -fsSL --retry 3 -o /tmp/aa.jar "$base.jar" && curl -fsSL --retry 3 -o /tmp/aa.sha512 "$base.jar.sha512" \
+               && [ "$(sha512sum /tmp/aa.jar | cut -d' ' -f1)" = "$(cut -d' ' -f1 /tmp/aa.sha512)" ]; then
+              mv /tmp/aa.jar "$d/android-all-instrumented-$v.jar"
+              curl -fsSL --retry 3 -o "$d/android-all-instrumented-$v.pom" "$base.pom" || true
+            else
+              echo "try $i failed"; sleep 15
+            fi
+          done
+          ls -la "$d"
+
       - name: Check the speech model download
         # Auto captions download this model on the device: is it there, whole, with the SHA-256 the app checks?
         continue-on-error: true

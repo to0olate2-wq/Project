@@ -119,6 +119,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_INDEX = "index"
         /** The picture-in-picture window's buttons (8.50). */
         private const val PIP_ACTION = "app.falak.player.PIP"
+        private const val PIP_DO = "pip_do"
         private const val PIP_TOGGLE = 1
         private const val PIP_NEXT = 2
         private const val PIP_PREVIOUS = 3
@@ -1203,14 +1204,10 @@ class PlayerActivity : ComponentActivity() {
                 if (s.softwareAudio || software) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON,
             )
-        if (software) {
-            // Software decoding: slower, but avoids broken hardware decoders (green or frozen picture).
-            renderers.setMediaCodecSelector(
-                MediaCodecSelector { mime, secure, tunneling ->
-                    MediaCodecUtil.getDecoderInfos(mime, secure, tunneling).sortedBy { if (it.softwareOnly) 0 else 1 }
-                },
-            )
-        }
+        // Software decoding puts software decoders first: slower, but avoids broken hardware decoders
+        // (green or frozen picture). Dolby Vision the screen can't show goes to the HEVC decoder (8.53).
+        screenDolby = app.falak.player.player.DolbyVision.screenShowsIt(this)
+        renderers.setMediaCodecSelector(app.falak.player.player.DolbyVision.selector(screenDolby, software))
         val builder = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(audio, true)
             .setHandleAudioBecomingNoisy(true)
@@ -1716,6 +1713,15 @@ class PlayerActivity : ComponentActivity() {
             if (engine != Engine.VLC && NoPicture.knownKind(picture)) {
                 queue.getOrNull(index)?.let { ch -> handler.post { noPictureSwitch(ch, "known kind " + NoPicture.kindOf(picture), picture) } }
                 return
+            }
+            // Dolby Vision only (profile 5) on a screen without it: it plays, but its colours can't be right.
+            queue.getOrNull(index)?.let { ch ->
+                if (!screenDolby && app.falak.player.player.DolbyVision.onlyDolby(picture) && toldDolby.add(ch.id)) {
+                    FreezeWatch.note("Dolby Vision profile 5 on a screen without Dolby Vision: HEVC decoder")
+                    handler.postDelayed({
+                        showMessage("Dolby Vision version: this screen can't show its colours right. Another version of this film may look better.")
+                    }, 1500)
+                }
             }
             updateTrackButtons()
             applyRememberedTracks()
@@ -2325,7 +2331,7 @@ class PlayerActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun pipActions(): List<android.app.RemoteAction> {
         fun action(code: Int, icon: Int, title: String): android.app.RemoteAction {
-            val intent = Intent(PIP_ACTION).setPackage(packageName).putExtra("do", code)
+            val intent = Intent(PIP_ACTION).setPackage(packageName).putExtra(PIP_DO, code)
             val pending = android.app.PendingIntent.getBroadcast(
                 this, code, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
@@ -2348,7 +2354,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val pipReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
-            when (intent?.getIntExtra("do", 0)) {
+            when (intent?.getIntExtra(PIP_DO, 0)) {
                 PIP_TOGGLE -> player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
                 PIP_NEXT -> zap(1)
                 PIP_PREVIOUS -> zap(-1)
@@ -4914,6 +4920,11 @@ class PlayerActivity : ComponentActivity() {
             handler.postDelayed(this, 2_000)
         }
     }
+
+    /** The screen shows Dolby Vision (asked when ExoPlayer is made). */
+    private var screenDolby = false
+    /** Titles already told their Dolby Vision colours can't be right here (once each). */
+    private val toldDolby = HashSet<String>()
 
     /** A picture was drawn for the item playing (ExoPlayer); when sound began without one. */
     private var frameShown = false
