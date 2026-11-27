@@ -77,6 +77,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import app.falak.player.player.NoPicture
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.ExtractorsFactory
@@ -146,13 +147,8 @@ class PlayerActivity : ComponentActivity() {
 
         /** Automatic mode: items ExoPlayer couldn't open this session; they go straight to VLC. */
         private val needsVlc = HashSet<String>()
-        /**
-         * Titles whose picture ExoPlayer couldn't show (8.51: "black screen with sound and subtitles"):
-         * they play with VLC, whatever the player setting, unless a player was picked by hand meanwhile.
-         */
-        private val noPicture = HashSet<String>()
-        /** Sound for this long with a picture never drawn = no picture. */
-        private const val NO_PICTURE_MS = 6_000L
+        /** Sound for this long with a picture never drawn = no picture (8.52: was 6 s). */
+        private const val NO_PICTURE_MS = 4_000L
 
         /** Player picked in the player for this session (overrides Settings until the app restarts). */
         private var sessionEngine: Engine? = null
@@ -473,6 +469,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NoPicture.init(this)
         // The mini player (and Listen mode) let go of their stream before this one connects.
         MiniPlayerState.close()
         app.falak.player.ListenService.handBack("")
@@ -1102,7 +1099,8 @@ class PlayerActivity : ComponentActivity() {
     /** Settings' choice, the in-player choice, or (Automatic) what suits this TV and this channel. */
     private fun desiredEngine(ch: Channel): Engine {
         sessionEngine?.let { if (it != Engine.EXTERNAL) return it }
-        if (ch.id in noPicture) return Engine.VLC
+        // A title that came up black here (NoPicture): VLC from the start, decoding the picture itself.
+        if (NoPicture.has(ch.id)) return Engine.VLC
         // Smooth interlaced channels (8.35): VLC deinterlaces live channels; ExoPlayer can't.
         if (repo.state.value.settings.deinterlace && ch.kind == Kind.LIVE && !ch.id.startsWith("cu:")) return Engine.VLC
         val setting = repo.state.value.settings.player
@@ -1378,6 +1376,7 @@ class PlayerActivity : ComponentActivity() {
         val ch = queue.getOrNull(index) ?: return
         frameShown = false
         soundSinceMs = 0L
+        vlcSoundSinceMs = 0L
         // Another item: the buffer of the one before goes (a recording of it carries on).
         releaseShift()
         // Downloaded ones watched to the end and left behind: deleted now (Delete when watched).
@@ -1508,7 +1507,8 @@ class PlayerActivity : ComponentActivity() {
         if (v != null) {
             currentItem = null
             currentDataSource = null
-            v.load(playUrl, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = true)
+            // (A title that came up black here: VLC decodes the picture itself, 8.52.)
+            v.load(playUrl, ch.name, ua, ch.referrer, if (overrideUrl == null && resume > 0) resume else 0L, hardware = !NoPicture.has(ch.id))
             updateTrackButtons()
             applySpeed()
             if (showInfo) showBanner(ch)
@@ -1708,7 +1708,13 @@ class PlayerActivity : ComponentActivity() {
             // VLC at once, rather than sound over black.
             val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
             if (video.isNotEmpty() && video.none { g -> (0 until g.length).any { g.isTrackSupported(it, true) } }) {
-                queue.getOrNull(index)?.let { ch -> handler.post { noPictureSwitch(ch, "no decoder") } }
+                queue.getOrNull(index)?.let { ch -> handler.post { noPictureSwitch(ch, "no decoder", video.first().getTrackFormat(0)) } }
+                return
+            }
+            // A kind of picture that already came up black on this device (8.52): VLC at once, no wait.
+            val picture = (video.firstOrNull { it.isSelected } ?: video.firstOrNull())?.getTrackFormat(0)
+            if (engine != Engine.VLC && NoPicture.knownKind(picture)) {
+                queue.getOrNull(index)?.let { ch -> handler.post { noPictureSwitch(ch, "known kind " + NoPicture.kindOf(picture), picture) } }
                 return
             }
             updateTrackButtons()
@@ -4919,9 +4925,16 @@ class PlayerActivity : ComponentActivity() {
      * or 4K on boxes that can't). After [NO_PICTURE_MS] of sound the item moves to VLC, at the same place.
      */
     private fun checkPicture() {
+        // Only while the picture is on screen: in the background (Listen mode, screen off) there is none to draw.
+        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            soundSinceMs = 0L
+            vlcSoundSinceMs = 0L
+            return
+        }
+        vlc?.let { checkVlcPicture(it) }
         val p = exo ?: return
         val ch = queue.getOrNull(index) ?: return
-        if (engine == Engine.VLC || frameShown || castingTo != null || dual != null || ch.id in noPicture) return
+        if (engine == Engine.VLC || frameShown || castingTo != null || dual != null || NoPicture.has(ch.id)) return
         val hasVideo = p.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
         if (!hasVideo || !p.isPlaying) {
             soundSinceMs = 0L
@@ -4935,9 +4948,36 @@ class PlayerActivity : ComponentActivity() {
         if (now - soundSinceMs >= NO_PICTURE_MS) noPictureSwitch(ch, "no frame in ${(now - soundSinceMs) / 1000} s")
     }
 
-    private fun noPictureSwitch(ch: Channel, why: String) {
-        if (ch.id in noPicture || engine == Engine.VLC || queue.getOrNull(index)?.id != ch.id) return
-        noPicture += ch.id
+    /**
+     * VLC with the hardware decoder and still no picture output after [NO_PICTURE_MS] of sound (8.52:
+     * VLC used the same decoder that showed black): the title plays again with VLC decoding it itself.
+     */
+    private var vlcSoundSinceMs = 0L
+
+    private fun checkVlcPicture(v: VlcPlayer) {
+        val ch = queue.getOrNull(index) ?: return
+        if (NoPicture.has(ch.id) || castingTo != null || dual != null || !v.isPlaying || v.vouts > 0 || !v.hasVideo()) {
+            vlcSoundSinceMs = 0L
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (vlcSoundSinceMs == 0L) {
+            vlcSoundSinceMs = now
+            return
+        }
+        if (now - vlcSoundSinceMs < NO_PICTURE_MS) return
+        vlcSoundSinceMs = 0L
+        NoPicture.note(ch.id, null)
+        FreezeWatch.note("no picture with VLC's hardware decoding: VLC decoding itself")
+        if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) resumePositionMs = v.currentPosition
+        saveProgress()
+        showMessage("No picture · Trying again…")
+        playCurrent(showInfo = false)
+    }
+
+    private fun noPictureSwitch(ch: Channel, why: String, picture: androidx.media3.common.Format? = null) {
+        if (NoPicture.has(ch.id) || engine == Engine.VLC || queue.getOrNull(index)?.id != ch.id) return
+        NoPicture.note(ch.id, picture ?: exo?.videoFormat)
         FreezeWatch.note("no picture with ${engine.short} ($why): VLC")
         player?.let { p -> if (ch.kind != Kind.LIVE || ch.id.startsWith("cu:")) resumePositionMs = p.currentPosition }
         saveProgress()

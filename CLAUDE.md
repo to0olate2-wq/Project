@@ -548,6 +548,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `boxLeft`): with the menu along the top the box sits beside "Search" on the left (it was on the right, so Down
   reached "See all →"); the keyboard's Search key hides it and moves Down to the results. While searching, the
   menu's sections and the portal's tabs don't open on rest (`!searching`, `PortalTabs(rest)`).
+- **8.52 (the owner: "you ruined it, the player is heavy at start and the fix didn't do it"; asked: a channel or
+  film starting is slow; the black ones are films/series):** 8.51 waited 6 s of black, then restarted in VLC,
+  which used the same hardware decoder (black again). Now `player/NoPicture.kt` (SharedPreferences "no_picture",
+  this device's): a title that came up black (`note`) starts in VLC from the start next time (`desiredEngine`)
+  and VLC decodes its picture itself (`load(hardware = false)`); the kind of picture (`kindOf` = mime | codec +
+  profile | 4k; never H.264) is noted, and another title of a known kind switches as soon as its tracks are known
+  (`onTracksChanged`, no wait). `NO_PICTURE_MS` 4 s. VLC with hardware decoding and no picture output for 4 s
+  (`VlcPlayer.vouts` = Event.Vout's count, `hasVideo`) → `checkVlcPicture` plays it again decoding itself. Both
+  checks only while the player is on screen (STARTED; in the background there is no picture to draw).
+  `NoPictureTest`. Not proven on the owner's box: which films and codecs these are is not known.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
