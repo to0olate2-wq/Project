@@ -544,7 +544,6 @@ class MainActivity : ComponentActivity() {
 
     /** While the ambient screen shows, the first key only brings the lists back. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) NavKeys.pressed(event.keyCode)
         if (ambient) {
             if (event.action == android.view.KeyEvent.ACTION_UP) leaveAmbient()
             return true

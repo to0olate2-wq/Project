@@ -18,6 +18,7 @@ import androidx.media3.common.MimeTypes
 object NoPicture {
     private const val PREFS = "no_picture"
     private const val MAX_TITLES = 300
+    private const val ROUND = 2
 
     private var prefs: SharedPreferences? = null
     private val titles = LinkedHashSet<String>()
@@ -28,6 +29,8 @@ object NoPicture {
         if (prefs != null) return
         val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs = p
+        // 8.53: Dolby Vision films now play with ExoPlayer: what 8.51 / 8.52 noted is forgotten once.
+        if (p.getInt("round", 1) < ROUND) p.edit().clear().putInt("round", ROUND).apply()
         p.getString("titles", "")?.split('\n')?.filter { it.isNotBlank() }?.let { titles += it }
         p.getString("kinds", "")?.split('\n')?.filter { it.isNotBlank() }?.let { kinds += it }
     }

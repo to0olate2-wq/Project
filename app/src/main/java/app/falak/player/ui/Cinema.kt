@@ -101,7 +101,7 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
         val requesters = remember(sections) { sections.associateWith { androidx.compose.ui.focus.FocusRequester() } }
         val fallback = requesters[current] ?: androidx.compose.ui.focus.FocusRequester.Default
         Row(
-            Modifier.weight(1f).focusRestorer(fallback).horizontalScroll(rememberScrollState()),
+            Modifier.weight(1f).focusRestorer(fallback).notesSideways().horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {

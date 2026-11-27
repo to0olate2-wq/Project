@@ -23,6 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -356,20 +359,29 @@ fun Modifier.openOnRest(enabled: Boolean, onOpen: () -> Unit): Modifier {
     return this.onFocusChanged { arrived = it.hasFocus && NavKeys.sideways() }
 }
 
-/** The last key the remote pressed and when (MainActivity): tells a move along a row from focus just landing. */
+/**
+ * When Left or Right was last pressed in a row of tabs (8.53: the rows note it themselves with
+ * [notesSideways]; nothing app-wide listens to the keys): tells a move along the row from focus just landing.
+ */
 object NavKeys {
-    @Volatile private var code = 0
     @Volatile private var at = 0L
 
-    fun pressed(keyCode: Int) {
-        code = keyCode
+    fun sidewaysNow() {
         at = android.os.SystemClock.uptimeMillis()
     }
 
-    /** Left or Right pressed in the last moment. */
-    fun sideways(): Boolean =
-        (code == android.view.KeyEvent.KEYCODE_DPAD_LEFT || code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) &&
-            android.os.SystemClock.uptimeMillis() - at < 500
+    /** Left or Right pressed in such a row a moment ago. */
+    fun sideways(): Boolean = android.os.SystemClock.uptimeMillis() - at < 500
+}
+
+/** A row of tabs that open on rest: notes Left / Right pressed in it (and lets the key go on). */
+fun Modifier.notesSideways(): Modifier = onPreviewKeyEvent { e ->
+    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+        (e.key == androidx.compose.ui.input.key.Key.DirectionLeft || e.key == androidx.compose.ui.input.key.Key.DirectionRight)
+    ) {
+        NavKeys.sidewaysNow()
+    }
+    false
 }
 
 /** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */

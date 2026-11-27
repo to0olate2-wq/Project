@@ -558,6 +558,20 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   (`VlcPlayer.vouts` = Event.Vout's count, `hasVideo`) → `checkVlcPicture` plays it again decoding itself. Both
   checks only while the player is on screen (STARTED; in the background there is no picture to draw).
   `NoPictureTest`. Not proven on the owner's box: which films and codecs these are is not known.
+- **8.53 (the owner: the black films are "some versions of 4K"; VLC shows them with wrong colours and some
+  stutter; "make it work with the normal player"; and Play Protect calls the app harmful again):** Media3 1.5.1
+  (read at its 1.5.1 tag) plays Dolby Vision profiles 4 / 8 / 9 / 10 through HEVC / AVC / AV1 decoders when the
+  screen lacks Dolby Vision (`getAlternativeCodecMimeType`), but not profile 5 (web 4K) or 7 (disc 4K): no decoder
+  → the video track isn't chosen → sound over black. `player/DolbyVision.kt`: the player's `MediaCodecSelector`
+  (always set now; `software` only reorders) answers Dolby Vision with the HEVC decoders when the screen can't show
+  it (`screenShowsIt`, as Exo asks) or there is no Dolby Vision decoder; the track then counts as "exceeds" and is
+  played (the default selector allows that). Profile 7's base picture is HDR10 (right colours); profile 5 has
+  none (`onlyDolby`): smooth, colours off, and the player says so once per title. `NoPicture` forgot what 8.51/8.52
+  noted (`ROUND` 2) so those films get ExoPlayer again. **Play Protect:** the manifest of 8.52 equals 8.45's
+  (androguard), so no permission or component changed; the only app-wide key hook (`NavKeys` in MainActivity's
+  `dispatchKeyEvent`, 8.50) was replaced by `Modifier.notesSideways()` on the two tab rows. The real remedy is
+  Google's appeal form (support.google.com/googleplay/android-developer/contact/protectappeals, needs the APK's
+  SHA-256). PiP buttons stay a broadcast (an activity intent can bring the window back to full screen).
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
