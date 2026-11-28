@@ -956,16 +956,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         copiesJob = viewModelScope.launch {
             val t0 = android.os.SystemClock.elapsedRealtime()
             var kept = false
-            val done = withContext(quietWork) {
+            val keys = withContext(quietWork) {
                 val print = built.copiesPrint()
-                val keys = repo.savedCopies(p.id, print)?.also { kept = true } ?: built.findCopies().also { repo.saveCopies(p.id, print, it) }
-                built.withCopies(keys)
+                repo.savedCopies(p.id, print)?.also { kept = true } ?: built.findCopies().also { repo.saveCopies(p.id, print, it) }
             }
-            // Nothing replaced it meanwhile (another playlist, a new order or Tidy): swap it in.
-            if (index !== built) return@launch
+            // The same lists put in another order meanwhile (Arrange) are still waiting: they get them too.
+            val base = index.takeIf { it === built || (it.waiting && it.raw === built.raw) } ?: return@launch
+            val done = withContext(quietWork) { base.withCopies(keys) }
+            if (index !== base) return@launch
             index = done
-            if (repo.currentIndex === built) repo.currentIndex = done
-            repo.openLibrary?.takeIf { it.index === built }?.let { o ->
+            if (repo.currentIndex === base) repo.currentIndex = done
+            repo.openLibrary?.takeIf { it.index === base || it.index === built }?.let { o ->
                 repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(o.playlistId, done, o.epgUrl, o.serverTz, o.savedAt)
             }
             android.util.Log.i("FalakTiming", "copies and Top 10 ${if (kept) "(kept)" else "(worked out)"} in ${android.os.SystemClock.elapsedRealtime() - t0} ms")

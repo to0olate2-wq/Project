@@ -34,6 +34,8 @@ class LibraryIndex(
     val edits: Map<String, ChannelEdit> = emptyMap(),
     /** Films and series listed more than once (8.34, see [Versions]): id → what its copies share. */
     val titleKeys: Map<String, String> = emptyMap(),
+    /** Built with `later` (8.57): the copies and the Top 10 aren't in it yet ([withCopies]). */
+    val waiting: Boolean = false,
 ) {
     private val copyIds: Map<String, List<String>> by lazy { titleKeys.entries.groupBy({ it.value }, { it.key }) }
 
@@ -79,12 +81,10 @@ class LibraryIndex(
             newMovies = newMovies, newSeries = newSeries, trending = trending,
             raw = raw, tidy = tidy, versions = versions,
             arrangement = a, plainGroups = plainGroups, plainLists = plainLists, searchHolder = searchHolder,
-            edits = edits, titleKeys = titleKeys,
+            edits = edits, titleKeys = titleKeys, waiting = waiting,
         )
     }
 
-    /** Built with `later` (8.57): the copies and the Top 10 aren't in it yet ([withCopies]). */
-    val waiting: Boolean get() = titleKeys.isEmpty() && trending.isEmpty() && (movies.isNotEmpty() || series.isNotEmpty())
 
     /** Films and series listed more than once (see [Versions.keys]): the slow part [withCopies] needs. */
     fun findCopies(): Map<String, String> =
@@ -236,6 +236,7 @@ class LibraryIndex(
                 arrangement = arrangement,
                 edits = edits,
                 titleKeys = keys,
+                waiting = later && (movies.isNotEmpty() || series.isNotEmpty()),
                 plainGroups = mapOf(Kind.LIVE to plainLive, Kind.MOVIE to plainMovies, Kind.SERIES to plainSeries),
                 plainLists = mapOf(Kind.LIVE to live, Kind.MOVIE to movies, Kind.SERIES to series),
             )

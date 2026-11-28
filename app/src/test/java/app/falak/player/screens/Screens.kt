@@ -130,7 +130,7 @@ abstract class ScreenshotBase {
         seed(layout, theme, hidden, look, watching, kids, kidsOn, linked, profiles, prayerMode, liveOnly, reminder, habits, messy, ramadan)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-        waitFor { vm.index.all.isNotEmpty() }
+        waitFor { vm.index.all.isNotEmpty() && !vm.index.waiting }
         app.repo.showGuideForTest(sampleGuide(vm.index.live))
         if (account != null) vm.showAccountForTest(account)
         block(vm) { name -> capture(activity, name) }
@@ -946,7 +946,7 @@ class PhoneArrangeScreens : ScreenshotBase() {
         val sample = repo.state.value.playlists.first()
         repo.addPlaylist(Playlist("second", "Provider B", SourceType.XTREAM, "http://127.0.0.1:9", "bob", "pw"))
         check(vm.addCombined("Everything", listOf(sample.id, "second")) == null)
-        waitFor { vm.playlist?.isCombined == true && vm.index.all.isNotEmpty() }
+        waitFor { vm.playlist?.isCombined == true && vm.index.all.isNotEmpty() && !vm.index.waiting }
         // Each item carries the mark of the playlist it came from.
         check(vm.index.all.all { '~' in it.id }) { "Combined items aren't marked" }
         vm.section = Section.LIVE
