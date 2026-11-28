@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.PeopleLiveTest" tests="2" skipped="2" failures="0" errors="0" timestamp="2026-11-28T19:24:51" hostname="runnervm0j63q" time="3.991">
+  <properties/>
+  <testcase name="anActorTheirPageAndTitles" classname="app.falak.player.data.PeopleLiveTest" time="3.93">
+    <skipped/>
+  </testcase>
+  <testcase name="arabicNamesAndADirector" classname="app.falak.player.data.PeopleLiveTest" time="0.061">
+    <skipped/>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

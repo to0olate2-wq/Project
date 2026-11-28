@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.TitleMatchTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-28T19:25:22" hostname="runnervm0j63q" time="0.082">
+  <properties/>
+  <testcase name="onlyASureMatch" classname="app.falak.player.data.TitleMatchTest" time="0.067"/>
+  <testcase name="namesAsProvidersWriteThem" classname="app.falak.player.data.TitleMatchTest" time="0.015"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

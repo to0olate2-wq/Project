@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.ui.MiniSpotTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-28T19:53:00" hostname="runnervm0j63q" time="4.261">
+  <properties/>
+  <testcase name="startsBottomRightAndKeepsItsPlace" classname="app.falak.player.ui.MiniSpotTest" time="4.199"/>
+  <testcase name="movesInsideTheScreen" classname="app.falak.player.ui.MiniSpotTest" time="0.062"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
