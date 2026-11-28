@@ -14,12 +14,12 @@ mkdir -p "$OUT"
 n=0
 
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/walk.txt"; }
-shot() { n=$((n + 1)); f=$(printf "%02d-%s" "$n" "$1"); adb exec-out screencap -p > "$OUT/$f.png"; log "shot $f"; }
+shot() { n=$((n + 1)); f=$(printf "%02d-%s" "$n" "$1"); adb exec-out screencap -p > "$OUT/$f.png"; log "shot $f"; [ "$FORM" = phone ] && python3 "$DIR/ui.py" dump "$OUT/$f.xml" > /dev/null 2>&1; true; }
 key() { adb shell input keyevent "$@"; }
 keys() { local c=$1 k=$2 d=${3:-0.35}; for _ in $(seq "$c"); do adb shell input keyevent "$k"; sleep "$d"; done; }
 swipe() { adb shell input swipe "$@"; }
 tap() { python3 "$DIR/ui.py" tap "$1" | tee -a "$OUT/walk.txt"; }
-dumpui() { python3 "$DIR/ui.py" dump "$OUT/$(printf "%02d" "$n")-$1.xml" >/dev/null 2>&1; }
+dumpui() { :; }  # shot keeps the phone's screen elements itself
 gfx_start() { adb shell dumpsys gfxinfo $PKG reset > /dev/null; }
 gfx_end() { adb shell dumpsys gfxinfo $PKG > "$OUT/gfx-$1.txt"; grep -E "Total frames|Janky frames|50th|90th|95th|99th|Slow UI|Frame deadline" "$OUT/gfx-$1.txt" | sed "s/^/  [$1] /" | tee -a "$OUT/walk.txt"; }
 alive() { adb shell pidof $PKG > /dev/null && return 0; log "!! the app is not running"; return 1; }
@@ -117,7 +117,8 @@ adb logcat -b crash -d > "$OUT/crash.txt"
   echo "app running at the end: $(adb shell pidof $PKG > /dev/null && echo yes || echo NO)"
   echo "crashes (FATAL EXCEPTION, ours): $(grep -c "FATAL EXCEPTION" "$OUT/crash.txt" 2> /dev/null)"
   echo "not responding (ANR in $PKG): $(grep -c "ANR in $PKG" "$OUT/logcat.txt")"
-  echo "freezes the app noted (FreezeWatch): $(grep -ci "froze\|freeze report" "$OUT/logcat.txt")"
+  # Android 14's freezer logs "froze <pid> <app>" for every app it pauses in the background: only ours count.
+  echo "the system paused the app in the background: $(grep -i "froze" "$OUT/logcat.txt" | grep -c "$PKG")"
   echo "memory:"; cat "$OUT/memory.txt"
   echo "frames per scrolled page:"
   for f in "$OUT"/gfx-*.txt; do

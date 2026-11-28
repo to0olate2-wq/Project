@@ -362,6 +362,20 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           script: bash tools/device/walk.sh ${{ matrix.form }} app/build/outputs/apk/github/bench/app-github-bench.apk out-${{ matrix.form }}
 
+      # Also on a branch (device-phone / device-tv): the artifacts' storage can't be reached from every place
+      # the results are read from.
+      - name: Publish to the device branch
+        if: always()
+        run: |
+          mkdir -p /tmp/dev && cp -r out-${{ matrix.form }}/. /tmp/dev/ 2>/dev/null || true
+          cp server.log /tmp/dev/ 2>/dev/null || true
+          cd /tmp/dev
+          git init -q
+          git checkout -q -b "device-${{ matrix.form }}"
+          git add -A
+          git -c user.name="CI" -c user.email="ci@users.noreply.github.com" commit -q -m "Device check ${{ matrix.form }}, run ${{ github.run_number }} (${{ github.sha }})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "device-${{ matrix.form }}"
+
       - name: Keep what it saw
         if: always()
         uses: actions/upload-artifact@v4
