@@ -89,6 +89,7 @@ adb shell dumpsys meminfo $PKG | grep -E "TOTAL PSS|TOTAL:|Java Heap|Native Heap
   echo "app running at the end: $(adb shell pidof $PKG > /dev/null && echo yes || echo NO)"
   echo "crashes: $(adb logcat -d -b crash | grep -c "FATAL EXCEPTION")"
   grep -E "ready after|stalls" "$OUT/walk.txt"
+  cat "$OUT/logcat-first.txt" "$OUT/logcat.txt" | grep "FalakTiming" | sed "s/.*FalakTiming: //"
   cat "$OUT/memory.txt"
 } > "$OUT/summary.txt"
 cat "$OUT/summary.txt"

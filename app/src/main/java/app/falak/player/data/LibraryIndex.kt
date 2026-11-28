@@ -83,6 +83,53 @@ class LibraryIndex(
         )
     }
 
+    /** Built with `later` (8.57): the copies and the Top 10 aren't in it yet ([withCopies]). */
+    val waiting: Boolean get() = titleKeys.isEmpty() && trending.isEmpty() && (movies.isNotEmpty() || series.isNotEmpty())
+
+    /** Films and series listed more than once (see [Versions.keys]): the slow part [withCopies] needs. */
+    fun findCopies(): Map<String, String> =
+        runCatching { Versions.keys(plainLists[Kind.MOVIE].orEmpty() + plainLists[Kind.SERIES].orEmpty()) }.getOrDefault(emptyMap())
+
+    /**
+     * What [findCopies] answers depends on: every film's and series' id, name and kind, and the year (a
+     * name's year is read against it). Kept with the answer, so the next opening can use it as it is.
+     */
+    fun copiesPrint(thisYear: Int = TitleMatch.currentYear()): Long {
+        var h = 1125899906842597L * COPIES_VERSION + thisYear
+        for (kind in arrayOf(Kind.MOVIE, Kind.SERIES)) {
+            for (ch in plainLists[kind].orEmpty()) {
+                h = 31 * h + ch.id.hashCode()
+                h = 31 * h + ch.name.hashCode()
+                h = 31 * h + (if (ch.url.isEmpty()) 0 else 1) + (if (ch.isSeriesFolder) 2 else 0)
+            }
+        }
+        return h
+    }
+
+    /** This library with [keys] from [findCopies] and the Top 10 worked out (the second half of a `later` build). */
+    fun withCopies(keys: Map<String, String>): LibraryIndex {
+        val mg = movieGroups
+        val sg = seriesGroups
+        fun list(kind: Kind, groups: Map<String, List<Channel>>) = oneEach(
+            kind,
+            if (arrangement.has(kind)) groups.values.flatten() else plainLists[kind].orEmpty(),
+            keys,
+        )
+        val films = plainLists[Kind.MOVIE].orEmpty()
+        val shows = plainLists[Kind.SERIES].orEmpty()
+        return LibraryIndex(
+            all = all, byId = byId,
+            live = live, movies = list(Kind.MOVIE, mg), series = list(Kind.SERIES, sg),
+            liveGroups = liveGroups, movieGroups = mg, seriesGroups = sg,
+            newMovies = Versions.oneEach(films.filter { it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
+            newSeries = Versions.oneEach(shows.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
+            trending = Versions.oneEach(Trending.pick(mg, sg, System.currentTimeMillis() / 1000), keys),
+            raw = raw, tidy = tidy, versions = versions,
+            arrangement = arrangement, plainGroups = plainGroups, plainLists = plainLists, searchHolder = searchHolder,
+            edits = edits, titleKeys = keys,
+        )
+    }
+
     /** Group [group] of [kind] in the playlist's own order (before Arrange). */
     fun plainGroup(kind: Kind, group: String): List<Channel> = plainGroups[kind]?.get(group).orEmpty()
 
@@ -102,6 +149,9 @@ class LibraryIndex(
     }
 
     companion object {
+        /** Bump when [Versions.keys] changes what it answers: kept answers are then worked out again. */
+        private const val COPIES_VERSION = 1
+
         val EMPTY = build(emptyList())
 
         /** Lists of everything show each film and series once (live channels as they are). */
@@ -116,6 +166,12 @@ class LibraryIndex(
             edits: Map<String, ChannelEdit> = emptyMap(),
             /** (8.57) How long each step took, for timing a big playlist: step name, milliseconds. */
             took: ((String, Long) -> Unit)? = null,
+            /**
+             * (8.57, a big playlist took long to open) Leave the slow parts for [withCopies]: finding the
+             * films and series listed more than once (it cleans every name: 4–27 s for 48,000 on the
+             * emulators) and the Top 10. The lists show at once; each title once and the Top 10 a moment later.
+             */
+            later: Boolean = false,
         ): LibraryIndex {
             var mark = System.nanoTime()
             fun lap(step: String) {
@@ -148,7 +204,7 @@ class LibraryIndex(
             lap("groups")
             // A kind with an order chosen lists everything in that order ("All channels" too).
             // Films and series the provider lists more than once: one of each in the lists of everything.
-            val keys = runCatching { Versions.keys(movies + series) }.getOrDefault(emptyMap())
+            val keys = if (later) emptyMap() else runCatching { Versions.keys(movies + series) }.getOrDefault(emptyMap())
             lap("copies")
             fun inOrder(kind: Kind, plain: List<Channel>, groups: Map<String, List<Channel>>) =
                 oneEach(kind, if (arrangement.has(kind)) groups.values.flatten() else plain, keys)
@@ -159,7 +215,7 @@ class LibraryIndex(
             val newMovies = Versions.oneEach(movies.filter { it.added > 0 }.sortedByDescending { it.added }, keys).take(40)
             val newSeries = Versions.oneEach(series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }, keys).take(40)
             lap("lists")
-            val trending = Versions.oneEach(Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000), keys)
+            val trending = if (later) emptyList() else Versions.oneEach(Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000), keys)
             lap("top 10")
             return LibraryIndex(
                 all = shown,

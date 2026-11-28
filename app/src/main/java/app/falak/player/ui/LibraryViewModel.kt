@@ -49,6 +49,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -914,9 +915,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val tidy = tidyWanted()
         val order = arrangementNow()
         val edits = editsNow()
-        index = withContext(Dispatchers.Default) {
-            LibraryIndex.build(list, tidy.first, tidy.second, order, edits) { step, ms -> steps.append(", $step $ms ms") }
+        // (8.57, a big playlist took long to open) The lists first; the films and series listed more than
+        // once, and the Top 10, a moment later (finishCopies), on a quiet thread so the screen stays smooth.
+        val built = withContext(Dispatchers.Default) {
+            LibraryIndex.build(list, tidy.first, tidy.second, order, edits, took = { step, ms -> steps.append(", $step $ms ms") }, later = true)
         }
+        index = built
         // (8.57) Which step of making the lists takes the time, for timing a big playlist. Counts only.
         android.util.Log.i("FalakTiming", "lists: $steps")
         // The player keeps its own reference for its channel list: point it at the new copy so
@@ -928,7 +932,44 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         loadedAt = data.savedAt
         playlist?.let { pl -> repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(pl.id, index, data.epgUrl, data.serverTz, data.savedAt) }
         if (added.isNotEmpty()) playlist?.let { pl -> announceNew(pl, added, list.size) }
+        finishCopies(built)
         return added.size
+    }
+
+    private var copiesJob: Job? = null
+
+    /** One thread at background priority: work that mustn't take the processor from the screen. */
+    private val quietWork by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                r.run()
+            }, "quiet-work").apply { isDaemon = true }
+        }.asCoroutineDispatcher()
+    }
+
+    /** The second half of opening (8.57): one of each title in the lists of everything, and the Top 10. */
+    private fun finishCopies(built: LibraryIndex) {
+        val p = playlist ?: return
+        if (!built.waiting) return
+        copiesJob?.cancel()
+        copiesJob = viewModelScope.launch {
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            var kept = false
+            val done = withContext(quietWork) {
+                val print = built.copiesPrint()
+                val keys = repo.savedCopies(p.id, print)?.also { kept = true } ?: built.findCopies().also { repo.saveCopies(p.id, print, it) }
+                built.withCopies(keys)
+            }
+            // Nothing replaced it meanwhile (another playlist, a new order or Tidy): swap it in.
+            if (index !== built) return@launch
+            index = done
+            if (repo.currentIndex === built) repo.currentIndex = done
+            repo.openLibrary?.takeIf { it.index === built }?.let { o ->
+                repo.openLibrary = app.falak.player.data.Repository.OpenLibrary(o.playlistId, done, o.epgUrl, o.serverTz, o.savedAt)
+            }
+            android.util.Log.i("FalakTiming", "copies and Top 10 ${if (kept) "(kept)" else "(worked out)"} in ${android.os.SystemClock.elapsedRealtime() - t0} ms")
+        }
     }
 
     /** New channels, films and series found by a refresh: a What's new entry and a notification. */

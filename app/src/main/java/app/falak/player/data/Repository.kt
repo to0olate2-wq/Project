@@ -877,6 +877,45 @@ class Repository(private val context: Context) {
         }
     }
 
+    /**
+     * (8.57) The films and series listed more than once, worked out for the playlist last time, if what it
+     * was worked out from is unchanged ([print], see LibraryIndex.copiesPrint): finding them again took
+     * seconds on every opening of a big playlist.
+     */
+    fun savedCopies(playlistId: String, print: Long): Map<String, String>? = try {
+        val f = File(cacheDir, "$playlistId.copies")
+        if (!f.exists()) null else f.bufferedReader().use { r ->
+            if (r.readLine()?.toLongOrNull() != print) return@use null
+            val out = HashMap<String, String>()
+            while (true) {
+                val line = r.readLine() ?: break
+                val tab = line.indexOf('\t')
+                if (tab > 0) out[line.substring(0, tab)] = line.substring(tab + 1)
+            }
+            out
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    fun saveCopies(playlistId: String, print: Long, keys: Map<String, String>) {
+        try {
+            val f = File(cacheDir, "$playlistId.copies")
+            val tmp = File(cacheDir, "$playlistId.copies.tmp")
+            tmp.bufferedWriter().use { w ->
+                w.write(print.toString())
+                w.write("\n")
+                for ((id, k) in keys) {
+                    if ('\n' in id || '\t' in id || '\n' in k) continue
+                    w.write(id); w.write("\t"); w.write(k); w.write("\n")
+                }
+            }
+            tmp.renameTo(f)
+        } catch (e: Exception) {
+            // only saves time next opening
+        }
+    }
+
     /** A portal's saved copy: its links go to this run's link server (its port may have changed). */
     private fun mendPortalLinks(c: PlaylistCache): PlaylistCache {
         portalLinks()
