@@ -581,8 +581,20 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   ffmpeg test videos, Pillow pictures); `walk.sh` walks Home / Live / Films / Series / a film / a channel and
   zapping / search / Settings (TV by remote keys; phone by swipes and `ui.py` taps through uiautomator), with a
   screenshot per step, `gfx-*.txt` (dumpsys gfxinfo per scrolled page), memory, logcat and crash logs and a
-  `summary.txt`; all in the artifacts `device-phone` / `device-tv` (gh api …/actions/runs/<id>/artifacts).
-  Emulators draw with the processor: frame times compare pages and versions, not a real box's feel.
+  `summary.txt` (crashes, not responding, frames drawn in 8 s at rest = endless animations), pushed to the
+  branches `device-phone` / `device-tv` (shallow-clone them; the artifacts' storage isn't reachable from the
+  sandbox; job logs are: `gh api …/actions/jobs/<id>/logs`). Emulators draw with the processor: frame times
+  compare pages and versions, not a real box's feel (pages with the full-screen picture cost ~3× Live TV's
+  there). The TV job sometimes fails on Maven Central's 429 or adb right after boot: rerun failed jobs.
+  The phone emulator is in the light theme (Automatic follows the system); KEYCODE_SEARCH opens Google
+  Assistant on the TV emulator. **Found by it (8.54):** a real TV (FEATURE_LEANBACK) gets Compose's
+  `PivotBringIntoViewSpec`: what the remote is on is scrolled to 30% of the list (screen tests aren't a TV, so
+  they never show it). It hid a film's/series' name under the top (TitleStage now provides `PlainScroll`,
+  Cards.kt); rows keep the pivot (Google TV-like). Also: TV buttons' focus ring cut by `horizontalScroll`
+  (`ButtonRow` padding), a finished film said "Resume 0:40" (`Watch.done` → Play), the phone player's name had
+  a few letters beside the buttons (`fitTitle`: under them when < `TITLE_ROOM_DP`), divider-only groups made a
+  row of a lone "See all" (`GroupRow`), Live TV's panel was empty on a new install (first channels), divider
+  lines looked like channels in the phone list.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
