@@ -33,6 +33,8 @@ log "form $FORM, screen ${SW}x${SH}"
 adb install -r -g "$APK" | tail -1 | tee -a "$OUT/walk.txt"
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS 2> /dev/null
 adb logcat -c
+# Android's one-time "Viewing full screen" note covers the player and takes Back: a person taps "Got it" once.
+adb shell settings put secure immersive_mode_confirmations confirmed
 START=$(date +%s)
 adb shell am start -W -n $PKG/.BenchSeedActivity --es server http://10.0.2.2:8080 --es user u --es pass p | tee -a "$OUT/walk.txt"
 # The lists (2,200 items) and the guide (4 MB) come from the test server; give them time.
@@ -87,7 +89,7 @@ else
   gfx_start; for _ in 1 2 3 4 5; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done; shot home-scrolled
   for _ in 1 2 3 4 5; do swipe $((SW / 2)) $((SH / 4)) $((SW / 2)) $((SH * 3 / 4)) 350; sleep 0.8; done; gfx_end home
   shot home; dumpui home
-  for page in "Live TV" Films Series; do
+  for page in Live Films Series; do
     tap "$page"; sleep 3; slug=$(echo "$page" | tr 'A-Z ' 'a-z-'); shot "$slug"; dumpui "$slug"
     gfx_start; for _ in 1 2 3 4; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done
     swipe $((SW * 3 / 4)) $((SH / 2)) $((SW / 4)) $((SH / 2)) 300; sleep 0.8; shot "$slug-scrolled"
@@ -95,13 +97,13 @@ else
   done
   alive
   # A film: tap a poster, play it.
-  tap Films; sleep 2; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
+  tap Films; sleep 3; tap "Search"; sleep 2; adb shell input text "matrix"; sleep 4; shot search-films; key KEYCODE_BACK; sleep 1; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
   tap Play || tap Resume; sleep 10; shot film-playing
   adb shell input tap $((SW / 2)) $((SH / 2)); sleep 1.5; shot film-controls; dumpui film-controls
   key KEYCODE_BACK; sleep 3; key KEYCODE_BACK; sleep 2; shot after-film
   alive
   # Live TV: a channel.
-  tap "Live TV"; sleep 3; tap "Entertainment 1"; sleep 9; shot live-playing
+  tap Live; sleep 3; tap "All channels"; sleep 3; tap "Entertainment 1"; sleep 9; shot live-playing
   adb shell input tap $((SW / 2)) $((SH / 2)); sleep 1.5; shot live-controls; dumpui live-controls
   key KEYCODE_BACK; sleep 3; shot after-live
   alive
