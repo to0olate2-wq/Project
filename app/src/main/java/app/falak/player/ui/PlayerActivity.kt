@@ -150,6 +150,11 @@ class PlayerActivity : ComponentActivity() {
         private val needsVlc = HashSet<String>()
         /** Sound for this long with a picture never drawn = no picture (8.52: was 6 s). */
         private const val NO_PICTURE_MS = 4_000L
+        /** TV glass (8.55): the tint and hairline at rest and under the remote (ARGB). */
+        private const val GLASS_REST = 0x1AFFFFFF
+        private const val GLASS_REST_EDGE = 0x38FFFFFF
+        private const val GLASS_LIT = 0x42FFFFFF
+        private val GLASS_LIT_EDGE = 0xCCFFFFFF.toInt()
         /** Phones: the least room the name keeps beside the top buttons before it goes under them. */
         const val TITLE_ROOM_DP = 140
 
@@ -675,6 +680,14 @@ class PlayerActivity : ComponentActivity() {
                     LinearLayout.LayoutParams(dp(1), dp(24)).apply { setMargins(dp(8), 0, dp(8), 0) },
                 )
                 for (b in settingIcons()) addView(b, pillParams())
+                // 8.55 (the owner picked "C"): every tool in one floating glass bar; the one the remote is on lights up.
+                for (b in pills() + settingIcons()) b.background = glassBackground(oval = false, rest = false)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(100).toFloat()
+                    setColor(GLASS_REST)
+                    setStroke(dp(1), GLASS_REST_EDGE)
+                }
+                setPadding(dp(10), dp(5), dp(10), dp(5))
             }
         }
         // A button shown or hidden (subtitles found, a film's speed): do the labels still fit?
@@ -682,7 +695,12 @@ class PlayerActivity : ComponentActivity() {
         // Centred when it fits, scrollable sideways on narrow phones.
         val scroller = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            addView(buttons, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(
+                buttons,
+                // TV: the glass bar is as tall as its buttons, in the middle of the row.
+                if (tvLayout) FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL)
+                else FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
         }
         toolbar = FrameLayout(this).apply {
             addView(
@@ -3099,10 +3117,28 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Text and icon colours: dark on the white highlight, white otherwise. */
+    /**
+     * TV (8.55, the owner picked "C"): see-through glass. [rest] = how it looks without the remote on it: a
+     * light tint and hairline (a button on its own over the picture), or nothing (inside the glass bar). Under
+     * the remote the tint grows and the edge brightens; the icon stays white.
+     */
+    private fun glassBackground(oval: Boolean, rest: Boolean): android.graphics.drawable.StateListDrawable {
+        fun shape(fill: Int, stroke: Int, width: Float) = GradientDrawable().apply {
+            if (oval) shape = GradientDrawable.OVAL else cornerRadius = dp(100).toFloat()
+            setColor(fill)
+            if (stroke != 0) setStroke((width * resources.displayMetrics.density).toInt().coerceAtLeast(1), stroke)
+        }
+        return android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), shape(GLASS_LIT, GLASS_LIT_EDGE, 1.5f))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(GLASS_LIT, 0, 0f))
+            addState(intArrayOf(), if (rest) shape(GLASS_REST, GLASS_REST_EDGE, 1f) else shape(Color.TRANSPARENT, 0, 0f))
+        }
+    }
+
+    /** Text and icon colours: dark on the white highlight, white otherwise (TV, glass since 8.55: always white). */
     private fun contentColors(): android.content.res.ColorStateList = android.content.res.ColorStateList(
         arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
-        intArrayOf(focusInk, Color.WHITE),
+        intArrayOf(if (tvLayout) Color.WHITE else focusInk, Color.WHITE),
     )
 
     /** A button of the bottom row: icon and label; turns white and grows a little under the remote's focus. */
@@ -3125,7 +3161,7 @@ class PlayerActivity : ComponentActivity() {
         // An icon-only button (Settings) is a neat circle-ish pill with even sides.
         compoundDrawablePadding = 0
         compoundDrawableTintList = contentColors()
-        background = focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
+        background = if (tvLayout) glassBackground(oval = false, rest = true) else focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
         // As wide as it is tall (44 dp on TV, 40 on phones).
         val side = dp(if (tvLayout) 12 else 11)
         setPadding(side, 0, side, 0)
@@ -3289,7 +3325,15 @@ class PlayerActivity : ComponentActivity() {
         val info = repo.state.value.settings.playerInfo
         val nowMs = System.currentTimeMillis()
         val text = SpannableStringBuilder()
-        text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (tvLayout) {
+            // TV (8.55, "C"): the name in the app's serif, larger, as on the film's page.
+            val serif = ResourcesCompat.getFont(this, R.font.lora_bold)
+            text.append(ch.name)
+            if (serif != null) text.setSpan(FontSpan(serif), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(android.text.style.RelativeSizeSpan(1.3f), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } else {
+            text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (PlayerInfo.CLOCK in info) appendClock(text, nowMs)
         if (ch.kind == Kind.LIVE) {
             Epg.current(repo.epg.value[ch.epgKey], nowMs)?.let { now ->
@@ -3382,7 +3426,8 @@ class PlayerActivity : ComponentActivity() {
     private fun styleControls(v: View) {
         when (v) {
             is android.widget.ImageButton -> {
-                v.background = focusBackground(oval = true)
+                // TV (8.55): glass circles over the picture.
+                v.background = if (tvLayout) glassBackground(oval = true, rest = true) else focusBackground(oval = true)
                 v.imageTintList = contentColors()
             }
             // The "10" rewind/forward buttons: the icon is the button's background, in a frame that
@@ -3390,7 +3435,7 @@ class PlayerActivity : ComponentActivity() {
             is android.widget.Button -> {
                 v.backgroundTintList = contentColors()
                 v.setTextColor(contentColors())
-                (v.parent as? View)?.background = focusBackground(oval = true)
+                (v.parent as? View)?.background = if (tvLayout) glassBackground(oval = true, rest = true) else focusBackground(oval = true)
             }
             is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
         }
@@ -6825,4 +6870,15 @@ class PlayerActivity : ComponentActivity() {
 
     private fun dp(v: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
+}
+
+/** A typeface for part of a text (TypefaceSpan(Typeface) needs Android 9; the app runs from Android 7). */
+private class FontSpan(private val face: Typeface) : android.text.style.MetricAffectingSpan() {
+    override fun updateDrawState(tp: android.text.TextPaint) {
+        tp.typeface = face
+    }
+
+    override fun updateMeasureState(tp: android.text.TextPaint) {
+        tp.typeface = face
+    }
 }

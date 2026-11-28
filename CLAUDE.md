@@ -595,6 +595,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   a few letters beside the buttons (`fitTitle`: under them when < `TITLE_ROOM_DP`), divider-only groups made a
   row of a lone "See all" (`GroupRow`), Live TV's panel was empty on a new install (first channels), divider
   lines looked like channels in the phone list.
+- **Glass, "C" (8.55; the owner saw four pictures, picked "C · Floating dock", and asked for the player in the same
+  style):** TV only. `Modifier.glass(shape)` + `GLASS_FILL` / `GLASS_EDGE` / `GLASS_LIT_FILL` (Theme.kt): a tint of
+  `Paper` and a hairline (no blur behind: Android can't on these TVs). `TopMenu` (Cinema.kt, both looks): logo
+  left, sections + a thin line + tools as 40 dp icons in ONE glass capsule in the middle, clock right; `MenuTool`
+  has no name any more (the owner: no descriptions), a glass circle under the remote, a 4 dp `Signal` dot under the
+  open section. `GlassButton(text?, icon, label)` (Brand.kt): `CinemaPanel`'s Play/Watch/Episodes keeps its word,
+  More info and My list are round icons. Player (`tvLayout`): `glassBackground(oval, rest)`; the bottom row's
+  tools are one glass bar (`GLASS_REST*`, transparent buttons that light up), star/search and Media3's middle
+  buttons are glass circles, icons stay white (`contentColors`), the name is Lora (`FontSpan`, ×1.3). Phones
+  unchanged. Pictures: Design artifact "The Player: TV layout options (glass buttons, icon menu)".
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
