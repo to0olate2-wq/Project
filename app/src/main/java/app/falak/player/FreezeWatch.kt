@@ -22,6 +22,9 @@ object FreezeWatch {
     private const val SAMPLE_AT_MS = 4_000L
     /** The watch itself slept this much longer than its 1 s: the app was paused, not frozen. */
     private const val PAUSED_MS = 3_000L
+    /** The device check's build: stalls go to the system log too. */
+    private val BENCH = BuildConfig.BUILD_TYPE == "bench"
+    @Volatile private var benchLogged = 0L
 
     private val crumbs = ArrayDeque<String>()
     private val clock = SimpleDateFormat("HH:mm:ss", Locale.US)
@@ -97,6 +100,15 @@ object FreezeWatch {
                     continue
                 }
                 if (stuckSince == 0L) stuckSince = lastPong
+                // The device check's build (8.57): where the screen is stuck, in the system log, for every
+                // stall of 1.5 s or more (the report above keeps only freezes of 8 s and longer).
+                if (BENCH && benchLogged != stuckSince) {
+                    benchLogged = stuckSince
+                    android.util.Log.w(
+                        "FalakStall",
+                        "main thread stuck ${stuck} ms at:\n" + mainThread.stackTrace.take(40).joinToString("\n") { "  $it" },
+                    )
+                }
                 // Two samples (at about 4 and 8 seconds): the same place twice means a real loop.
                 val due = if (samples == 0) SAMPLE_AT_MS else SAMPLE_AT_MS * 2
                 if (samples < 2 && stuck >= due) {
