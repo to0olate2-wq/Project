@@ -280,3 +280,94 @@ jobs:
           git add -A
           git -c user.name="CI" -c user.email="ci@users.noreply.github.com" commit -q -m "Screens for build ${{ github.run_number }} (${{ github.sha }})"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "$TARGET"
+
+  # Device check (8.54): the app (a release-speed "bench" build) on an Android phone and an Android TV
+  # emulator, walked through its pages against a made-up provider (tools/device), keeping the screens,
+  # frame timings, memory and crash / not-responding logs. Only when the commit's first line has [device].
+  # Emulators draw with the processor (SwiftShader), so frame times are far slower than a real device's:
+  # they compare pages and versions, they don't say how a real TV box feels.
+  device:
+    if: contains(github.event.head_commit.message, '[device]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - form: phone
+            api: 34
+            target: google_apis
+            arch: x86_64
+            profile: pixel_6
+          - form: tv
+            api: 30
+            target: android-tv
+            arch: x86
+            profile: tv_1080p
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the bench app
+        env:
+          VERSION_CODE: "999999"
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleGithubBench --no-daemon -q 2>&1 | tail -20
+          ls -la app/build/outputs/apk/github/bench/
+          unzip -l app/build/outputs/apk/github/bench/*.apk | grep -c "lib/x86" || true
+
+      - name: Make the test provider's videos and pictures
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
+          pip install --quiet pillow
+          mkdir -p media
+          python3 tools/device/make_media.py media
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=25 -f lavfi -i sine=frequency=440:sample_rate=48000 \
+            -t 600 -c:v libx264 -preset ultrafast -b:v 900k -g 50 -c:a aac -b:a 96k -f mpegts media/live.ts
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=24 -f lavfi -i sine=frequency=330:sample_rate=48000 \
+            -t 90 -c:v libx264 -preset veryfast -b:v 3M -c:a aac -b:a 128k -movflags +faststart media/film.mp4
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=24 -f lavfi -i sine=frequency=550:sample_rate=48000 \
+            -t 40 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -c:a aac -b:a 128k media/film-hevc.mkv
+          ls -la media
+
+      - name: Start the test provider
+        run: |
+          nohup python3 tools/device/server.py media 8080 > server.log 2>&1 &
+          sleep 3
+          curl -s "http://127.0.0.1:8080/player_api.php?username=u&password=p" | head -c 120; echo
+
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Walk the app (${{ matrix.form }})
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          profile: ${{ matrix.profile }}
+          ram-size: 4096M
+          disk-size: 6G
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          script: bash tools/device/walk.sh ${{ matrix.form }} app/build/outputs/apk/github/bench/app-github-bench.apk out-${{ matrix.form }}
+
+      - name: Keep what it saw
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-${{ matrix.form }}
+          path: |
+            out-${{ matrix.form }}
+            server.log
+          retention-days: 14

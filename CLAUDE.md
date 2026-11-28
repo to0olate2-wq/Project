@@ -572,6 +572,17 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `dispatchKeyEvent`, 8.50) was replaced by `Modifier.notesSideways()` on the two tab rows. The real remedy is
   Google's appeal form (support.google.com/googleplay/android-developer/contact/protectappeals, needs the APK's
   SHA-256). PiP buttons stay a broadcast (an activity intent can bring the window back to full screen).
+- **Device check (8.54; the owner asked for smoothness, symmetry and function tests on TV and phone):**
+  `[device]` in a commit's first line runs the `device` job: the `bench` build type (= release, minified, plus
+  x86 code and `src/bench/BenchSeedActivity`, which adds a test playlist and marks the version seen; never
+  published, no counter) on an Android 14 phone emulator (pixel_6) and an Android 11 TV emulator (tv_1080p,
+  like the owner's Formuler). `tools/device/server.py` is a made-up Xtream provider (1,012 channels incl. divider
+  lines and folders, 1,080 films with tags/4K/MKV-HEVC, 120 series, a 4 MB guide with matches and films, real
+  ffmpeg test videos, Pillow pictures); `walk.sh` walks Home / Live / Films / Series / a film / a channel and
+  zapping / search / Settings (TV by remote keys; phone by swipes and `ui.py` taps through uiautomator), with a
+  screenshot per step, `gfx-*.txt` (dumpsys gfxinfo per scrolled page), memory, logcat and crash logs and a
+  `summary.txt`; all in the artifacts `device-phone` / `device-tv` (gh api …/actions/runs/<id>/artifacts).
+  Emulators draw with the processor: frame times compare pages and versions, not a real box's feel.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

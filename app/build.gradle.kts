@@ -61,6 +61,14 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signing is chosen per store below (a build type's key would override the flavours').
         }
+        // Device checks in CI (8.54, `[device]` in a commit's first line): the release build, minified the
+        // same way, plus a way to hand it a test playlist (src/bench) and x86 code for the emulators.
+        // Never published; no user counter (no statsUrl is passed to it).
+        create("bench") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            ndk { abiFilters += listOf("x86", "x86_64") }
+        }
     }
 
     // "github" = sideloaded builds with one-tap updates; "play" = Google Play (no self-update allowed).
