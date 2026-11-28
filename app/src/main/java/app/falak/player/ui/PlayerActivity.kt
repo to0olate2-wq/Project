@@ -3435,7 +3435,10 @@ class PlayerActivity : ComponentActivity() {
             is android.widget.Button -> {
                 v.backgroundTintList = contentColors()
                 v.setTextColor(contentColors())
-                (v.parent as? View)?.background = if (tvLayout) glassBackground(oval = true, rest = true) else focusBackground(oval = true)
+                // (TV, 8.55: glass at rest only on a frame of its own; when the parent is the whole middle row, seen
+                // on the TV emulator, a tinted oval lay behind every button.)
+                val frame = v.parent as? ViewGroup
+                frame?.background = if (tvLayout) glassBackground(oval = true, rest = frame?.childCount == 1) else focusBackground(oval = true)
             }
             is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
         }
