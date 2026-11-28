@@ -90,7 +90,40 @@ def series_list():
     return out
 
 
+# SCALE (8.57): a big provider for timing how long a big playlist takes to open. SCALE=8 gives ~21,000
+# channels in 176 groups, ~43,000 films in 96 groups and ~4,800 series in 48 groups.
+SCALE = int(os.environ.get("SCALE", "1"))
+if SCALE > 1:
+    PREFIX = ["EN", "FR", "DE", "ES", "IT", "PT", "TR", "NL", "PL", "SE"]
+    LIVE_GROUPS = LIVE_GROUPS[:1] + ["%s %s" % (PREFIX[i % len(PREFIX)], g) for i in range(SCALE) for g in LIVE_GROUPS[1:]]
+    FILM_GROUPS = ["%s - %s" % (PREFIX[i % len(PREFIX)], g) for i in range(SCALE) for g in FILM_GROUPS]
+    SERIES_GROUPS = ["%s - %s" % (PREFIX[i % len(PREFIX)], g) for i in range(SCALE) for g in SERIES_GROUPS]
+    _films, _series = films, series_list
+
+    def films():
+        out = []
+        for rep in range(5):
+            for f in _films():
+                f = dict(f)
+                f["stream_id"] = f["num"] = f["stream_id"] + rep * 100000
+                if rep:
+                    f["name"] = f["name"] + " %d" % rep
+                out.append(f)
+        return out
+
+    def series_list():
+        out = []
+        for rep in range(5):
+            for x in _series():
+                x = dict(x)
+                x["series_id"] = x["num"] = x["series_id"] + rep * 100000
+                if rep:
+                    x["name"] = x["name"] + " %d" % rep
+                out.append(x)
+        return out
+
 LIVE, FILMS, SERIES = live_streams(), films(), series_list()
+print("catalog: %d live, %d films, %d series" % (len(LIVE), len(FILMS), len(SERIES)), flush=True)
 
 
 def cats(groups):

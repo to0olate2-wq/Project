@@ -345,6 +345,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The sidebar look's search bar has the focus (recent searches show under it). */
     var searchFocused by mutableStateOf(false)
+    /** A playlist just added here (8.57): "What do you want to see?" once its lists are ready. */
+    var offerGroupsFor by mutableStateOf<String?>(null)
+    /** The groups page opened as that first-time offer (with Done and Skip for now). */
+    var groupsFirstTime by mutableStateOf(false)
 
     /** "See all" was picked in Home's search results: Back goes back to them. */
     var searchFromHome = false
@@ -862,10 +866,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 val t1 = android.os.SystemClock.elapsedRealtime()
                 val added = show(data, announce = refresh)
                 // (8.49) How long opening took, in a freeze report's steps: reading vs making the lists.
-                app.falak.player.FreezeWatch.note(
-                    "playlist ready: ${if (cached != null) "saved copy read" else "downloaded"} in ${t1 - t0} ms, " +
-                        "lists made in ${android.os.SystemClock.elapsedRealtime() - t1} ms, ${data.channels.size} items",
-                )
+                val ready = "playlist ready: ${if (cached != null) "saved copy read" else "downloaded"} in ${t1 - t0} ms, " +
+                    "lists made in ${android.os.SystemClock.elapsedRealtime() - t1} ms, ${data.channels.size} items"
+                app.falak.player.FreezeWatch.note(ready)
+                // (8.57) Also in the system log: the device check times big playlists by it. Counts only.
+                android.util.Log.i("FalakTiming", ready)
                 if (loadToken === token) loading = false
                 if (updating) noteUpdate(UpdateNote(ok = true, added = added, auto = false))
                 maybeStartLastChannel(p)
@@ -1050,6 +1055,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         repo.addPlaylist(p)
+        // 8.57 (the owner): once it has opened, offer to hide what isn't wanted (Live, Films, Series, groups).
+        offerGroupsFor = p.id
         open(p)
         null
     } catch (e: CancellationException) {

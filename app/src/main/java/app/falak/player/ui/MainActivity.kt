@@ -306,8 +306,18 @@ class MainActivity : ComponentActivity() {
                     }
                     // The guide to the main buttons (after the welcome page, or asked for in Settings), and
                     // after an update, where its big changes are (AppChanges): once the lists are on screen.
+                    // A playlist just added (8.57): "What do you want to see?" first, once its lists are ready.
+                    LaunchedEffect(vm.offerGroupsFor, vm.playlist?.id, vm.index, vm.loading, vm.screen) {
+                        val id = vm.offerGroupsFor ?: return@LaunchedEffect
+                        if (vm.playlist?.id != id || vm.loading || vm.startingUp || vm.screen != Screen.LIBRARY) return@LaunchedEffect
+                        if (app.falak.player.data.Kind.entries.none { vm.index.groupsOf(it).isNotEmpty() }) return@LaunchedEffect
+                        vm.offerGroupsFor = null
+                        vm.groupsFirstTime = true
+                        vm.settingsPage = null
+                        vm.screen = Screen.GROUPS
+                    }
                     val listsShown = vm.screen == Screen.LIBRARY && vm.playlist != null && !vm.startingUp && !vm.kidsActive &&
-                        !(vm.choosingProfile && vm.profilesWanted(state))
+                        !(vm.choosingProfile && vm.profilesWanted(state)) && vm.offerGroupsFor == null && !vm.groupsFirstTime
                     LaunchedEffect(listsShown, state.settings.tourDue, state.settings.seenVersion, vm.changesAgain) {
                         if (!Guide.auto || !listsShown || Guide.steps != null) return@LaunchedEffect
                         val current = BuildConfig.VERSION_NAME
@@ -352,7 +362,11 @@ class MainActivity : ComponentActivity() {
                                 vm.listSheetFor == null && !vm.confirmExit && MiniPlayerState.request.value == null &&
                                 // 8.44: not over a channel playing small on the page (Live TV's list on a TV):
                                 // that is someone watching, and it went on playing under the pictures.
-                                !repo.previewOpen
+                                !repo.previewOpen &&
+                                // 8.57 (the owner: it came up while he was searching): typing on the keyboard,
+                                // and touches in a window over the page, never reach onUserInteraction. So not
+                                // while searching, while the keyboard is up, or while a window has the focus.
+                                vm.query.isBlank() && !cinemaSearchOpen && !vm.searchFocused && hasWindowFocus() && !keyboardUp()
                             if (!ambient && vm.state.value.settings.ambient && idle >= AMBIENT_IDLE_MS && calm &&
                                 lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
                             ) {
@@ -531,6 +545,11 @@ class MainActivity : ComponentActivity() {
 
     private var ambient by mutableStateOf(false)
     private var lastInput = android.os.SystemClock.elapsedRealtime()
+
+    /** The on-screen keyboard is up (someone is typing). */
+    private fun keyboardUp(): Boolean =
+        androidx.core.view.ViewCompat.getRootWindowInsets(window.decorView)
+            ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
 
     private fun leaveAmbient() {
         ambient = false

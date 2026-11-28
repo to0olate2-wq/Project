@@ -339,8 +339,9 @@ jobs:
 
       - name: Start the test provider
         run: |
-          nohup python3 tools/device/server.py media 8080 > server.log 2>&1 &
-          sleep 3
+          # [big] (8.57): a big provider, and timing.sh instead of the walk.
+          SCALE=${{ contains(github.event.head_commit.message, '[big]') && '8' || '1' }} nohup python3 tools/device/server.py media 8080 > server.log 2>&1 &
+          sleep 10
           curl -s "http://127.0.0.1:8080/player_api.php?username=u&password=p" | head -c 120; echo
 
       - name: Let the emulator use KVM
@@ -360,7 +361,7 @@ jobs:
           disk-size: 6G
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
-          script: bash tools/device/walk.sh ${{ matrix.form }} app/build/outputs/apk/github/bench/app-github-bench.apk out-${{ matrix.form }}
+          script: bash tools/device/${{ contains(github.event.head_commit.message, '[big]') && 'timing' || 'walk' }}.sh ${{ matrix.form }} app/build/outputs/apk/github/bench/app-github-bench.apk out-${{ matrix.form }}
 
       # Also on a branch (device-phone / device-tv): the artifacts' storage can't be reached from every place
       # the results are read from.

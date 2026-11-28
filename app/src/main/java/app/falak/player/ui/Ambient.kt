@@ -50,7 +50,12 @@ class AmbientSlide(val image: String, val title: String, val note: String, val w
  * series (never from hidden or locked groups, or outside the Kids profile).
  */
 fun ambientSlides(movies: List<Channel>, series: List<Channel>, backdrops: Map<String, String>, excluded: Set<String>, max: Int = 24): List<AmbientSlide> {
-    val pool = (movies + series).filter { it.logo.isNotBlank() && it.group !in excluded }
+    // 8.57 (the owner saw titles of groups he had hidden): only what the lists show. Hidden, locked and
+    // kids-hidden groups are in [excluded]; grown-up groups never, PIN or not; nor a title with no group.
+    val pool = (movies + series).filter {
+        it.logo.isNotBlank() && it.group.isNotBlank() && it.group !in excluded &&
+            !app.falak.player.data.ADULT_GROUP.containsMatchIn(it.group)
+    }
     val wide = pool.mapNotNull { ch -> backdrops[ch.id]?.takeIf { it.isNotBlank() }?.let { AmbientSlide(it, ch.name, noteFor(ch), wide = true) } }
     val posters = pool.shuffled().take(max).map { AmbientSlide(it.logo, it.name, noteFor(it), wide = false) }
     return (wide + posters).distinctBy { it.title }.take(max)

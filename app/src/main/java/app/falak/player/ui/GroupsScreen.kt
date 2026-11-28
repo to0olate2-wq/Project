@@ -31,6 +31,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,8 +51,13 @@ import app.falak.player.data.Kind
 @Composable
 fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     val p = vm.playlist
-    // Opened from Settings: back there; from the lists ("Edit groups"): back to them.
-    val back: () -> Unit = { vm.screen = if (p != null && vm.settingsPage == null) Screen.LIBRARY else Screen.SETTINGS }
+    // 8.57: the offer after a playlist is added ("What do you want to see?", Done / Skip for now).
+    val first = vm.groupsFirstTime
+    // Opened from Settings: back there; from the lists ("Edit groups") or as the offer: back to them.
+    val back: () -> Unit = {
+        vm.groupsFirstTime = false
+        vm.screen = if (p != null && (first || vm.settingsPage == null)) Screen.LIBRARY else Screen.SETTINGS
+    }
     BackHandler { back() }
     if (p == null) {
         Centered { Text("Open a playlist first", color = Muted) }
@@ -69,21 +76,44 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
     val tv = isTv()
 
     Column(Modifier.fillMaxSize().padding(horizontal = pageMargin())) {
-        PageHeader("Show & hide groups", onBack = back, subtitle = p.name, search = false)
+        if (first) {
+            PageHeader("What do you want to see?", onBack = back, subtitle = p.name, search = false)
+            Text(
+                "Untick what you never watch, or hide all of Live TV, Films or Series. You can change it any time in " +
+                    "Settings → Playlists & TV guide → Show & hide groups.",
+                fontFamily = Sans,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = Muted,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val done = remember { androidx.compose.ui.focus.FocusRequester() }
+                PaperButton("Done", modifier = Modifier.focusRequester(done)) { back() }
+                GhostButton("Skip for now") { back() }
+                // A TV: the remote starts on Done.
+                LaunchedEffect(Unit) { if (tv) runCatching { done.requestFocus() } }
+            }
+        } else {
+            PageHeader("Show & hide groups", onBack = back, subtitle = p.name, search = false)
+        }
         Spacer(Modifier.height(10.dp))
         ChipFlow {
             kinds.forEach { k ->
+                // (8.57) How many of its groups are shown, so a whole kind hidden can be seen at a glance.
+                val all = index.groupsOf(k).keys
+                val on = all.count { it !in hidden }
                 TagChip(
                     when (k) {
                         Kind.LIVE -> "Live"
                         Kind.MOVIE -> "Films"
                         Kind.SERIES -> "Series"
-                    },
+                    } + if (on == 0) " · hidden" else if (on < all.size) " · $on of ${all.size}" else "",
                     k == kind,
                 ) { kind = k }
             }
-            // Your own order for these groups.
-            TagChip("↕ Arrange order", false) { vm.openArrange(kind, null) }
+            // Your own order for these groups (not in the first-time offer).
+            if (!first) TagChip("↕ Arrange order", false) { vm.openArrange(kind, null) }
         }
         Spacer(Modifier.height(12.dp))
         Row(
@@ -112,9 +142,14 @@ fun GroupsScreen(vm: LibraryViewModel, state: AppState) {
                 color = Muted,
                 modifier = Modifier.weight(1f),
             )
-            GhostButton(if (query.isBlank()) "Show all" else "Show these") { vm.setGroupsHidden(names, hidden = false) }
+            val what = when (kind) {
+                Kind.LIVE -> "Live TV"
+                Kind.MOVIE -> "Films"
+                Kind.SERIES -> "Series"
+            }
+            GhostButton(if (query.isNotBlank()) "Show these" else if (first) "Show all $what" else "Show all") { vm.setGroupsHidden(names, hidden = false) }
             Spacer(Modifier.width(8.dp))
-            GhostButton(if (query.isBlank()) "Hide all" else "Hide these") { vm.setGroupsHidden(names, hidden = true) }
+            GhostButton(if (query.isNotBlank()) "Hide these" else if (first) "Hide all $what" else "Hide all") { vm.setGroupsHidden(names, hidden = true) }
         }
         Spacer(Modifier.height(8.dp))
         Rule()

@@ -100,16 +100,26 @@ fun rememberSections(vm: LibraryViewModel, state: AppState): List<Section> {
     val index = vm.index
     val hasFav = p != null && (state.favorites[state.mine(p.id)].orEmpty().isNotEmpty() || state.favLists[state.mine(p.id)].orEmpty().isNotEmpty())
     val hasRecent = p != null && state.recents[state.mine(p.id)].orEmpty().isNotEmpty()
-    return remember(index, hasFav, hasRecent) {
+    val hidden = p?.let { state.settings.hiddenGroups[it.id] }
+    val shown = remember(index, hasFav, hasRecent, hidden) {
+        val off = hidden.orEmpty().toHashSet()
         Section.entries.filter { s ->
             when (s) {
                 Section.HOME -> index.all.isNotEmpty()
                 Section.FAVORITES -> hasFav
                 Section.RECENT -> hasRecent
-                else -> s.kind != null && index.ofKind(s.kind).isNotEmpty()
+                // 8.57 (the owner: "hide live channels / films / series"): every group of a kind hidden = no
+                // section for it in the menu.
+                else -> s.kind != null && index.ofKind(s.kind).isNotEmpty() &&
+                    index.groupsOf(s.kind).keys.let { groups -> groups.isEmpty() || groups.any { it !in off } }
             }
         }
     }
+    // The page open when its whole kind was hidden: Home instead of an empty page.
+    LaunchedEffect(shown) {
+        if (vm.section.kind != null && vm.section !in shown && Section.HOME in shown) vm.openSection(Section.HOME)
+    }
+    return shown
 }
 
 /** "Good morning", "Good afternoon" or "Good evening" (the TV's Home). */
