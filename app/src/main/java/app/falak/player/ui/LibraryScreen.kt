@@ -448,7 +448,16 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                 LiveRows(
                                     vm, groupMap, liveTree, visibleTotal, favLive, mineOften, latelyGroups, locked, deadIds,
                                     // A TV names the channel watched last, then your favorites, until the remote is on a card.
-                                    featured = remember(lastWatched, mineFav) { (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5) },
+                                    featured = remember(lastWatched, mineFav, groupMap, locked, deadIds) {
+                                        (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5).ifEmpty {
+                                            // (8.54, seen on the TV emulator) Nothing watched yet and no favorites: the
+                                            // first channels, not an empty space above the rows.
+                                            groupMap.entries.asSequence().filter { it.key !in locked }
+                                                .flatMap { it.value.asSequence() }
+                                                .filter { !isDividerName(it.name) && it.id !in deadIds }
+                                                .take(5).toList()
+                                        }
+                                    },
                                     epg = epg, now = now,
                                     onPlay = openFrom,
                                     onGroup = selectGroup,
@@ -488,7 +497,11 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                         var opened by remember { mutableStateOf(false) }
                                         LaunchedEffect(focusedId) { opened = false }
                                         val wanted = focusedId ?: peekFocusedForTest
-                                        val at = remember(list, wanted) { list.indexOfFirst { it.id == wanted }.coerceAtLeast(0) }
+                                        // (8.54) Never a divider line in the picture above: the channel after it.
+                                        val at = remember(list, wanted) {
+                                            val i = list.indexOfFirst { it.id == wanted }.coerceAtLeast(0)
+                                            (i until list.size).firstOrNull { !isDividerName(list[it].name) } ?: i
+                                        }
                                         val focusedCh = list.getOrNull(at)
                                         Column(m.onFocusChanged { here = it.hasFocus }) {
                                             LivePeekHead(
@@ -934,6 +947,22 @@ private fun ChannelRow(
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The provider's divider lines ("##### NEWS #####", 8.54): a quiet heading as on a TV, not a channel
+        // with a logo, programmes and a star.
+        if (isLive && isDividerName(ch.name)) {
+            Spacer(Modifier.width(34.dp))
+            Text(
+                ch.name.trim { !it.isLetterOrDigit() }.ifBlank { ch.name },
+                fontFamily = Sans,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                letterSpacing = 1.2.sp,
+                color = Faint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
         if (isLive) {
             Text(
                 "$number",
@@ -1018,6 +1047,7 @@ private fun ChannelRow(
                 tint = if (isFav) Amber else Faint.copy(alpha = 0.45f),
                 modifier = Modifier.size(20.dp),
             )
+        }
         }
     }
 }

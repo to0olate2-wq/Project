@@ -465,6 +465,14 @@ class HomeScroller(
 
 val LocalHomeScroller = staticCompositionLocalOf<HomeScroller?> { null }
 
+/**
+ * Scroll only as far as needed to show what the remote is on (8.54). On a TV (FEATURE_LEANBACK) Compose's
+ * own default instead moves it to 30% of the list (its PivotBringIntoViewSpec); screen tests don't count as a
+ * TV there, so only a TV or its emulator shows the difference.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+val PlainScroll: BringIntoViewSpec = object : BringIntoViewSpec {}
+
 /** How long a row takes to slide to the top (TV). */
 internal const val PIN_MS = 240
 

@@ -150,6 +150,8 @@ class PlayerActivity : ComponentActivity() {
         private val needsVlc = HashSet<String>()
         /** Sound for this long with a picture never drawn = no picture (8.52: was 6 s). */
         private const val NO_PICTURE_MS = 4_000L
+        /** Phones: the least room the name keeps beside the top buttons before it goes under them. */
+        const val TITLE_ROOM_DP = 140
 
         /** Player picked in the player for this session (overrides Settings until the app restarts). */
         private var sessionEngine: Engine? = null
@@ -3191,17 +3193,25 @@ class PlayerActivity : ComponentActivity() {
      * what's on now. Phones also have the setting icons on the right (TV has them in the row).
      */
     private fun buildTopBar(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
+        // Phones (8.54): the buttons on one line and the name beside them when it has room, else on its own
+        // line under them (upright, the buttons left the name a few letters: "EN - I…").
+        orientation = if (tvLayout) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
         clipToPadding = false
         clipChildren = false
-        if (!tvLayout) addView(homeButton, pillParams())
+        val row = if (tvLayout) this else LinearLayout(this@PlayerActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipToPadding = false
+            clipChildren = false
+        }
+        if (!tvLayout) row.addView(homeButton, pillParams())
         // TV: the star first (the remote starts on the left), then Search; phones: after the name, as a plain star.
         if (tvLayout) {
-            addView(favButton, pillParams())
-            addView(searchButton, pillParams())
+            row.addView(favButton, pillParams())
+            row.addView(searchButton, pillParams())
         } else {
-            addView(searchButton, pillParams())
+            row.addView(searchButton, pillParams())
         }
         titleView = TextView(this@PlayerActivity).apply {
             setTextColor(Color.WHITE)
@@ -3214,10 +3224,10 @@ class PlayerActivity : ComponentActivity() {
             setShadowLayer(dp(4).toFloat(), 0f, 0f, 0x99000000.toInt())
             setPadding(dp(if (tvLayout) 6 else 10), 0, dp(6), 0)
         }
-        addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (!tvLayout) {
             favButton.background = focusBackground(oval = true)
-            addView(favButton, pillParams())
+            row.addView(favButton, pillParams())
             // Phones (8.42): the tools set once (Cast, Picture size, Sleep, Lock, Player) in one
             // rounded group at the top right, not loose buttons around the screen.
             val group = LinearLayout(this@PlayerActivity).apply {
@@ -3234,7 +3244,42 @@ class PlayerActivity : ComponentActivity() {
                     addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
                 }
             }
-            addView(group, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginStart = dp(8) })
+            row.addView(group, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginStart = dp(8) })
+            addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            titleRow = row
+            titleGap = android.widget.Space(this@PlayerActivity)
+            row.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) row.post { fitTitle() } }
+        }
+    }
+
+    /** Phones: the row of buttons the name shares when it fits ([fitTitle]). */
+    private var titleRow: LinearLayout? = null
+    private var titleGap: View? = null
+    private var titleBelow = false
+
+    /** Phones: the name beside the buttons when it gets [TITLE_ROOM_DP], else on a line of its own under them. */
+    private fun fitTitle() {
+        val row = titleRow ?: return
+        val gap = titleGap ?: return
+        if (row.width == 0) return
+        var others = 0
+        for (i in 0 until row.childCount) {
+            val c = row.getChildAt(i)
+            if (c === titleView || c === gap || c.visibility == View.GONE) continue
+            val m = c.layoutParams as? ViewGroup.MarginLayoutParams
+            others += c.width + (m?.marginStart ?: 0) + (m?.marginEnd ?: 0)
+        }
+        val below = row.width - row.paddingLeft - row.paddingRight - others < dp(TITLE_ROOM_DP)
+        if (below == titleBelow) return
+        titleBelow = below
+        (titleView.parent as? ViewGroup)?.removeView(titleView)
+        (gap.parent as? ViewGroup)?.removeView(gap)
+        val at = row.indexOfChild(searchButton) + 1
+        if (below) {
+            row.addView(gap, at, LinearLayout.LayoutParams(0, 1, 1f))
+            topBar.addView(titleView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        } else {
+            row.addView(titleView, at, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
     }
 

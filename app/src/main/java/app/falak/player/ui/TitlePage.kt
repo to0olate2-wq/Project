@@ -1,5 +1,7 @@
 package app.falak.player.ui
 
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -37,10 +39,18 @@ import androidx.compose.ui.unit.sp
  */
 
 /** How a title's page is laid out on this screen. */
-internal class TitleStageInfo(val tv: Boolean, val portrait: Boolean, /** How tall the picture is. */ val art: Dp)
+internal class TitleStageInfo(
+    val tv: Boolean,
+    val portrait: Boolean,
+    /** How tall the picture is. */
+    val art: Dp,
+    /** TV: back to the top of the page, so the name shows again when the remote comes back to the buttons. */
+    val toTop: () -> Unit = {},
+)
 
 /** The picture of a film or a series behind its page, the page over it, and Back at the top left. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 internal fun TitleStage(
     wide: String?,
     poster: String?,
@@ -72,7 +82,21 @@ internal fun TitleStage(
             full = tv,
             modifier = Modifier.fillMaxWidth().height(art),
         )
-        content(TitleStageInfo(tv, portrait, art))
+        // (8.54) Seen on the TV emulator: Compose on a TV moves what the remote is on to 30% of the list's
+        // height, so Play (inside the page's first item) scrolled the name and kicker off the top. Here the
+        // page moves only as far as it must.
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides PlainScroll,
+        ) {
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            content(
+                TitleStageInfo(tv, portrait, art, toTop = {
+                    if (list.firstVisibleItemIndex != 0 || list.firstVisibleItemScrollOffset != 0) {
+                        scope.launch { list.animateScrollToItem(0) }
+                    }
+                }),
+            )
+        }
         // (Over the page, so it is there however far the page has scrolled.)
         IconButton(onClick = onBack, modifier = Modifier.padding(start = pageMargin() - 12.dp, top = 6.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper)
@@ -150,7 +174,8 @@ internal fun TitleHead(
                 story()
             }
             Spacer(Modifier.height(18.dp))
-            buttons()
+            // (8.54, seen on the TV emulator) Back up to the buttons from the rows below: the whole head again.
+            Column(Modifier.onFocusChanged { if (stage.tv && it.hasFocus) stage.toTop() }) { buttons() }
         }
     }
 }

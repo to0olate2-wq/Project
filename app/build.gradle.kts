@@ -22,7 +22,7 @@ android {
         targetSdk = 36
         // CI passes the GitHub run number, so every published build is a newer version.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "8.53"
+        versionName = "8.54"
         buildConfigField("String", "UPDATE_REPO", "\"to0olate2-wq/Project\"")
         // The user counter's address (stats/), passed by CI once it's deployed; empty = no counting.
         val statsUrl = (project.findProperty("statsUrl") as String?).orEmpty().trim()
@@ -60,6 +60,14 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signing is chosen per store below (a build type's key would override the flavours').
+        }
+        // Device checks in CI (8.54, `[device]` in a commit's first line): the release build, minified the
+        // same way, plus a way to hand it a test playlist (src/bench) and x86 code for the emulators.
+        // Never published; no user counter (no statsUrl is passed to it).
+        create("bench") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            ndk { abiFilters += listOf("x86", "x86_64") }
         }
     }
 

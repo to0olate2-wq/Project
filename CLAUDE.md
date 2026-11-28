@@ -572,6 +572,29 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   `dispatchKeyEvent`, 8.50) was replaced by `Modifier.notesSideways()` on the two tab rows. The real remedy is
   Google's appeal form (support.google.com/googleplay/android-developer/contact/protectappeals, needs the APK's
   SHA-256). PiP buttons stay a broadcast (an activity intent can bring the window back to full screen).
+- **Device check (8.54; the owner asked for smoothness, symmetry and function tests on TV and phone):**
+  `[device]` in a commit's first line runs the `device` job: the `bench` build type (= release, minified, plus
+  x86 code and `src/bench/BenchSeedActivity`, which adds a test playlist and marks the version seen; never
+  published, no counter) on an Android 14 phone emulator (pixel_6) and an Android 11 TV emulator (tv_1080p,
+  like the owner's Formuler). `tools/device/server.py` is a made-up Xtream provider (1,012 channels incl. divider
+  lines and folders, 1,080 films with tags/4K/MKV-HEVC, 120 series, a 4 MB guide with matches and films, real
+  ffmpeg test videos, Pillow pictures); `walk.sh` walks Home / Live / Films / Series / a film / a channel and
+  zapping / search / Settings (TV by remote keys; phone by swipes and `ui.py` taps through uiautomator), with a
+  screenshot per step, `gfx-*.txt` (dumpsys gfxinfo per scrolled page), memory, logcat and crash logs and a
+  `summary.txt` (crashes, not responding, frames drawn in 8 s at rest = endless animations), pushed to the
+  branches `device-phone` / `device-tv` (shallow-clone them; the artifacts' storage isn't reachable from the
+  sandbox; job logs are: `gh api …/actions/jobs/<id>/logs`). Emulators draw with the processor: frame times
+  compare pages and versions, not a real box's feel (pages with the full-screen picture cost ~3× Live TV's
+  there). The TV job sometimes fails on Maven Central's 429 or adb right after boot: rerun failed jobs.
+  The phone emulator is in the light theme (Automatic follows the system); KEYCODE_SEARCH opens Google
+  Assistant on the TV emulator. **Found by it (8.54):** a real TV (FEATURE_LEANBACK) gets Compose's
+  `PivotBringIntoViewSpec`: what the remote is on is scrolled to 30% of the list (screen tests aren't a TV, so
+  they never show it). It hid a film's/series' name under the top (TitleStage now provides `PlainScroll`,
+  Cards.kt); rows keep the pivot (Google TV-like). Also: TV buttons' focus ring cut by `horizontalScroll`
+  (`ButtonRow` padding), a finished film said "Resume 0:40" (`Watch.done` → Play), the phone player's name had
+  a few letters beside the buttons (`fitTitle`: under them when < `TITLE_ROOM_DP`), divider-only groups made a
+  row of a lone "See all" (`GroupRow`), Live TV's panel was empty on a new install (first channels), divider
+  lines looked like channels in the phone list.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose
