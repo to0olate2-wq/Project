@@ -57,7 +57,9 @@ if [ "$FORM" = tv ]; then
   done
   alive
   # A film: back to Films, down to a poster, open it, play it.
-  key KEYCODE_DPAD_LEFT; sleep 3; keys 2 KEYCODE_DPAD_DOWN 0.6; key KEYCODE_DPAD_CENTER; sleep 4; shot film-page
+  # (Down from the menu: the panel's buttons, the chips, then the first row's first poster.)
+  key KEYCODE_DPAD_LEFT; sleep 3; keys 3 KEYCODE_DPAD_DOWN 0.6; key KEYCODE_DPAD_CENTER; sleep 5; shot film-page
+  keys 3 KEYCODE_DPAD_DOWN 0.6; sleep 1; shot film-page-down; keys 3 KEYCODE_DPAD_UP 0.6; sleep 1; shot film-page-up
   key KEYCODE_DPAD_CENTER; sleep 10; shot film-playing
   key KEYCODE_DPAD_CENTER; sleep 1.5; shot film-controls
   key KEYCODE_BACK; sleep 2; key KEYCODE_BACK; sleep 3; shot after-film
