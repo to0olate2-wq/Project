@@ -41,6 +41,7 @@ internal class TitleStageInfo(val tv: Boolean, val portrait: Boolean, /** How ta
 
 /** The picture of a film or a series behind its page, the page over it, and Back at the top left. */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 internal fun TitleStage(
     wide: String?,
     poster: String?,
