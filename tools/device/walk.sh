@@ -100,7 +100,7 @@ else
   done
   alive
   # A film: tap a poster, play it.
-  tap Films; sleep 3; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 4; shot search-films; key KEYCODE_BACK; sleep 1; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
+  tap Films; sleep 3; tap Search; sleep 2; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 4; shot search-films; key KEYCODE_BACK; sleep 1; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
   tap Play || tap Resume; sleep 10; shot film-playing
   adb shell input tap $((SW / 2)) $((SH / 2)); sleep 1.5; shot film-controls; dumpui film-controls
   key KEYCODE_BACK; sleep 3; key KEYCODE_BACK; sleep 2; shot after-film
@@ -111,7 +111,7 @@ else
   key KEYCODE_BACK; sleep 3; shot after-live
   alive
   # Search, More, Settings.
-  tap Home; sleep 2; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 3; shot search; key KEYCODE_BACK; sleep 1; key KEYCODE_BACK; sleep 1
+  tap Home; sleep 2; tap Search; sleep 2; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 3; shot search; key KEYCODE_BACK; sleep 1; key KEYCODE_BACK; sleep 1
   tap More; sleep 2; shot more; dumpui more
   tap Settings; sleep 2; shot settings
   gfx_start; for _ in 1 2 3; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done; gfx_end settings
