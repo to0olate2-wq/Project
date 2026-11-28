@@ -175,10 +175,10 @@ private fun noticeAge(at: Long): String {
 
 /** The bell in the top bar, with how many What's new entries haven't been seen. */
 @Composable
-fun NoticeBell(unread: Int, onClick: () -> Unit) {
+fun NoticeBell(unread: Int, buttonModifier: Modifier = Modifier, onClick: () -> Unit) {
     // The count sits outside the button: the button clips to a circle, which cut the badge's corner.
     Box {
-        IconButton(onClick = onClick) {
+        IconButton(onClick = onClick, modifier = buttonModifier) {
             Icon(Icons.Outlined.Notifications, contentDescription = if (unread > 0) "What's new, $unread unseen" else "What's new", tint = Paper)
         }
         if (unread > 0) {

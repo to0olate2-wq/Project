@@ -603,8 +603,16 @@ Builds and tests run only in CI (`.github/workflows/build.yml`); there is no And
   open section. `GlassButton(text?, icon, label)` (Brand.kt): `CinemaPanel`'s Play/Watch/Episodes keeps its word,
   More info and My list are round icons. Player (`tvLayout`): `glassBackground(oval, rest)`; the bottom row's
   tools are one glass bar (`GLASS_REST*`, transparent buttons that light up), star/search and Media3's middle
-  buttons are glass circles, icons stay white (`contentColors`), the name is Lora (`FontSpan`, ×1.3). Phones
-  unchanged. Pictures: Design artifact "The Player: TV layout options (glass buttons, icon menu)".
+  buttons are glass circles, icons stay white (`contentColors`), the name is Lora (`FontSpan`, ×1.3).
+  Pictures: Design artifact "The Player: TV layout options (glass buttons, icon menu)".
+  **Phones (8.56, the owner saw three pictures and said "Go"):** `FloatingBar` (Shell.kt; also the add-on portal's
+  `PortalBar`): the bottom bar's `BarTab`s are 44 dp icons in one glass capsule; laid over the page it is
+  `BAR_HEIGHT + BAR_FLOAT` tall with the page's foot fading under it (the page keeps its `BAR_HEIGHT` room); the page
+  you're on = a lit glass circle (no orange line). `SidebarTopBar` with `brand` on a phone: the search box folds
+  into a glass magnifier (`open`, opened by it, `focusSearch`/`searchAsked`; folds back when it loses the focus
+  empty); the tools are 40 dp glass circles (`NoticeBell(buttonModifier)`). `PhoneHero`: `GlassButton`s. Player:
+  glass everywhere as on the TV; the star moved into the top-right glass group; the actions row is a glass bar;
+  the name in Lora ×1.2.
 - CI: `[only A B C]` in a commit's first line runs several test patterns (separated by spaces).
 - **Top 10 = the best of what is new (8.22; the owner: "based on recent movies, not all time high", his row never
   changed), `data/Trending.kt`:** rating × 0.5^(days since added / 30), nothing older than 120 days; a film whose

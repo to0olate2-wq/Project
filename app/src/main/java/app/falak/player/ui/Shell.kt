@@ -42,6 +42,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
@@ -129,11 +130,12 @@ fun AppShell(vm: LibraryViewModel, state: AppState, mode: ShellMode, content: @C
     val chrome = remember { Chrome() }
     LaunchedEffect(vm.screen, vm.section, vm.group, mode) { chrome.show() }
     val barGone by androidx.compose.animation.core.animateDpAsState(
-        if (phone && mode == ShellMode.BAR && chrome.hidden) BAR_HEIGHT else 0.dp,
+        // (8.56: the floating bar reaches BAR_FLOAT higher, its fade too.)
+        if (phone && mode == ShellMode.BAR && chrome.hidden) BAR_HEIGHT + BAR_FLOAT else 0.dp,
         label = "barGone",
     )
     val start = if (mode == ShellMode.RAIL) railWidth() else 0.dp
-    val bottom = if (mode == ShellMode.BAR) BAR_HEIGHT - barGone else 0.dp
+    val bottom = if (mode == ShellMode.BAR) (BAR_HEIGHT - barGone).coerceAtLeast(0.dp) else 0.dp
     // The menu along the top: the lists draw their picture behind it (and leave its room themselves).
     val top = if (mode == ShellMode.TOP && vm.screen != Screen.LIBRARY) TOP_MENU_HEIGHT else 0.dp
     Box(Modifier.fillMaxSize()) {
@@ -204,26 +206,55 @@ private fun BottomBar(vm: LibraryViewModel, state: AppState, modifier: Modifier)
     val selected = current.takeIf { vm.screen == Screen.LIBRARY && it in tabs }
     val unread = if (vm.kidsActive) 0 else state.notices.count { !it.read }
     val recordingNow = rememberRecordings().any { it.state == RecState.RECORDING }
-    Column(modifier.background(Ink2)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
-        Row(Modifier.fillMaxWidth().height(BAR_HEIGHT - 1.dp), verticalAlignment = Alignment.CenterVertically) {
-            tabs.forEach { s ->
-                BarTab(
-                    icon = { tint -> Icon(navIcon(s), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp)) },
-                    label = s.label,
-                    selected = s == selected,
-                    modifier = Modifier.weight(1f),
-                ) { vm.openSection(s) }
-            }
+    FloatingBar(modifier, overPage = true) {
+        tabs.forEach { s ->
             BarTab(
-                icon = { tint -> MoreDots(tint) },
-                label = "More",
-                selected = selected == null,
-                // A red dot: something new in What's new, or a recording under way.
-                dot = unread > 0 || recordingNow,
-                modifier = Modifier.weight(1f),
-            ) { vm.screen = Screen.MORE }
+                icon = { tint -> Icon(navIcon(s), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp)) },
+                label = s.label,
+                selected = s == selected,
+            ) { vm.openSection(s) }
         }
+        BarTab(
+            icon = { tint -> MoreDots(tint) },
+            label = "More",
+            selected = selected == null,
+            // A red dot: something new in What's new, or a recording under way.
+            dot = unread > 0 || recordingNow,
+        ) { vm.screen = Screen.MORE }
+    }
+}
+
+/** How far the floating bar's fade reaches up over the page's foot (8.56). */
+internal val BAR_FLOAT = 14.dp
+
+/**
+ * Phones (8.56, the owner picked "C" for phones too): the bar's icons in one see-through capsule. [overPage] =
+ * laid over the page (AppShell): the page's foot fades under it, [BAR_FLOAT] above its own room.
+ */
+@Composable
+internal fun FloatingBar(modifier: Modifier, overPage: Boolean = false, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val ink = Ink
+    Box(
+        modifier
+            .height(if (overPage) BAR_HEIGHT + BAR_FLOAT else BAR_HEIGHT)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    0f to ink.copy(alpha = if (overPage) 0f else 1f),
+                    0.4f to ink.copy(alpha = 0.94f),
+                    1f to ink,
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier
+                .padding(top = if (overPage) BAR_FLOAT else 0.dp)
+                .glass(RoundedCornerShape(50))
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            content = content,
+        )
     }
 }
 
@@ -237,32 +268,29 @@ internal fun BarTab(
     onClick: () -> Unit,
 ) {
     // Icons only (8.42, the owner: "just the logo is enough"); the name is still read out by TalkBack.
-    val tint = if (selected) Signal else Muted
-    Column(
+    // 8.56 ("C"): the page you're on is a lit see-through circle.
+    val paper = Paper
+    Box(
         modifier
-            .fillMaxHeight()
+            .size(44.dp)
             .guideAnchor(label)
-            .focusRing(RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
+            .focusRing(CircleShape)
+            .drawBehind {
+                if (selected) {
+                    drawCircle(paper.copy(alpha = GLASS_LIT_FILL))
+                    drawCircle(paper.copy(alpha = 0.8f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                }
+            }
+            .clip(CircleShape)
             // TalkBack says which tab is open.
             .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClickLabel = label, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.semantics { contentDescription = label }) {
-            icon(tint)
+            icon(if (selected) paper else Muted)
             if (dot) Box(Modifier.align(Alignment.TopEnd).padding(start = 18.dp).size(7.dp).clip(CircleShape).background(Signal))
         }
-        // Where you are: a short orange line under the icon.
-        Box(
-            Modifier
-                .padding(top = 5.dp)
-                .width(16.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(if (selected) Signal else Color.Transparent),
-        )
     }
 }
 

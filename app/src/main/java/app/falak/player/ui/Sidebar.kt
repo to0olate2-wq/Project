@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -490,8 +491,14 @@ fun SidebarTopBar(
     val searchFocus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // Phones with the bottom bar (8.56, "C"): the box folds into a see-through magnifier until it is asked for.
+    val folding = brand && !tv
+    var open by remember { mutableStateOf(false) }
+    var hadFocus by remember { mutableStateOf(false) }
+    val folded = folding && !open && query.isEmpty()
     LaunchedEffect(focusSearch, searchAsked) {
         if (focusSearch || searchAsked > 0) {
+            open = true
             delay(120)
             runCatching { searchFocus.requestFocus() }
         }
@@ -516,7 +523,19 @@ fun SidebarTopBar(
             }
         }
         val shape = RoundedCornerShape(12.dp)
-        Row(
+        val glassTool = if (folding) Modifier.padding(start = 6.dp).size(40.dp).glass(CircleShape) else Modifier
+        if (folded) {
+            Spacer(Modifier.weight(1f))
+            IconButton(
+                onClick = {
+                    open = true
+                    hadFocus = false
+                },
+                modifier = Modifier.guideAnchor("Search").size(40.dp).glass(CircleShape),
+            ) {
+                Icon(Icons.Outlined.Search, contentDescription = "Search", tint = Paper, modifier = Modifier.size(20.dp))
+            }
+        } else Row(
             // Takes the free width up to a comfortable 560 dp; the buttons stay at the far right.
             // With a title beside it (TV): a narrower box.
             (if (boxLeft) Modifier.weight(1f, fill = false).widthIn(min = 360.dp, max = 640.dp) else if (title != null) Modifier.width(330.dp) else Modifier.weight(1f).widthIn(max = 560.dp))
@@ -550,7 +569,11 @@ fun SidebarTopBar(
                     }),
                     textStyle = TextStyle(color = Paper, fontFamily = Sans, fontSize = 14.sp),
                     cursorBrush = SolidColor(Signal),
-                    modifier = Modifier.fillMaxWidth().focusRequester(searchFocus).onFocusChanged { onSearchFocus(it.isFocused) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(searchFocus).onFocusChanged {
+                        onSearchFocus(it.isFocused)
+                        // (Phones, 8.56) Left empty: it folds back into the magnifier.
+                        if (it.isFocused) hadFocus = true else if (hadFocus && folding) open = false
+                    },
                 )
             }
             if (query.isNotEmpty()) {
@@ -561,18 +584,24 @@ fun SidebarTopBar(
             // The microphone while the box is empty (typed text keeps the room).
             if (query.isEmpty()) LocalVoiceSearch.current?.let { speak -> VoiceButtons(voiceLang, speak, onVoiceLang) }
         }
+        // Opened from the magnifier: the cursor goes straight in.
+        if (folding && open) LaunchedEffect(Unit) {
+            delay(60)
+            runCatching { searchFocus.requestFocus() }
+        }
         if (tools) Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (tv) Clock(Modifier.padding(horizontal = 8.dp))
+            val small = if (folding) Modifier.size(20.dp) else Modifier
             if (hasGuide) {
-                IconButton(onClick = onGuide, modifier = Modifier.guideAnchor("TV guide")) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper) }
+                IconButton(onClick = onGuide, modifier = Modifier.guideAnchor("TV guide").then(glassTool)) { Icon(Icons.Outlined.DateRange, contentDescription = "TV guide", tint = Paper, modifier = small) }
             }
             profileButton?.invoke()
             if (onDownloads != null) {
-                IconButton(onClick = onDownloads) { Icon(downloadIcon(), contentDescription = "Downloads", tint = Paper) }
+                IconButton(onClick = onDownloads, modifier = glassTool) { Icon(downloadIcon(), contentDescription = "Downloads", tint = Paper, modifier = small) }
             }
-            if (!kids) NoticeBell(unread, onNotices)
-            IconButton(onClick = onRefresh, enabled = !loading) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper)
+            if (!kids) NoticeBell(unread, glassTool, onNotices)
+            IconButton(onClick = onRefresh, enabled = !loading, modifier = glassTool) {
+                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh playlist", tint = Paper, modifier = small)
             }
         }
     }
