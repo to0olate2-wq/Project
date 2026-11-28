@@ -327,20 +327,22 @@ fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
 @Composable
 fun TagChip(text: String, selected: Boolean, onLongClick: (() -> Unit)? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
-    val bg by animateColorAsState(if (selected) Paper else Color.Transparent, tween(220), label = "chipBg")
-    val fg by animateColorAsState(if (selected) Ink else Paper, tween(220), label = "chipFg")
+    // 8.57 ("C" everywhere): see-through glass; the one picked is lit, with a bright edge.
+    val paper = Paper
+    val fill by animateColorAsState(paper.copy(alpha = if (selected) GLASS_LIT_FILL else GLASS_FILL), tween(220), label = "chipBg")
+    val edge by animateColorAsState(paper.copy(alpha = if (selected) 0.8f else GLASS_EDGE), tween(220), label = "chipEdge")
     Text(
         text,
-        color = fg,
+        color = paper,
         fontFamily = Sans,
-        fontWeight = FontWeight.Medium,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
         fontSize = 13.sp,
         maxLines = 1,
         modifier = modifier
             .focusRing(shape)
             .clip(shape)
-            .background(bg)
-            .border(1.dp, if (selected) Color.Transparent else Paper.copy(alpha = 0.28f), shape)
+            .background(fill)
+            .border(if (selected) 1.5.dp else 1.dp, edge, shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 7.dp),
     )

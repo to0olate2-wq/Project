@@ -927,7 +927,8 @@ private fun ChannelRow(
     focusMe: Boolean,
     modifier: Modifier,
 ) {
-    val shape = RoundedCornerShape(6.dp)
+    // 8.57 ("C" on phones): rounder, and the channel you were on is lit glass.
+    val shape = RoundedCornerShape(14.dp)
     val isLive = ch.kind == Kind.LIVE
     val focus = remember { FocusRequester() }
     LaunchedEffect(focusMe) {
@@ -939,12 +940,18 @@ private fun ChannelRow(
     Row(
         modifier
             .fillMaxWidth()
-            .background(if (focusMe) Signal.copy(alpha = 0.10f) else Color.Transparent, shape)
+            .then(
+                if (focusMe) {
+                    Modifier.background(Paper.copy(alpha = GLASS_LIT_FILL * 0.6f), shape).border(1.dp, Paper.copy(alpha = 0.5f), shape)
+                } else {
+                    Modifier
+                },
+            )
             .focusRequester(focus)
             .focusRing(shape)
             .clip(shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
+            .padding(vertical = 10.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The provider's divider lines ("##### NEWS #####", 8.54): a quiet heading as on a TV, not a channel
@@ -974,8 +981,8 @@ private fun ChannelRow(
         }
         Box(
             Modifier
-                .size(if (isLive) 64.dp else 46.dp, if (isLive) 40.dp else 68.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .size(if (isLive) 56.dp else 46.dp, if (isLive) 42.dp else 68.dp)
+                .clip(RoundedCornerShape(if (isLive) 10.dp else 6.dp))
                 .background(Ink3),
             contentAlignment = Alignment.Center,
         ) {
@@ -1018,8 +1025,8 @@ private fun ChannelRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                     val length = (current.stop - current.start).coerceAtLeast(1L).toFloat()
-                    Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(2.dp).background(Hairline)) {
-                        Box(Modifier.fillMaxWidth(((now - current.start) / length).coerceIn(0f, 1f)).height(2.dp).background(Signal))
+                    Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Hairline)) {
+                        Box(Modifier.fillMaxWidth(((now - current.start) / length).coerceIn(0f, 1f)).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Signal))
                     }
                 }
                 !isLive -> {

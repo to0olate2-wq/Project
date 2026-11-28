@@ -78,7 +78,7 @@ for i in 1 2 3; do
   adb shell am force-stop $PKG
   sleep 2
   adb logcat -c
-  adb shell am start -n $PKG/.MainActivity > /dev/null
+  adb shell am start -n $PKG/app.falak.player.ui.MainActivity > /dev/null
   wait_ready 120
   log "stalls in the first 15 s (opening $i): $(sleep 15; stalls)"
   [ $i = 1 ] && shot reopen

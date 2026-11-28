@@ -900,7 +900,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     /** Shows a loaded playlist. With [announce], what's new since the list on screen goes to What's new. */
     /** Returns how many items are new since the list on screen (with [announce]). */
     private suspend fun show(data: app.falak.player.data.PlaylistCache, announce: Boolean = false): Int {
+        val t0 = android.os.SystemClock.elapsedRealtime()
         val list = withContext(Dispatchers.Default) { app.falak.player.data.ensureUniqueIds(data.channels) }
+        val steps = StringBuilder("unique ids ${android.os.SystemClock.elapsedRealtime() - t0} ms")
         val old = index
         val added = if (announce && old.all.isNotEmpty()) {
             withContext(Dispatchers.Default) { list.filter { it.id !in old.byId } }
@@ -912,7 +914,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val tidy = tidyWanted()
         val order = arrangementNow()
         val edits = editsNow()
-        index = withContext(Dispatchers.Default) { LibraryIndex.build(list, tidy.first, tidy.second, order, edits) }
+        index = withContext(Dispatchers.Default) {
+            LibraryIndex.build(list, tidy.first, tidy.second, order, edits) { step, ms -> steps.append(", $step $ms ms") }
+        }
+        // (8.57) Which step of making the lists takes the time, for timing a big playlist. Counts only.
+        android.util.Log.i("FalakTiming", "lists: $steps")
         // The player keeps its own reference for its channel list: point it at the new copy so
         // the old one can be freed (it otherwise stayed in memory beside the new one).
         if (repo.currentIndex === old) repo.currentIndex = index

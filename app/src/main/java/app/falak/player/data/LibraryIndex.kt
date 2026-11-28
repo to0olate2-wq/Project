@@ -114,8 +114,17 @@ class LibraryIndex(
             mergeDuplicates: Boolean = false,
             arrangement: Arrangement = Arrangement.NONE,
             edits: Map<String, ChannelEdit> = emptyMap(),
+            /** (8.57) How long each step took, for timing a big playlist: step name, milliseconds. */
+            took: ((String, Long) -> Unit)? = null,
         ): LibraryIndex {
+            var mark = System.nanoTime()
+            fun lap(step: String) {
+                val t = System.nanoTime()
+                took?.invoke(step, (t - mark) / 1_000_000)
+                mark = t
+            }
             val tidy = if (cleanNames || mergeDuplicates) Tidy.apply(list, cleanNames, mergeDuplicates) else null
+            lap("tidy")
             // Names and logos chosen by hand go over whatever Tidy made of them.
             fun edit(l: List<Channel>): List<Channel> =
                 if (edits.isEmpty()) l else l.map { ch -> edits[ch.id]?.let { ch.edited(it) } ?: ch }
@@ -136,24 +145,35 @@ class LibraryIndex(
             val liveGroups = arrange(plainLive, Kind.LIVE, arrangement)
             val movieGroups = arrange(plainMovies, Kind.MOVIE, arrangement)
             val seriesGroups = arrange(plainSeries, Kind.SERIES, arrangement)
+            lap("groups")
             // A kind with an order chosen lists everything in that order ("All channels" too).
             // Films and series the provider lists more than once: one of each in the lists of everything.
             val keys = runCatching { Versions.keys(movies + series) }.getOrDefault(emptyMap())
+            lap("copies")
             fun inOrder(kind: Kind, plain: List<Channel>, groups: Map<String, List<Channel>>) =
                 oneEach(kind, if (arrangement.has(kind)) groups.values.flatten() else plain, keys)
+            val byId = (if (tidy == null) shown else edit(tidy.all)).associateBy { it.id }
+            val liveAll = inOrder(Kind.LIVE, live, liveGroups)
+            val moviesAll = inOrder(Kind.MOVIE, movies, movieGroups)
+            val seriesAll = inOrder(Kind.SERIES, series, seriesGroups)
+            val newMovies = Versions.oneEach(movies.filter { it.added > 0 }.sortedByDescending { it.added }, keys).take(40)
+            val newSeries = Versions.oneEach(series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }, keys).take(40)
+            lap("lists")
+            val trending = Versions.oneEach(Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000), keys)
+            lap("top 10")
             return LibraryIndex(
                 all = shown,
                 // Merged-away channels stay findable (favorites, recents, the guide point at them).
-                byId = (if (tidy == null) shown else edit(tidy.all)).associateBy { it.id },
-                live = inOrder(Kind.LIVE, live, liveGroups),
-                movies = inOrder(Kind.MOVIE, movies, movieGroups),
-                series = inOrder(Kind.SERIES, series, seriesGroups),
+                byId = byId,
+                live = liveAll,
+                movies = moviesAll,
+                series = seriesAll,
                 liveGroups = liveGroups,
                 movieGroups = movieGroups,
                 seriesGroups = seriesGroups,
-                newMovies = Versions.oneEach(movies.filter { it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
-                newSeries = Versions.oneEach(series.filter { it.isSeriesFolder && it.added > 0 }.sortedByDescending { it.added }, keys).take(40),
-                trending = Versions.oneEach(Trending.pick(movieGroups, seriesGroups, System.currentTimeMillis() / 1000), keys),
+                newMovies = newMovies,
+                newSeries = newSeries,
+                trending = trending,
                 raw = list,
                 tidy = cleanNames to mergeDuplicates,
                 versions = tidy?.versions ?: emptyMap(),

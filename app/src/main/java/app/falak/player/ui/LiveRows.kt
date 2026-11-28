@@ -2,6 +2,17 @@ package app.falak.player.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.vectorResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -104,6 +115,20 @@ internal fun LiveRows(
         )
     }
     MarqueePage(vm, Section.LIVE, featured, onPlay, hero = false) {
+        // 8.57 (the owner: Live TV on the phone "is old, make it the new way"): what's on now, large, at the top.
+        val lead = featured.firstOrNull()
+        if (!tv && folder == null && lead != null) {
+            item(key = "onNow") {
+                val favIds = remember(favorites) { favorites.mapTo(HashSet()) { it.id } }
+                LiveOnNow(
+                    lead, Epg.current(epg[lead.epgKey], now), now,
+                    isFav = lead.id in favIds,
+                    onWatch = { onPlay(featured, lead) },
+                    onGuide = { vm.screen = Screen.GUIDE },
+                    onFav = { vm.toggleFavorite(lead) },
+                )
+            }
+        }
         item(key = "chips") {
             LiveChips(tree, total, folder?.name, onAll = { onGroup(null) }, onFind = onFind) { vm.liveFolder = it }
         }
@@ -235,6 +260,87 @@ private fun OpenTile(text: String, width: Dp, onClick: () -> Unit) {
                 maxLines = 2,
                 modifier = Modifier.padding(8.dp),
             )
+        }
+    }
+}
+
+/**
+ * Phones (8.57, "C"): the channel watched last (else a favorite, else the first) as the top of Live TV: its
+ * logo and number, what's on now, large, with its times, how far it is, and Watch, the guide and the star.
+ */
+@Composable
+private fun LiveOnNow(
+    ch: Channel,
+    current: Program?,
+    now: Long,
+    isFav: Boolean,
+    onWatch: () -> Unit,
+    onGuide: () -> Unit,
+    onFav: () -> Unit,
+) {
+    val signal = Signal
+    val time = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 14.dp)
+            .drawBehind {
+                // A soft glow of the page's colour where a picture would be.
+                drawRect(
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(signal.copy(alpha = 0.16f), Color.Transparent),
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.75f, size.height * 0.15f),
+                        radius = size.width * 0.9f,
+                    ),
+                )
+            }
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Ink3), contentAlignment = Alignment.Center) {
+                    LogoOr(url = ch.logo, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(4.dp)) {
+                        Initials(ch.name, 12.sp)
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        ch.name,
+                        fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Paper,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text("● ON NOW", fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 1.4.sp, color = Signal)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                current?.title ?: ch.name,
+                fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 34.sp, color = Paper,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            if (current != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${time.format(java.util.Date(current.start))} – ${time.format(java.util.Date(current.stop))}  ·  ${minutesLeft(current, now)}",
+                    fontFamily = Sans, fontSize = 13.sp, color = Muted, maxLines = 1,
+                )
+                val length = (current.stop - current.start).coerceAtLeast(1L).toFloat()
+                Box(Modifier.padding(top = 8.dp).fillMaxWidth(0.6f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Hairline)) {
+                    Box(Modifier.fillMaxWidth(((now - current.start) / length).coerceIn(0f, 1f)).height(3.dp).background(Signal))
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassButton("Watch", Icons.Filled.PlayArrow, onClick = onWatch)
+                GlassButton(null, androidx.compose.ui.graphics.vector.ImageVector.vectorResource(app.falak.player.R.drawable.ic_nav_guide), label = "TV guide", onClick = onGuide)
+                GlassButton(
+                    null,
+                    if (isFav) Icons.Filled.Star else androidx.compose.ui.graphics.vector.ImageVector.vectorResource(app.falak.player.R.drawable.ic_nav_favorites),
+                    label = if (isFav) "In your favorites" else "Add to favorites",
+                    onClick = onFav,
+                )
+            }
         }
     }
 }
