@@ -1,0 +1,22 @@
+[19:44:42] form phone, screen 1080x2400, big playlist
+Success
+[19:45:12] ready after 12418 ms (wall clock): playlist ready: downloaded in 9282 ms, lists made in 1357 ms, 56068 items
+[19:45:32] stalls in the first 20 s: 3 stalls, 200 frames skipped in all, biggest 117 frames (~1953 ms)
+[19:45:33] shot 01-first-open
+  [home] Total frames rendered: 38
+  [home] Janky frames: 38 (100.00%)
+  [home] 90th percentile: 300ms
+  [home] Number Slow UI thread: 23
+tapped Films at 181,155
+[19:45:45] stalls opening Films: 0 stalls, 0 frames skipped in all, biggest 0 frames (~0 ms)
+[19:45:46] shot 02-films
+tapped Live at 135,1833
+[19:45:53] stalls opening Live TV: 3 stalls, 188 frames skipped in all, biggest 85 frames (~1419 ms)
+[19:45:54] shot 03-live
+[19:45:59] ready after 3603 ms (wall clock): playlist ready: saved copy read in 1079 ms, lists made in 1520 ms, 56068 items
+[19:46:15] stalls in the first 15 s (opening 1): 6 stalls, 250 frames skipped in all, biggest 51 frames (~851 ms)
+[19:46:16] shot 04-reopen
+[19:46:22] ready after 3206 ms (wall clock): playlist ready: saved copy read in 856 ms, lists made in 1750 ms, 56068 items
+[19:46:37] stalls in the first 15 s (opening 2): 4 stalls, 232 frames skipped in all, biggest 79 frames (~1319 ms)
+[19:46:42] ready after 2744 ms (wall clock): playlist ready: saved copy read in 1295 ms, lists made in 755 ms, 56068 items
+[19:46:57] stalls in the first 15 s (opening 3): 6 stalls, 250 frames skipped in all, biggest 52 frames (~868 ms)

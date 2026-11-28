@@ -1,0 +1,52 @@
+catalog: 8068 live, 43200 films, 4800 series
+live 8068, films 43200, series 4800, guide 4279906 bytes
+19:43:22 "GET /player_api.php?username=u&password=p HTTP/1.1" 200 -
+19:45:01 "GET /player_api.php?username=u&password=p&action=get_live_categories HTTP/1.1" 200 -
+19:45:02 "GET /player_api.php?username=u&password=p&action=get_live_streams HTTP/1.1" 200 -
+19:45:02 "GET /player_api.php?username=u&password=p&action=get_vod_categories HTTP/1.1" 200 -
+19:45:02 "GET /player_api.php?username=u&password=p&action=get_vod_streams HTTP/1.1" 200 -
+19:45:04 "GET /player_api.php?username=u&password=p&action=get_series_categories HTTP/1.1" 200 -
+19:45:04 "GET /player_api.php?username=u&password=p&action=get_series HTTP/1.1" 200 -
+19:45:04 "GET /player_api.php?username=u&password=p HTTP/1.1" 200 -
+19:45:12 "GET /player_api.php?username=u&password=p HTTP/1.1" 200 -
+19:45:12 "GET /player_api.php?username=u&password=p&action=get_vod_info&vod_id=1 HTTP/1.1" 200 -
+19:45:12 "GET /img/poster/1.png HTTP/1.1" 200 -
+19:45:12 "GET /img/poster/1.png HTTP/1.1" 200 -
+19:45:12 "GET /img/poster/1.png HTTP/1.1" 200 -
+19:45:12 "GET /img/poster/1.png HTTP/1.1" 200 -
+19:45:12 "GET /player_api.php?username=u&password=p&action=get_vod_info&vod_id=100001 HTTP/1.1" 200 -
+19:45:13 "GET /player_api.php?username=u&password=p&action=get_vod_info&vod_id=200001 HTTP/1.1" 200 -
+19:45:13 "GET /player_api.php?username=u&password=p&action=get_vod_info&vod_id=300001 HTTP/1.1" 200 -
+19:45:15 "GET /xmltv.php?username=u&password=p HTTP/1.1" 200 -
+19:45:20 "GET /img/poster/21.png HTTP/1.1" 200 -
+19:45:20 "GET /img/poster/42.png HTTP/1.1" 200 -
+19:45:33 "GET /img/poster/3.png HTTP/1.1" 200 -
+19:45:33 "GET /img/poster/3.png HTTP/1.1" 200 -
+19:45:33 "GET /img/poster/3.png HTTP/1.1" 200 -
+19:45:33 "GET /img/logo/59.png HTTP/1.1" 200 -
+19:45:33 "GET /img/logo/54.png HTTP/1.1" 200 -
+19:45:49 "GET /live/u/p/59.ts HTTP/1.1" 200 -
+19:46:01 "GET /live/u/p/59.ts HTTP/1.1" 200 -
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57318)
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/socketserver.py", line 692, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib/python3.12/socketserver.py", line 761, in __init__
+    self.handle()
+  File "/usr/lib/python3.12/http/server.py", line 438, in handle
+    self.handle_one_request()
+  File "/usr/lib/python3.12/http/server.py", line 404, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 707, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [Errno 104] Connection reset by peer
+----------------------------------------
+19:46:24 "GET /live/u/p/59.ts HTTP/1.1" 200 -
+19:46:37 "GET /live/u/p/59.ts HTTP/1.1" 200 -
+19:46:44 "GET /live/u/p/59.ts HTTP/1.1" 200 -
+19:46:56 "GET /live/u/p/59.ts HTTP/1.1" 200 -
