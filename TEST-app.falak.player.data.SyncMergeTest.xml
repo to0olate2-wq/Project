@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.SyncMergeTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-11-28T13:52:20" hostname="ip-10-0-141-224" time="0.094">
+  <properties/>
+  <testcase name="profilesKeepTheirOwnFavoritesAndProgress" classname="app.falak.player.data.SyncMergeTest" time="0.066"/>
+  <testcase name="followedIntrosLockedGroupsRemindersAndRecentsSync" classname="app.falak.player.data.SyncMergeTest" time="0.007"/>
+  <testcase name="newerChangeWinsBothWays" classname="app.falak.player.data.SyncMergeTest" time="0.004"/>
+  <testcase name="newDeviceTakesTheOthersSettingsProfilesAndWords" classname="app.falak.player.data.SyncMergeTest" time="0.004"/>
+  <testcase name="samePlaylistAddedOnBothBecomesOne" classname="app.falak.player.data.SyncMergeTest" time="0.002"/>
+  <testcase name="continueWatchingLatestWinsAndClearedGoes" classname="app.falak.player.data.SyncMergeTest" time="0.002"/>
+  <testcase name="newPlaylistArrivesWithItsFavorites" classname="app.falak.player.data.SyncMergeTest" time="0.002"/>
+  <testcase name="removedPlaylistStaysRemoved" classname="app.falak.player.data.SyncMergeTest" time="0.002"/>
+  <testcase name="settingsNewestWinsOneByOne" classname="app.falak.player.data.SyncMergeTest" time="0.003"/>
+  <testcase name="anOlderVersionWipesNothingNew" classname="app.falak.player.data.SyncMergeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

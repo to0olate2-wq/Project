@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.record.GallerySaveTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-28T13:52:35" hostname="ip-10-0-141-224" time="3.525">
+  <properties/>
+  <testcase name="namesTheFileByProgrammeChannelAndTime" classname="app.falak.player.record.GallerySaveTest" time="3.525"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

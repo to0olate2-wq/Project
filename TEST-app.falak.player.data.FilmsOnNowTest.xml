@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.FilmsOnNowTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-28T13:51:53" hostname="ip-10-0-141-224" time="0.031">
+  <properties/>
+  <testcase name="theGuidesTypesAndFilmChannelsCount" classname="app.falak.player.data.FilmsOnNowTest" time="0.031"/>
+  <testcase name="oneFilmOnTwoChannelsIsOneCard" classname="app.falak.player.data.FilmsOnNowTest" time="0.0"/>
+  <testcase name="typesOfTheGuide" classname="app.falak.player.data.FilmsOnNowTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

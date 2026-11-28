@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.falak.player.data.AvatarsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-28T13:51:40" hostname="ip-10-0-141-224" time="0.041">
+  <properties/>
+  <testcase name="aPickStaysAndAnOldProfileGetsASteadyOne" classname="app.falak.player.data.AvatarsTest" time="0.017"/>
+  <testcase name="noTwoProfilesShareOneUnlessPicked" classname="app.falak.player.data.AvatarsTest" time="0.02"/>
+  <testcase name="aNewProfileGetsOneNobodyHas" classname="app.falak.player.data.AvatarsTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
