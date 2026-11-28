@@ -22,6 +22,9 @@ tap() { python3 "$DIR/ui.py" tap "$1" | tee -a "$OUT/walk.txt"; }
 dumpui() { :; }  # shot keeps the phone's screen elements itself
 gfx_start() { adb shell dumpsys gfxinfo $PKG reset > /dev/null; }
 gfx_end() { adb shell dumpsys gfxinfo $PKG > "$OUT/gfx-$1.txt"; grep -E "Total frames|Janky frames|50th|90th|95th|99th|Slow UI|Frame deadline" "$OUT/gfx-$1.txt" | sed "s/^/  [$1] /" | tee -a "$OUT/walk.txt"; }
+# Frames drawn in 8 s with nobody touching anything: a page at rest should draw almost none (an endless
+# animation or a redraw loop shows here). The slideshow's turn and a clock's minute are a few.
+idle_frames() { sleep 2; gfx_start; sleep 8; adb shell dumpsys gfxinfo $PKG > "$OUT/idle-$n.txt"; log "frames drawn in 8 s at rest: $(grep -m1 'Total frames' "$OUT/idle-$n.txt" | sed 's/.*: //')"; }
 alive() { adb shell pidof $PKG > /dev/null && return 0; log "!! the app is not running"; return 1; }
 
 W=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); SW=${W%x*}; SH=${W#*x}
@@ -36,6 +39,7 @@ adb shell am start -W -n $PKG/.BenchSeedActivity --es server http://10.0.2.2:808
 sleep 35
 shot start
 alive
+idle_frames
 
 if [ "$FORM" = tv ]; then
   # Home: rows up and down, along a row, back to the top.
@@ -73,6 +77,11 @@ if [ "$FORM" = tv ]; then
   gfx_start; keys 8 KEYCODE_DPAD_DOWN 0.4; keys 8 KEYCODE_DPAD_UP 0.4; gfx_end settings
   key KEYCODE_DPAD_RIGHT; sleep 1; shot settings-page
   key KEYCODE_BACK; sleep 2; shot after-settings
+  # Home once more, everything loaded by now (the first time, the guide was still being read).
+  keys 3 KEYCODE_DPAD_UP 0.4; keys 14 KEYCODE_DPAD_LEFT 0.3; sleep 2; shot home-again
+  idle_frames
+  keys 2 KEYCODE_DPAD_DOWN 0.6
+  gfx_start; keys 6 KEYCODE_DPAD_DOWN 0.5; keys 8 KEYCODE_DPAD_RIGHT 0.3; keys 8 KEYCODE_DPAD_LEFT 0.3; keys 6 KEYCODE_DPAD_UP 0.5; gfx_end home-again
 else
   # Phone: the lists by swiping, pages by their buttons.
   gfx_start; for _ in 1 2 3 4 5; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done; shot home-scrolled
@@ -106,6 +115,11 @@ else
   # Side-on.
   adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1; sleep 3; shot landscape
   adb shell settings put system user_rotation 0; sleep 2
+  # Home once more, everything loaded by now.
+  tap Home; sleep 3; shot home-again
+  idle_frames
+  gfx_start; for _ in 1 2 3 4 5; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done
+  for _ in 1 2 3 4 5; do swipe $((SW / 2)) $((SH / 4)) $((SW / 2)) $((SH * 3 / 4)) 350; sleep 0.8; done; gfx_end home-again
 fi
 
 alive
