@@ -1,0 +1,22 @@
+app running at the end: yes
+crashes: 0
+[19:45:53] ready after 9062 ms (wall clock): playlist ready: downloaded in 8018 ms, lists made in 606 ms, 56068 items
+[19:46:13] stalls in the first 20 s: 2 stalls, 126 frames skipped in all, biggest 92 frames (~1536 ms)
+[19:46:48] stalls opening Films: 0 stalls, 0 frames skipped in all, biggest 0 frames (~0 ms)
+[19:46:55] stalls opening Live TV: 0 stalls, 0 frames skipped in all, biggest 0 frames (~0 ms)
+[19:47:00] ready after 2761 ms (wall clock): playlist ready: saved copy read in 727 ms, lists made in 1122 ms, 56068 items
+[19:47:15] stalls in the first 15 s (opening 1): 2 stalls, 70 frames skipped in all, biggest 36 frames (~601 ms)
+[19:47:19] ready after 2197 ms (wall clock): playlist ready: saved copy read in 704 ms, lists made in 566 ms, 56068 items
+[19:47:34] stalls in the first 15 s (opening 2): 2 stalls, 77 frames skipped in all, biggest 45 frames (~751 ms)
+[19:47:39] ready after 1973 ms (wall clock): playlist ready: saved copy read in 768 ms, lists made in 555 ms, 56068 items
+[19:47:54] stalls in the first 15 s (opening 3): 2 stalls, 90 frames skipped in all, biggest 50 frames (~835 ms)
+lists: unique ids 110 ms, tidy 0 ms, groups 148 ms, copies 0 ms, lists 259 ms, top 10 0 ms
+playlist ready: downloaded in 8018 ms, lists made in 606 ms, 56068 items
+copies and Top 10 (worked out) in 6962 ms
+lists: unique ids 396 ms, tidy 0 ms, groups 55 ms, copies 0 ms, lists 44 ms, top 10 0 ms
+playlist ready: saved copy read in 768 ms, lists made in 555 ms, 56068 items
+copies and Top 10 (kept) in 1604 ms
+  Native Heap   103768   103720        0        0   105696   208948    44899   152695
+           Java Heap:    72480                          90460
+         Native Heap:   103720                         105696
+           TOTAL PSS:   199025            TOTAL RSS:   321244      TOTAL SWAP (KB):        0

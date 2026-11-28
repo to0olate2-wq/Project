@@ -1,0 +1,391 @@
+--------- beginning of main
+11-28 19:47:33.311  2437  2437 I chromium: [2437:2437:INFO:metrics_stat_logger.cc(55)] Metrics stat for the past 60 secs : total=5
+11-28 19:47:33.311  2437  2437 I chromium: [metrics_stat_logger] Cloud.Transport.Https.GetTrustedDevices.Out=1
+11-28 19:47:33.311  2437  2437 I chromium: [metrics_stat_logger] Cloud.Transport.Https.GetTrustedDevices.Out.Error=1
+11-28 19:47:33.311  2437  2437 I chromium: [metrics_stat_logger] Cloud.Transport.Https.Register.Out.Error=1
+11-28 19:47:33.311  2437  2437 I chromium: [metrics_stat_logger] Setup.eureka_info.Local=2
+11-28 19:47:33.311  2437  2437 I chromium: [metrics_stat_logger] Setup.eureka_info.Local.200=2
+11-28 19:47:33.312  2437  2500 I chromium: [2437:2500:INFO:wifi_proximity.cc(177)] Request scan.
+11-28 19:47:33.558   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f88b1000 0x3f8c35000]
+11-28 19:47:33.622  4303  4356 D HostConnection: HostConnection::get() New Host Connection established 0xf1966ff0, tid 4356
+11-28 19:47:33.628  4303  4356 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:33.662  4303  4356 D EGL_emulation: eglCreateContext: 0xf196a080: maj 3 min 0 rcv 3
+11-28 19:47:33.669  4303  4356 D EGL_emulation: eglMakeCurrent: 0xf196a080: ver 3 0 (tinfo 0xc2195330) (first time)
+11-28 19:47:34.132  3603  3671 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.auth.cryptauth.cryptauthservice.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:34.172  1013  1672 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 536)
+11-28 19:47:34.172  1013  1672 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:34.172  1013  1672 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at nut.fj(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at nsz.s(:com.google.android.gms@223616104@22.36.16 (180706-476895098):13)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at ncr.run(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at zla.hP(:com.google.android.gms@223616104@22.36.16 (180706-476895098):0)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at zla.dispatchMessage(:com.google.android.gms@223616104@22.36.16 (180706-476895098):11)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:34.172  1013  1672 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:34.433   282   282 I WVCdm   : [cdm_engine.cpp(114):OpenSession] Opening session
+11-28 19:47:34.433   282   282 D WVCdm   : [crypto_session.cpp(714):Open] Opening crypto session: requested_security_level = Default
+11-28 19:47:34.434   282   282 I WVCdm   : [cdm_engine.cpp(148):OpenSession] New session ID: sid4
+11-28 19:47:34.434   282   282 I WVCdm   : [cdm_engine.cpp(871):QueryOemCryptoSessionId] Querying OEMCrypto Session ID: session_id = sid4
+11-28 19:47:34.434   282   282 I WVCdm   : [cdm_engine.cpp(194):CloseSession] Closing session: session_id = sid4
+11-28 19:47:34.435  2437  2527 I cr_ClientAuthCredsWidevine: ensureProvisioned: already provisioned, nothing more to do.
+11-28 19:47:34.435   282   282 I WVCdm   : [cdm_engine.cpp(911):GetProvisioningRequest] Getting provisioning request
+11-28 19:47:34.435   282   282 D WVCdm   : [crypto_session.cpp(714):Open] Opening crypto session: requested_security_level = Default
+11-28 19:47:34.469  2437  2527 D cr_ClientAuthCredsWidevine: [ClientAuthCredsWidevine.java:276] PostRequest:https://www.googleapis.com/certificateprovisioning/v1/devicecertificates/create?key=AIzaSyB-5OLKTx2iU5mko18DfdwK5611JIjbUhE&signedRequest=CugYEgRbtm3HGhMIARIPY2FzdC5nb29nbGUuY29tKqgYCgx3aWRldmluZS5jb20SEFFDT-KkTHY7zCyCai1u-aca8BV9LvC7yLSqIkGpabe4vU8oF_Zf20IugXH31PnShdYoy80HlI97ATtUXr5lOou49Nv42GuXtuWhJmUTvweKG5-1esaFLERPz1GOiMo1-TIRqgo0-OQ7qkLw_oEVthNlSPIBTc-S-OqPFAYWBuzo7GuBLGAuefLrvpP7GpFhHoJWK-ZkTEZLG6tjn6brSxqUNvKzYxCWyov0qodHeghGjnXwjiRt0sKCrTPngSWBvBFFY8rZz9Azq8_hRNBj0jViHJVAX7zB5kdbMQM32spJ6XDBBJWYnE05h1Ae6NlzT_PUcrB2M6G-gxMrSyfLLfxQCbQZXARhQm7ijC_Jc6Fl4Ehk8t3PG5CI-uioaGX4SXsab6DaRkzkvkjC0eBKLZ60PnDZoQepsu5ceQSf0PqH8_AFGS8JgibhvbugAyDZKT5xR5SYnMS2ERFvfCW2_YYw8Se_LQzV0wfmIcT_f0X8Zxcco6SlscqY4mL7jG9qan-ftsxGTbgS30rQ2X1wap3x_DkW5puMCCTJmzuxv8nl4Vt_RHLzqIfX9DWL2qJDUtpGM35_Wj4AUK62Xr9IX3h4xurc7t6-V1zMoj2lnPJPxyBqcdf9ktOnu8seEvUmuXns2wlIslXWQzTkCQCOnzdjKo8fHUUsWwBPVRLrObm8y0O0nQ_heLXtM26bgxL9GuGV4Sd_4A8gnIIgPNvICCQ1eq0Sog8sTC19qacHblEhpb72j6Y81VUJ2i7rHwZAoW5kw36owpziZM1WvZU87BQO6OQmTGP3DckyrXnJDtAb36vKRIlsmi6qHKoAWvN_ZOFEYHTUsRPVGxoOmiHGo3oX2rkmM7e0fj5DsQvt1LGiBWq7SgBmUAeyAN5_unQzlGCHSNf1xUzEI6nNl39LAKBUFW1n_jQJUn2QVcEAaGqXOInLDWJDD_ClP9jjXsPIpmjj_8423SwxFAdhhkgpHhOQJ4nd2BZWdEMonOjSM8AQJPFc6pgtlJelPDarQlytQs1lX83IxKKOYceAtF5QLP2u2rl6-mvCSog0YSkWSy_R39QSk0moK4Pd6duUD7jI5sRN89U5HmVFINs3jDQUyBQrIzvwumL7mB8oTwJ-UFYZ3OxCGMC1mssBiLYTiodhDJHWUP0_WOo-Q0LtDfLwnmjxb8inY2rzv2L-PJeFdq9Q89T73FSCAnw8vDlijxO9UsFcrK6rinXwUDt5xyMgKwrGxXFTjiq5miAj7-T7F_99jlrdhQSepwVl3F0Xlwkzpux9E8Mqmlq3dS8AcB-Tdw_E4nq_OaYCggsExeNZEU0Lt-sc1xsyPrvzW-B6snt_w-7D4SXf3wgtxekVR1H4khpAs4knxXgkjzozIAvcLY4YGAtPiUxb-7TJC4Z1EaXyD3t0ePGdvPV79cnDYCw0RkTdnyJeYah52YKZKjWtcedbbTKJmvObLrBH4vx94EjEWvpodsr_PPWn68p5qD4CJeQNVGpmlV_iD-3UDXX0arE8_wBVx4lgP0gVgMnlBZjNQBD1BI4ff44FHX9EW7YxZ21k267BPWUcQ_bUCV_axMvIEx0E2QzaHkQy4cDLhRflWUFLmlBCB_Jvh8D11kIVak__UBFqOswtJYTart0zbN5oU4I5E2MSvknZGmejrdUS70Yn9yqJUKLY9SI2DouxuhrypBzgRsQ8NvCXCkPBP83dYbcFDZtI4xjHnluNNqpfr1Fp1UkvNTZ5YCXYy5oZDAOaYB-BtuiciZrMRcIjGOl3B-BOFY3awaF0LqrRU15cWG-8qzYtiOTEggHGtEsr9TSdU9vgx-3WwIMegcaZG0-UlinonPIjAkjV69ZEdRzS-UsqsWZTuKJ0xl4AXQH2e3ghwT44FzXNe70sWLo4V_g3V-kA5uKYdXQPRAb1DfEpH6XNjvZby6S4iXKRGVxxdlvRg0jcLNfW7W9w4c5hyxNuOzaQH8GYUX-cNs0jjMiVwVK_dK2-FkCnJ0taYCuEzXO3q4rEXcqzfp7JG7cmr67wGXnWYRrFExk5MOe2f2pVWtcd1x6YAgfghrmpiFXr4GKAtl7ASFRPM_OZwIrwmq7ChAKrzaKYm_UPAkWVH_T-Ds_wSUXjI_FIzqHWcPw1pSWipvp_M5GRtEC75B7P7KZGJ8dkbuRIS6TN214xxzcLvK55BpqLnEcFcOtrGzOA4obI2t8p0g-sb5djjKpcOwqIm8wIoMaoWkF-M_4refcmkWJyfb3k5IGdvQeoi6dS4V99TiWiXgyW0AC74_xqUg4A0wh1WYPiyQkN7Hz5pqp4qZS_3PavyP0mC9v-Sh6BKx7ZlGSC2I3011A-QmCPO4HoLX5MNiRtwyZvtlzrBjGaoH2RRZoNc0H35Arpk6zqpnx7Lwli9polvA4e8JtmB435zx7qJxjAU6_XpuS2m07GrmMRo_TcwcWRGLrZwUEAjx0CjPNW_iPztc7EFSI9POWyOLjwT36oMee9xpw_qlQH-2rEDF4ThuVl1VqzqEIdVoXQpDCNNtYoz0delhkyl8d7D_Vg9xua-hEmp5b06SautpzS3StbAwPqinZfXXXKkw2XDbgJ3iQvo41ZQXgelyvfvDgS9uVZfjW-0ovRsHrxe9LCDAzMHoI2lt-lZBVIAUuNOnalQc2kDwPif-L8ZAjDaF54mgg52cgfN5_v0wva28bO73mj1lZNn9Np6c5JCMPYOpYz_Ii6GDTpO7iyZi9D5INSVieQcItCpgo1Qmi0r0wW7-Z0TdnI4uSEYVjoUsCaPy68bwA0BGuSpPYB5diWnRM7zDDiJM2Dx0MW2JPu3R-EVFrkQRpHHPWkR_D31Dd0chZk5-CohfdqRiDYA4YcsBKb1iLmEjJmVBF4QNZPpl8q1brFM0yya69NmVA2CDzMMMmDeewUo9piYE2Bw5HbPzdh2dNuPTM9lX_g_gmCOlbBaZsOeTdvOn2e1ytUw4a8qkx6LsZj11VUbsWyelAQyzaswBpOQmVjGaXyxxlvU3Fi90syF_nOLVZSqUCC89C0z82g78OaR6lG2C3wfo1VT_JJAST1zlLHsWAYqs6EaMEKsQLwEkHZovJI7Pliq9xwAv-xKhoIlNiSqCcdXuWqS315C4ptyBkby8fJKEIE863JD00-k9F5pvNQBX9lJgGG_v-zy04GM17JO4-LJ6mKU0iUgk8t-7VsYxeReEMVsT5Uac9Bsck-yWPLXa6HYI_2TcXpUuCG42DJ81MrS1a6INTt7qSzrrmsah6cg74XmcYCJdBGR6i79q0a5ZiKEH116jBUlexFLZfiwufSmJ6Nm__5eV5wYVjyhxd9FX31ioFmizqMp7hg_Mm9zqJ0Ra_rfmmOmYEXjX3kfbnrclSM6QwO76iC-eGQNpp-DL0KgJKFuT0o06l6LwIvHu1Zs4OjpupXzxkDOZJV9n6TGs7jjI-2BXA_G5YymaTN8fyhXaaqVROM5yi4WVCACnjI4GUrE4K31Fuxl1m0r0WMn5KrPekvIp4U8u0FaPXM1PcZPZl8HUoGypVpL8nKNY4TOWoA7hrzd1GBeljqF6LCOBHTQiQ1haeZAtCQiWaKlPrvO10R-Nxdyv1WGQzvkRQDS3K41I-oBYg65as7eh1PgEiZqEK1oqJ0oYOsCJYowj_T3N5V2-pWDcnvqay_5539HfuA8LggIfLmH5WEpVP1FEtGoRwwt4b4Xaa1Eyb4n0u6791OEz56XEzDtdzZN4Aq8W8hH5zg4mGtkmn2XHER1RD9IfItIhChuGxAKit6smlHusIQ77yLKoACZq
+11-28 19:47:34.540  2437  2527 E cr_ClientAuthCredsWidevine: Server returned HTTP error code 401
+11-28 19:47:34.540  2437  2527 E cr_ClientAuthCredsWidevine: attemptCredsProvisioning. Received null response.
+11-28 19:47:34.540  2437  2527 I cr_ClientAuthCredsProvisioning: ClientAuthCredsProvisioning. Next attempt(secs): 60
+--------- beginning of system
+11-28 19:47:34.773   472  2455 I ActivityManager: Force stopping app.falak.player appid=10076 user=0: from pid 4371
+11-28 19:47:34.773   472  2455 I ActivityManager: Killing 4303:app.falak.player/u0a76 (adj 0): stop app.falak.player due to from pid 4371
+11-28 19:47:34.773   472  2455 W ActivityTaskManager: Force removing ActivityRecord{164ae57 u0 app.falak.player/.ui.MainActivity t7 f}}: app died, no saved state
+11-28 19:47:34.775   285   349 W EmuHWC2 : No layers, exit, buffer 0x0
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_8 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_9 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_10 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_7 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_4 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_11 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_5 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_6 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_3 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_2 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_8 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_9 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_10 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_7 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_4 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_11 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_5 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_6 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_3 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.778   472  2455 W InputReader: Device virtio_input_multi_touch_2 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:34.781  4371  4373 I cmd     : oneway function results will be dropped but finished with status OK and parcel size 4
+11-28 19:47:34.783  1385  3056 E ActivityThread: Failed to find provider info for tvlauncher.mic
+11-28 19:47:34.789  1385  1385 W HomeController: onResume: List view global layout completed.
+11-28 19:47:34.790   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f8c35000 0x3f941e000]
+11-28 19:47:34.803   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f941e000 0x3f9c07000]
+11-28 19:47:34.809   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f9c07000 0x3fa3f0000]
+11-28 19:47:34.825   472  2455 D ConnectivityService: ConnectivityService NetworkRequestInfo binderDied(NetworkRequest [ LISTEN id=29, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&FOREGROUND Uid: 10076 AdministratorUids: [] RequestorUid: 10076 RequestorPackageName: app.falak.player] ], android.os.BinderProxy@37525d7)
+11-28 19:47:34.826   472   504 W ActivityManager: setHasOverlayUi called on unknown pid: 4303
+11-28 19:47:34.827   265   265 I Zygote  : Process 4303 exited due to signal 9 (Killed)
+11-28 19:47:34.830   285   349 W EmuHWC2 : No layers, exit, buffer 0x0
+11-28 19:47:34.832  1031  1031 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():3466 
+11-28 19:47:34.832  1031  1031 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():2045 
+11-28 19:47:34.832  1031  1031 I DeviceUnlockedTag: DeviceUnlockedTag.notifyDeviceLockStatusChanged():38 Notify device unlocked.
+11-28 19:47:34.862   472   512 I libprocessgroup: Successfully killed process cgroup uid 10076 pid 4303 in 88ms
+11-28 19:47:36.068  3603  3671 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.languageprofile.service.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:36.082  1954  2027 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 556)
+11-28 19:47:36.088  1954  2027 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:36.088  1954  2027 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at qjo.v(PG:14)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at qhf.run(PG:5)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:36.088  1954  2027 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:36.910   472   753 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=app.falak.player/.ui.MainActivity} from uid 2000
+11-28 19:47:36.917   472   504 D CompatibilityChangeReporter: Compat change id reported: 135634846; UID 10076; state: DISABLED
+11-28 19:47:36.919   472   511 D CompatibilityChangeReporter: Compat change id reported: 143937733; UID 10076; state: ENABLED
+11-28 19:47:36.937   265   265 D Zygote  : Forked child process 4380
+11-28 19:47:36.938   472   511 I ActivityManager: Start proc 4380:app.falak.player/u0a76 for pre-top-activity {app.falak.player/app.falak.player.ui.MainActivity}
+11-28 19:47:36.952   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fa3f0000 0x3fabd9000]
+11-28 19:47:37.057  4380  4380 W pp.falak.playe: Unexpected CPU variant for X86 using defaults: x86
+11-28 19:47:37.071  4380  4380 E pp.falak.playe: Not starting debugger since process cannot load the jdwp agent.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_8 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_9 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_10 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_7 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_4 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_11 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_5 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_6 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_3 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_2 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_8 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_9 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_10 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_7 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_4 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_11 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_5 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_6 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_3 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.077   472   752 W InputReader: Device virtio_input_multi_touch_2 is associated with display ADISPLAY_ID_NONE.
+11-28 19:47:37.108  4380  4380 D NetworkSecurityConfig: No Network Security Config specified, using platform default
+11-28 19:47:37.108  4380  4380 D NetworkSecurityConfig: No Network Security Config specified, using platform default
+11-28 19:47:37.110  4380  4380 D WM-WrkMgrInitializer: Initializing WorkManager with default configuration.
+11-28 19:47:37.116  4380  4380 I TetheringManager: registerTetheringEventCallback:app.falak.player
+11-28 19:47:37.117  4380  4380 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemjob.SystemJobService
+11-28 19:47:37.117  4380  4380 D WM-Schedulers: Created SystemJobScheduler and enabled SystemJobService
+11-28 19:47:37.119   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fabd9000 0x3fb3c2000]
+11-28 19:47:37.127  4380  4399 D WM-ForceStopRunnable: The default process name was not specified.
+11-28 19:47:37.127  4380  4399 D WM-ForceStopRunnable: Performing cleanup operations.
+11-28 19:47:37.144  4380  4399 D WM-ForceStopRunnable: Application was force-stopped, rescheduling.
+11-28 19:47:37.155  4380  4399 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemalarm.RescheduleReceiver
+11-28 19:47:37.230  4380  4411 D libEGL  : loaded /vendor/lib/egl/libEGL_emulation.so
+11-28 19:47:37.230  4380  4411 D libEGL  : loaded /vendor/lib/egl/libGLESv1_CM_emulation.so
+11-28 19:47:37.289  4380  4411 D libEGL  : loaded /vendor/lib/egl/libGLESv2_emulation.so
+11-28 19:47:37.625  4380  4408 D HostConnection: HostConnection::get() New Host Connection established 0xf1954050, tid 4408
+11-28 19:47:37.629  4380  4408 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:37.630   156   156 I hwservicemanager: getTransport: Cannot find entry android.hardware.configstore@1.0::ISurfaceFlingerConfigs/default in either framework or device manifest.
+11-28 19:47:37.631  4380  4408 D EGL_emulation: eglCreateContext: 0xf19547c0: maj 3 min 0 rcv 3
+11-28 19:47:37.631  4380  4408 D EGL_emulation: eglMakeCurrent: 0xf19547c0: ver 3 0 (tinfo 0xf1cb3350) (first time)
+11-28 19:47:37.671   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f9c07000 0x3fa3f0000]
+11-28 19:47:37.672   156   156 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device manifest.
+11-28 19:47:37.672  4380  4408 I Gralloc4: mapper 4.x is not supported
+11-28 19:47:37.673  4380  4408 D HostConnection: createUnique: call
+11-28 19:47:37.673  4380  4408 D HostConnection: HostConnection::get() New Host Connection established 0xf19555c0, tid 4408
+11-28 19:47:37.673  4380  4408 D goldfish-address-space: allocate: Ask for block of size 0x100
+11-28 19:47:37.674  4380  4408 D goldfish-address-space: allocate: ioctl allocate returned offset 0x3f7ffe000 size 0x2000
+11-28 19:47:37.704  4380  4408 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:37.705   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fb3c2000 0x3fbbab000]
+11-28 19:47:37.706   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3f8000000 0x3f87e9000]
+11-28 19:47:38.087  4380  4408 I OpenGLRenderer: Davey! duration=937ms; Flags=1, IntendedVsync=161614836862, Vsync=161864836852, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=161878362932, AnimationStart=161878363392, PerformTraversalsStart=161878483747, DrawStart=162172734383, SyncQueued=162175977040, SyncStart=162176730556, IssueDrawCommandsStart=162176791399, SwapBuffers=162505027723, FrameCompleted=162553042866, DequeueBufferDuration=49673, QueueBufferDuration=164397, GpuCompleted=72904454231491230, 
+11-28 19:47:38.093   472   509 D ArtManagerInternalImpl: /data/misc/iorapd/app.falak.player/999999/app.falak.player.ui.MainActivity/compiled_traces/compiled_trace.pb doesn't exist
+11-28 19:47:38.094   472   509 I ActivityTaskManager: Displayed app.falak.player/.ui.MainActivity: +1s178ms
+11-28 19:47:38.095  4380  4380 I Choreographer: Skipped 40 frames!  The application may be doing too much work on its main thread.
+11-28 19:47:38.101  1385  1385 E Clearcut-EventLogger: Unexpected log parameter tray_notification_count
+11-28 19:47:38.110  1031  1031 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():3466 
+11-28 19:47:38.110  1031  1031 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():2045 
+11-28 19:47:38.110  1031  1031 I DeviceUnlockedTag: DeviceUnlockedTag.notifyDeviceLockStatusChanged():38 Notify device unlocked.
+11-28 19:47:38.233  1013  1892 I FontLog : Received query Noto Color Emoji Compat, URI content://com.google.android.gms.fonts [CONTEXT service_id=132 ]
+11-28 19:47:38.233  1013  1892 I FontLog : Query [emojicompat-emoji-font] resolved to {Noto Color Emoji Compat, wdth 100.0, wght 400, ital 0.0, bestEffort false} [CONTEXT service_id=132 ]
+11-28 19:47:38.235  1013  1892 I FontLog : Fetch {Noto Color Emoji Compat, wdth 100.0, wght 400, ital 0.0, bestEffort false} end status Status{statusCode=SUCCESS, resolution=null} [CONTEXT service_id=132 ]
+11-28 19:47:38.350  1013  3313 I FontLog : Pulling font file for id = 6, cache size = 5 [CONTEXT service_id=132 ]
+11-28 19:47:38.351  1013  3313 I FontLog : Pulling font file for id = 6, cache size = 5 [CONTEXT service_id=132 ]
+11-28 19:47:38.652  4380  4380 I FalakTiming: lists: unique ids 396 ms, tidy 0 ms, groups 55 ms, copies 0 ms, lists 44 ms, top 10 0 ms
+11-28 19:47:38.653  4380  4380 I FalakTiming: playlist ready: saved copy read in 768 ms, lists made in 555 ms, 56068 items
+11-28 19:47:38.765   472   625 D ConnectivityService: NetReassign [no changes]
+11-28 19:47:38.791   156   156 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.allocator@4.0::IAllocator/default in either framework or device manifest.
+11-28 19:47:38.793  4380  4412 W Gralloc4: allocator 3.x is not supported
+11-28 19:47:38.793   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbbab000 0x3fbc00000]
+11-28 19:47:38.795   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbc00000 0x3fbc55000]
+11-28 19:47:38.799  4380  4432 D HostConnection: HostConnection::get() New Host Connection established 0xf1967a70, tid 4432
+11-28 19:47:38.802   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbc55000 0x3fbcaa000]
+11-28 19:47:38.804  4380  4432 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:38.806  4380  4432 D EGL_emulation: eglCreateContext: 0xf1967290: maj 3 min 0 rcv 3
+11-28 19:47:38.806   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fa3f0000 0x3fa774000]
+11-28 19:47:38.807  4380  4432 D EGL_emulation: eglMakeCurrent: 0xf1967290: ver 3 0 (tinfo 0xc1f52410) (first time)
+11-28 19:47:38.808  4380  4412 D HostConnection: HostConnection::get() New Host Connection established 0xf196ada0, tid 4412
+11-28 19:47:38.810  4380  4412 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:38.815   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbcaa000 0x3fbcff000]
+11-28 19:47:38.815  4380  4418 D HostConnection: HostConnection::get() New Host Connection established 0xf1969910, tid 4418
+11-28 19:47:38.817  4380  4405 D HostConnection: HostConnection::get() New Host Connection established 0xf19697c0, tid 4405
+11-28 19:47:38.820  4380  4405 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:38.821  4380  4418 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:38.822  4380  4404 D HostConnection: HostConnection::get() New Host Connection established 0xf1966810, tid 4404
+11-28 19:47:38.826  4380  4404 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:38.831   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbcff000 0x3fbd54000]
+11-28 19:47:38.852   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fbd54000 0x3fbda9000]
+11-28 19:47:38.909  1013  4363 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.checkin.CheckinService started execution. cause:4 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-28 19:47:38.925  1013  3927 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.checkin.CheckinService finished executing. cause:4 result: 3 elapsed_millis: 59 uptime_millis: 59 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-28 19:47:38.969   472  1128 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+11-28 19:47:38.989  1013  4363 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.chimera.container.ConfigService started execution. cause:5 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-28 19:47:38.997  3603  3630 I ChimeraConfigurator: Starting update, reason: 1 urgentFeatures: 
+11-28 19:47:39.109  3603  3630 I ChimeraConfigurator: Update complete: success
+11-28 19:47:39.125  3603  3630 I GmsModuleFndr: Beginning GMS chimera module scan
+11-28 19:47:39.127  3603  3630 I ModuleSetMgr: Computing pending module set with APKs: [[PgsReleaseUnwrapped:272540070000700], [AdsFdrDynamite.integ:222508000100000], [Cronetdynamite:223616180706], [Dynamiteloader:223616180006], [Dynamitemodulesa:223616180006], [Dynamitemodulesc:223616180006], [Googlecertificates:223616180006], [Mapsdynamite:223616180006], [Measurementdynamite:223616180006]]
+11-28 19:47:39.132  3603  3630 I ModuleSetMgr: Pending container module APKs: []
+11-28 19:47:39.132  3603  3630 I ModuleSetMgr: Pending non-container module APKs: []
+11-28 19:47:39.229  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.auth.cryptauth.cryptauthservice.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:39.248  3603  3630 I ChimeraConfigService: (REDACTED) Scheduling checkin every %s seconds, with flex of %s seconds
+11-28 19:47:39.339  1013  4363 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.chimera.container.ConfigService finished executing. cause:5 result: 1 elapsed_millis: 372 uptime_millis: 372 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-28 19:47:39.347  1013  1672 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 536)
+11-28 19:47:39.347  1013  1672 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:39.347  1013  1672 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at nut.fj(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at nsz.s(:com.google.android.gms@223616104@22.36.16 (180706-476895098):13)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at ncr.run(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at zla.hP(:com.google.android.gms@223616104@22.36.16 (180706-476895098):0)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at zla.dispatchMessage(:com.google.android.gms@223616104@22.36.16 (180706-476895098):11)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:39.347  1013  1672 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:39.352  4380  4391 I pp.falak.playe: Background young concurrent copying GC freed 795879(29MB) AllocSpace objects, 27(844KB) LOS objects, 43% free, 30MB/54MB, paused 838us total 290.877ms
+11-28 19:47:39.722  4380  4408 I OpenGLRenderer: Davey! duration=1106ms; Flags=0, IntendedVsync=163081560224, Vsync=163148226888, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=163152819556, AnimationStart=163152840826, PerformTraversalsStart=163201029993, DrawStart=163201064959, SyncQueued=163333424899, SyncStart=163333627131, IssueDrawCommandsStart=163333705066, SwapBuffers=164186108631, FrameCompleted=164188039632, DequeueBufferDuration=43882, QueueBufferDuration=230239, GpuCompleted=16974391, 
+11-28 19:47:39.724  4380  4380 I Choreographer: Skipped 50 frames!  The application may be doing too much work on its main thread.
+11-28 19:47:39.987  4380  4391 I pp.falak.playe: NativeAlloc concurrent copying GC freed 981005(25MB) AllocSpace objects, 1(20KB) LOS objects, 40% free, 35MB/59MB, paused 29us total 302.211ms
+11-28 19:47:40.050  4380  4408 I OpenGLRenderer: Davey! duration=1116ms; Flags=0, IntendedVsync=163348255129, Vsync=164181588429, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=164190354659, AnimationStart=164190355210, PerformTraversalsStart=164191979128, DrawStart=164192012220, SyncQueued=164192778689, SyncStart=164244228532, IssueDrawCommandsStart=164244314272, SwapBuffers=164511189507, FrameCompleted=164515708131, DequeueBufferDuration=84768, QueueBufferDuration=227634, GpuCompleted=72343694727970824, 
+11-28 19:47:40.257  4380  4380 I FalakTiming: copies and Top 10 (kept) in 1604 ms
+11-28 19:47:40.354  4380  4390 I pp.falak.playe: Compiler allocated 4717KB to compile void app.falak.player.ui.LibraryScreenKt.LibraryScreen(app.falak.player.ui.LibraryViewModel, app.falak.player.data.AppState, kotlin.jvm.functions.Function2, androidx.compose.runtime.ComposerImpl, int)
+11-28 19:47:40.433  4380  4391 I pp.falak.playe: NativeAlloc concurrent copying GC freed 949795(28MB) AllocSpace objects, 0(0B) LOS objects, 35% free, 43MB/67MB, paused 14us total 240.679ms
+11-28 19:47:40.779  4380  4391 I pp.falak.playe: Background concurrent copying GC freed 319171(14MB) AllocSpace objects, 0(0B) LOS objects, 25% free, 69MB/93MB, paused 15us total 143.119ms
+11-28 19:47:41.119  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.languageprofile.service.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:41.131  1954  2027 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 556)
+11-28 19:47:41.131  1954  2027 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:41.131  1954  2027 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at qjo.v(PG:14)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at qhf.run(PG:5)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:41.131  1954  2027 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:41.398  4380  4391 I pp.falak.playe: NativeAlloc concurrent copying GC freed 622284(18MB) AllocSpace objects, 2(280KB) LOS objects, 24% free, 74MB/98MB, paused 16us total 140.002ms
+11-28 19:47:41.902  1954  1954 I katniss_search_KatnissIpcConnection: Will disconnect service connection. .KatnissInteractorProcessService
+11-28 19:47:41.911  1131  1131 I katniss_interactor_KatnissIpcConnection: Will disconnect service connection. .KatnissSearchProcessService
+11-28 19:47:43.324  4380  4444 D ProfileInstaller: Skipping profile installation for app.falak.player
+11-28 19:47:44.353  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.auth.cryptauth.cryptauthservice.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:44.363  1013  1672 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 536)
+11-28 19:47:44.363  1013  1672 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:44.363  1013  1672 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at nut.fj(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at nsz.s(:com.google.android.gms@223616104@22.36.16 (180706-476895098):13)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at ncr.run(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at zla.hP(:com.google.android.gms@223616104@22.36.16 (180706-476895098):0)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at zla.dispatchMessage(:com.google.android.gms@223616104@22.36.16 (180706-476895098):11)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:44.363  1013  1672 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:45.259  1131  1131 D RetryBindingHandler: Handle WHAT_RETRY_GET_LOCAL_CLOUDCAST_SERVICE_INFO message
+11-28 19:47:45.260  2437  2437 E cr_LocalGrpcAuthService: Calling package not allowed.
+11-28 19:47:45.261  1131  1131 E LocalGrpcAuthClientImpl: invalid message
+11-28 19:47:45.261  1131  1131 D RetryBindingHandler: retry get auth info
+11-28 19:47:45.261  1131  1131 D RetryBindingHandler: send message in 64000 ms
+11-28 19:47:45.261  1131  1131 E cr_AssistantManagerInternal$AssistantLocalGrpcAuthCallback: the port or token cannot be retrieved from local grpc client
+11-28 19:47:45.970   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3fa774000 0x3faaf8000]
+11-28 19:47:46.019  4380  4432 D HostConnection: HostConnection::get() New Host Connection established 0xf1967a70, tid 4432
+11-28 19:47:46.065  4380  4432 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:46.079  4380  4432 D EGL_emulation: eglCreateContext: 0xf1966ff0: maj 3 min 0 rcv 3
+11-28 19:47:46.080  4380  4432 D EGL_emulation: eglMakeCurrent: 0xf1966ff0: ver 3 0 (tinfo 0xc1f52410) (first time)
+11-28 19:47:46.176  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.languageprofile.service.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:46.316  1954  2027 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 556)
+11-28 19:47:46.316  1954  2027 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:46.316  1954  2027 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at qjo.v(PG:14)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at qhf.run(PG:5)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:46.316  1954  2027 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:46.856  1131  4094 D BindingManager: with
+11-28 19:47:46.873  2437  2437 W cr_GrpcIpcUidPolicy: Signaure hash T3FWTW4FrfZGfnxVLvvYYYrf02Ws4NZTsvI808lwDxA= not in whitelisted signatures
+11-28 19:47:46.873  2437  2437 E cr_GrpcIpcUidPolicy: Unauthorized access attempt from com.google.android.katniss
+11-28 19:47:46.873  2437  2437 E cr_GrpcIpcSocketService: Calling package not allowed.
+11-28 19:47:46.875  1131  1131 E GrpcIpcSocketClientImpl: invalid message
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875690    4094 grpc_ipc_socket_client.cc:77] Error for usonia-ipc-socket
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875738    4094 android_grpc_builder.cc:149] Could not get a socket for binder:com.google.android.apps.mediashell:usonia-ipc-socket
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875756    4094 grpc_manager_impl.cc:634] GRPC[uri=]: Grpc cannot connect to host {UNDEFINED}
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875769    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875778    4094 grpc_auth_manager_with_grpc_ipc.cc:65] IPC for Auth.AuthReadyStreaming closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875789    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875795    4094 distributed_service_discovery_with_grpc_ipc.cc:150] IPC for DistributedServiceDiscovery.AddService closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875804    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875810    4094 distributed_service_discovery_with_grpc_ipc.cc:64] IPC for DistributedServiceDiscovery.UpdateObservers closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875819    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875825    4094 distributed_service_discovery_with_grpc_ipc.cc:251] IPC for DistributedServiceDiscovery.GetIamMode closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875834    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875841    4094 metrics_recorder_with_grpc_ipc.cc:164] IPC for MetricsRecorder.RecordMetrics closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875851    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875858    4094 synchronous_sound_player_with_grpc_ipc.cc:173] IPC for SynchronousSoundPlayer.UpdateSound closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875867    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875873    4094 ipc_common.h:486] Error in fetching local device info: [error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875883    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875889    4094 directory_service_with_grpc_ipc.cc:123] IPC for DirectoryService.ObserveCommonTime closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875898    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875905    4094 directory_service_with_grpc_ipc.cc:277] IPC for DirectoryService.UpdateStateObservers closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875914    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875921    4094 directory_service_with_grpc_ipc.cc:378] IPC for DirectoryService.UpdateMessageObservers closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 E native  : E0000 00:00:1795895266.875929    4094 grpc_manager_impl.cc:782] GRPC[uri=]: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:46.875  1131  4094 W native  : W0000 00:00:1795895266.875936    4094 state_manager_with_grpc_ipc.cc:74] IPC for StateManager.ReceiveStateUpdates closed: status=[error_code=RESOURCE_EXHAUSTED, error_message=Cannot create a channel. Call to binder:com.google.android.apps.mediashell:usonia-ipc-socket ignored.]
+11-28 19:47:49.369  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.auth.cryptauth.cryptauthservice.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:49.378  1013  1672 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 536)
+11-28 19:47:49.378  1013  1672 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:49.378  1013  1672 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at nut.fj(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at nsz.s(:com.google.android.gms@223616104@22.36.16 (180706-476895098):13)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at ncr.run(:com.google.android.gms@223616104@22.36.16 (180706-476895098):5)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at zla.hP(:com.google.android.gms@223616104@22.36.16 (180706-476895098):0)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at zla.dispatchMessage(:com.google.android.gms@223616104@22.36.16 (180706-476895098):11)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:49.378  1013  1672 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:51.357  3603  3689 I ChimeraSrvcProxy: NullBinder for com.google.android.gms.languageprofile.service.START triggering remote TransactionTooLargeException due to Service without Chimera impl
+11-28 19:47:51.365  1954  2027 E JavaBinder: !!! FAILED BINDER TRANSACTION !!!  (parcel size = 556)
+11-28 19:47:51.365  1954  2027 W GmsClient: IGmsServiceBroker.getService failed
+11-28 19:47:51.365  1954  2027 W GmsClient: android.os.DeadObjectException: Transaction failed on small parcel; remote process probably died
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.BinderProxy.transactNative(Native Method)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.BinderProxy.transact(BinderProxy.java:540)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at qjo.v(PG:14)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at qhf.run(PG:5)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:51.365  1954  2027 W GmsClient: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-28 19:47:52.970   284  3921 D goldfish-address-space: claimShared: Ask to claim region [0x3faaf8000 0x3fae7c000]
+11-28 19:47:53.068  4380  4432 D HostConnection: HostConnection::get() New Host Connection established 0xf1967a70, tid 4432
+11-28 19:47:53.073  4380  4432 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_has_shared_slots_host_memory_allocator ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_hwc_color_transform ANDROID_EMU_hwc_display_power_mode GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+11-28 19:47:53.120  4380  4432 D EGL_emulation: eglCreateContext: 0xf1967290: maj 3 min 0 rcv 3
+11-28 19:47:53.126  4380  4432 D EGL_emulation: eglMakeCurrent: 0xf1967290: ver 3 0 (tinfo 0xc1f52410) (first time)
+11-28 19:47:53.417  1954  2118 W katniss_search_NamedFutures: Timeout future task has been cancelled: 60000 milliseconds
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: Task 255 failed or timed out. Client 8595578777825689 disconnecting from SearchService!
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: java.util.concurrent.CancellationException: Task was cancelled.
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at agnp.c(PG:3)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at agnp.get(PG:4)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at agrs.a(PG:1)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at agqi.p(PG:2)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at agqb.run(PG:4)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at jbz.run(PG:1)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at android.app.ActivityThread.main(ActivityThread.java:7656)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at java.lang.reflect.Method.invoke(Native Method)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:592)
+11-28 19:47:53.425  1954  1954 E katniss_search_SearchServiceStarter: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:947)
+11-28 19:47:53.425  1954  2118 W katniss_search_NamedFutures: Timeout future task has been cancelled: 120000 milliseconds
+11-28 19:47:53.428  1954  3342 W katniss_search_SearchServiceCore: Abort, client detached.
+11-28 19:47:53.429  1954  3342 W katniss_search_SearchServiceCore: Abort, client detached.
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: Task 156 failed or timed out. Client 8595578777825609 disconnecting from SearchService!
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: java.util.concurrent.CancellationException: Task was cancelled.
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at agnp.c(PG:3)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at agnp.get(PG:4)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at agrs.a(PG:1)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at agqi.p(PG:2)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at agqb.run(PG:4)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at jbz.run(PG:1)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Handler.handleCallback(Handler.java:938)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at android.os.Looper.loop(Looper.java:223)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at android.app.ActivityThread.main(ActivityThread.java:7656)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at java.lang.reflect.Method.invoke(Native Method)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:592)
+11-28 19:47:53.431  1954  1954 E katniss_search_SearchServiceStarter: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:947)
+11-28 19:47:53.435  1954  3342 W katniss_search_SearchServiceCore: Abort, client detached.
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: EXCLUSIVE background task SEND_GSA_HOME_REQUEST was cancelled.
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: java.util.concurrent.CancellationException: Task was cancelled.
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at agnp.c(PG:3)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at agnp.get(PG:4)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at agrs.a(PG:1)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at agqi.p(PG:2)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at agqb.run(PG:4)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at jdc.b(PG:1)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at jdf.run(PG:1)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at tjh.run(PG:1)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at til.run(PG:2)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at tit.run(PG:3)
+11-28 19:47:53.568  1954  3348 E katniss_search_BgTaskExecutorImpl: 	at java.lang.Thread.run(Thread.java:923)
+11-28 19:47:53.594   472  3592 I ActivityManager: Killing 1725:com.android.providers.calendar/u0a31 (adj 975): empty #17
+11-28 19:47:53.599   265   265 I Zygote  : Process 1725 exited due to signal 9 (Killed)
+11-28 19:47:53.644   472   512 I libprocessgroup: Successfully killed process cgroup uid 10031 pid 1725 in 46ms
+11-28 19:47:53.743  4380  4391 I pp.falak.playe: NativeAlloc concurrent copying GC freed 779932(23MB) AllocSpace objects, 4(80KB) LOS objects, 25% free, 71MB/95MB, paused 21us total 599.393ms

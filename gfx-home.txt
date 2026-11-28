@@ -1,0 +1,60 @@
+Applications Graphics Acceleration Info:
+Uptime: 99872 Realtime: 99872
+
+** Graphics info for pid 3145 [app.falak.player] **
+
+Stats since: 78411274737ns
+Total frames rendered: 136
+Janky frames: 136 (100.00%)
+50th percentile: 200ms
+90th percentile: 300ms
+95th percentile: 350ms
+99th percentile: 450ms
+Number Missed Vsync: 109
+Number High input latency: 0
+Number Slow UI thread: 91
+Number Slow bitmap uploads: 23
+Number Slow issue draw commands: 136
+Number Frame deadline missed: 136
+HISTOGRAM: 5ms=0 6ms=0 7ms=0 8ms=0 9ms=0 10ms=0 11ms=0 12ms=0 13ms=0 14ms=0 15ms=0 16ms=0 17ms=0 18ms=0 19ms=0 20ms=0 21ms=0 22ms=0 23ms=0 24ms=0 25ms=0 26ms=0 27ms=0 28ms=0 29ms=0 30ms=0 31ms=0 32ms=0 34ms=0 36ms=0 38ms=1 40ms=0 42ms=0 44ms=0 46ms=2 48ms=3 53ms=2 57ms=0 61ms=0 65ms=2 69ms=0 73ms=0 77ms=3 81ms=1 85ms=1 89ms=0 93ms=1 97ms=0 101ms=1 105ms=1 109ms=0 113ms=1 117ms=1 121ms=0 125ms=4 129ms=3 133ms=1 150ms=25 200ms=17 250ms=31 300ms=25 350ms=6 400ms=1 450ms=2 500ms=1 550ms=0 600ms=0 650ms=0 700ms=0 750ms=0 800ms=0 850ms=0 900ms=0 950ms=0 1000ms=0 1050ms=0 1100ms=0 1150ms=0 1200ms=0 1250ms=0 1300ms=0 1350ms=0 1400ms=0 1450ms=0 1500ms=0 1550ms=0 1600ms=0 1650ms=0 1700ms=0 1750ms=0 1800ms=0 1850ms=0 1900ms=0 1950ms=0 2000ms=0 2050ms=0 2100ms=0 2150ms=0 2200ms=0 2250ms=0 2300ms=0 2350ms=0 2400ms=0 2450ms=0 2500ms=0 2550ms=0 2600ms=0 2650ms=0 2700ms=0 2750ms=0 2800ms=0 2850ms=0 2900ms=0 2950ms=0 3000ms=0 3050ms=0 3100ms=0 3150ms=0 3200ms=0 3250ms=0 3300ms=0 3350ms=0 3400ms=0 3450ms=0 3500ms=0 3550ms=0 3600ms=0 3650ms=0 3700ms=0 3750ms=0 3800ms=0 3850ms=0 3900ms=0 3950ms=0 4000ms=0 4050ms=0 4100ms=0 4150ms=0 4200ms=0 4250ms=0 4300ms=0 4350ms=0 4400ms=0 4450ms=0 4500ms=0 4550ms=0 4600ms=0 4650ms=0 4700ms=0 4750ms=0 4800ms=0 4850ms=0 4900ms=0 4950ms=0
+50th gpu percentile: 14ms
+90th gpu percentile: 4950ms
+95th gpu percentile: 4950ms
+99th gpu percentile: 4950ms
+GPU HISTOGRAM: 1ms=0 2ms=13 3ms=10 4ms=4 5ms=6 6ms=7 7ms=2 8ms=4 9ms=3 10ms=3 11ms=7 12ms=2 13ms=4 14ms=8 15ms=3 16ms=5 17ms=7 18ms=7 19ms=4 20ms=2 21ms=2 22ms=6 23ms=5 24ms=2 25ms=1 4950ms=19
+Font Cache (CPU):
+  Size: 165.15 kB 
+  Glyph Count: 32 
+CPU Caches:
+GPU Caches:
+  Shadow Gaussian Falloff:
+    Texture: 128.00 bytes (1 entry)
+  Other:
+    Other: 66.30 KB (1 entry)
+  Image:
+    Texture: 36.05 KB (46 entries)
+  Scratch:
+    RenderTarget: 38.31 MB (12 entries)
+    Buffer Object: 174.00 KB (5 entries)
+    Texture: 2.03 MB (11 entries)
+Other Caches:
+                         Current / Maximum
+  Layers Total           0.00 KB (numLayers = 0)
+Total GPU memory usage:
+  42580776 bytes, 40.61 MB (30.47 MB is purgeable)
+
+
+Pipeline=Skia (OpenGL)
+Profile data in ms:
+
+	app.falak.player/app.falak.player.ui.MainActivity/android.view.ViewRootImpl@6c90a68 (visibility=0)
+View hierarchy:
+
+  app.falak.player/app.falak.player.ui.MainActivity/android.view.ViewRootImpl@6c90a68
+  6 views, 7.38 kB of render nodes
+
+
+Total ViewRootImpl   : 1
+Total attached Views : 6
+Total RenderNode     : 7.38 kB (used) / 32.03 kB (capacity)
+
