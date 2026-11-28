@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Text
@@ -758,14 +759,11 @@ private fun PhoneHero(
             }
             Spacer(Modifier.height(14.dp))
             // The buttons stay put while the titles change; they act on the one shown.
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PaperButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow, Modifier.weight(1f)) { onPrimary(item) }
-                if (onList == null) {
-                    if (!item.isSeriesFolder) GhostButton("More info", Icons.Outlined.Info, Modifier.weight(1f)) { onDetails(item) }
-                } else {
-                    if (!item.isSeriesFolder) GhostButton("More info") { onDetails(item) }
-                    GhostButton("My list") { onList(item) }
-                }
+            // 8.56 (the owner picked "C" for phones): glass; Play keeps its word, the others are round icons.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassButton(if (item.isSeriesFolder) "Episodes" else "Play", Icons.Filled.PlayArrow) { onPrimary(item) }
+                if (!item.isSeriesFolder) GlassButton(null, Icons.Outlined.Info, label = "More info") { onDetails(item) }
+                if (onList != null) GlassButton(null, Icons.Filled.FavoriteBorder, label = "My list") { onList(item) }
             }
             if (count > 1) {
                 Spacer(Modifier.height(12.dp))

@@ -680,15 +680,15 @@ class PlayerActivity : ComponentActivity() {
                     LinearLayout.LayoutParams(dp(1), dp(24)).apply { setMargins(dp(8), 0, dp(8), 0) },
                 )
                 for (b in settingIcons()) addView(b, pillParams())
-                // 8.55 (the owner picked "C"): every tool in one floating glass bar; the one the remote is on lights up.
-                for (b in pills() + settingIcons()) b.background = glassBackground(oval = false, rest = false)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(100).toFloat()
-                    setColor(GLASS_REST)
-                    setStroke(dp(1), GLASS_REST_EDGE)
-                }
-                setPadding(dp(10), dp(5), dp(10), dp(5))
             }
+            // "C" (TV 8.55, phones 8.56): every button in one floating glass bar; the one in use lights up.
+            for (b in pills() + (if (tvLayout) settingIcons() else emptyList())) b.background = glassBackground(oval = false, rest = false)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(100).toFloat()
+                setColor(GLASS_REST)
+                setStroke(dp(1), GLASS_REST_EDGE)
+            }
+            setPadding(dp(if (tvLayout) 10 else 6), dp(if (tvLayout) 5 else 3), dp(if (tvLayout) 10 else 6), dp(if (tvLayout) 5 else 3))
         }
         // A button shown or hidden (subtitles found, a film's speed): do the labels still fit?
         buttons.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) v.post { fitPills() } }
@@ -697,9 +697,8 @@ class PlayerActivity : ComponentActivity() {
             isHorizontalScrollBarEnabled = false
             addView(
                 buttons,
-                // TV: the glass bar is as tall as its buttons, in the middle of the row.
-                if (tvLayout) FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL)
-                else FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT),
+                // The glass bar is as tall as its buttons, in the middle of the row.
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL),
             )
         }
         toolbar = FrameLayout(this).apply {
@@ -3138,7 +3137,8 @@ class PlayerActivity : ComponentActivity() {
     /** Text and icon colours: dark on the white highlight, white otherwise (TV, glass since 8.55: always white). */
     private fun contentColors(): android.content.res.ColorStateList = android.content.res.ColorStateList(
         arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
-        intArrayOf(if (tvLayout) Color.WHITE else focusInk, Color.WHITE),
+        // (Glass since 8.55 on a TV, 8.56 on phones: the icon stays white under the remote or the finger.)
+        intArrayOf(Color.WHITE, Color.WHITE),
     )
 
     /** A button of the bottom row: icon and label; turns white and grows a little under the remote's focus. */
@@ -3161,7 +3161,8 @@ class PlayerActivity : ComponentActivity() {
         // An icon-only button (Settings) is a neat circle-ish pill with even sides.
         compoundDrawablePadding = 0
         compoundDrawableTintList = contentColors()
-        background = if (tvLayout) glassBackground(oval = false, rest = true) else focusBackground(oval = false, normal = 0x33FFFFFF, edge = 0x26FFFFFF)
+        // Glass ("C": TV 8.55, phones 8.56).
+        background = glassBackground(oval = false, rest = true)
         // As wide as it is tall (44 dp on TV, 40 on phones).
         val side = dp(if (tvLayout) 12 else 11)
         setPadding(side, 0, side, 0)
@@ -3262,8 +3263,7 @@ class PlayerActivity : ComponentActivity() {
         }
         row.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (!tvLayout) {
-            favButton.background = focusBackground(oval = true)
-            row.addView(favButton, pillParams())
+            // (8.56, "C": the star went into the glass group with the tools.)
             // Phones (8.42): the tools set once (Cast, Picture size, Sleep, Lock, Player) in one
             // rounded group at the top right, not loose buttons around the screen.
             val group = LinearLayout(this@PlayerActivity).apply {
@@ -3271,12 +3271,12 @@ class PlayerActivity : ComponentActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply {
                     cornerRadius = dp(100).toFloat()
-                    setColor(0x33FFFFFF)
-                    setStroke(dp(1), 0x1FFFFFFF)
+                    setColor(GLASS_REST)
+                    setStroke(dp(1), GLASS_REST_EDGE)
                 }
                 setPadding(dp(3), 0, dp(3), 0)
-                for (b in listOf(castButton) + settingIcons().take(2) + listOf(lockButton) + settingIcons().drop(2)) {
-                    b.background = focusBackground(oval = true)
+                for (b in listOf(favButton, castButton) + settingIcons().take(2) + listOf(lockButton) + settingIcons().drop(2)) {
+                    b.background = glassBackground(oval = true, rest = false)
                     addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
                 }
             }
@@ -3325,14 +3325,12 @@ class PlayerActivity : ComponentActivity() {
         val info = repo.state.value.settings.playerInfo
         val nowMs = System.currentTimeMillis()
         val text = SpannableStringBuilder()
-        if (tvLayout) {
-            // TV (8.55, "C"): the name in the app's serif, larger, as on the film's page.
+        run {
+            // "C" (TV 8.55, phones 8.56): the name in the app's serif, larger, as on the film's page.
             val serif = ResourcesCompat.getFont(this, R.font.lora_bold)
             text.append(ch.name)
             if (serif != null) text.setSpan(FontSpan(serif), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            text.setSpan(android.text.style.RelativeSizeSpan(1.3f), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        } else {
-            text.append(ch.name, StyleSpan(Typeface.BOLD), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(android.text.style.RelativeSizeSpan(if (tvLayout) 1.3f else 1.2f), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (PlayerInfo.CLOCK in info) appendClock(text, nowMs)
         if (ch.kind == Kind.LIVE) {
@@ -3427,7 +3425,7 @@ class PlayerActivity : ComponentActivity() {
         when (v) {
             is android.widget.ImageButton -> {
                 // TV (8.55): glass circles over the picture.
-                v.background = if (tvLayout) glassBackground(oval = true, rest = true) else focusBackground(oval = true)
+                v.background = glassBackground(oval = true, rest = true)
                 v.imageTintList = contentColors()
             }
             // The "10" rewind/forward buttons: the icon is the button's background, in a frame that
@@ -3438,7 +3436,7 @@ class PlayerActivity : ComponentActivity() {
                 // (TV, 8.55: glass at rest only on a frame of its own; when the parent is the whole middle row, seen
                 // on the TV emulator, a tinted oval lay behind every button.)
                 val frame = v.parent as? ViewGroup
-                frame?.background = if (tvLayout) glassBackground(oval = true, rest = frame?.childCount == 1) else focusBackground(oval = true)
+                frame?.background = glassBackground(oval = true, rest = frame?.childCount == 1)
             }
             is ViewGroup -> for (i in 0 until v.childCount) styleControls(v.getChildAt(i))
         }

@@ -176,6 +176,13 @@ object AppChanges {
                 "picture shows. In the player, all its tools sit in one bar at the bottom.",
             keys = listOf("Home"),
         ),
+        Change(
+            "8.56",
+            "The new look on your phone",
+            "The menu at the bottom floats as one see-through bar, and the search box opens from the magnifier at the top. " +
+                "The player's buttons are see-through too; the star is with the tools at the top.",
+            keys = listOf("Home"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

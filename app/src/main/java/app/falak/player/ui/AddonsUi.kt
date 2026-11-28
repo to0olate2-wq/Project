@@ -805,9 +805,9 @@ private fun PortalTabs(tab: AddonsModel.Tab, rest: Boolean = true, onTab: (Addon
 /** The portal's pages as a bar under the page (a phone held upright): where a playlist has Home, Live, Films, Series. */
 @Composable
 private fun PortalBar(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Ink2)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
-        Row(Modifier.fillMaxWidth().height(BAR_HEIGHT - 1.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 8.56 ("C"): the same floating glass bar as the playlist's.
+    FloatingBar(Modifier.fillMaxWidth()) {
+        run {
             AddonsModel.Tab.entries.forEach { t ->
                 val picture = navIcon(
                     when (t) {
@@ -821,7 +821,6 @@ private fun PortalBar(tab: AddonsModel.Tab, onTab: (AddonsModel.Tab) -> Unit) {
                     icon = { tint -> Icon(picture, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp)) },
                     label = t.label,
                     selected = t == tab,
-                    modifier = Modifier.weight(1f),
                 ) { onTab(t) }
             }
         }
