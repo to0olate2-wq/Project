@@ -169,6 +169,13 @@ object AppChanges {
                 "Settings → Look & start → Look switches back to Spotlight.",
             keys = listOf("Settings"),
         ),
+        Change(
+            "8.55",
+            "A new look on the TV",
+            "The menu is one bar of icons in the middle of the top, and the buttons are see-through, so more of the " +
+                "picture shows. In the player, all its tools sit in one bar at the bottom.",
+            keys = listOf("Home"),
+        ),
     )
 
     /** Versions before 8.27 didn't note which one was opened last: taken as this one. */

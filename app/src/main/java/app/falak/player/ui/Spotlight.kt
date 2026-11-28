@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.foundation.layout.Arrangement
@@ -136,8 +137,9 @@ fun CinemaPanel(
         if (ch != null) {
             // In the playlist (not something only remembered from Continue watching): it has a page and can go on a list.
             val known = vm.index.byId.containsKey(ch.id)
-            Row(Modifier.padding(start = 4.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PaperButton(
+            // 8.55 (the owner picked "C"): glass buttons; Play keeps its word, the others are round icons.
+            Row(Modifier.padding(start = 4.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassButton(
                     when {
                         ch.kind == Kind.LIVE -> "Watch"
                         ch.isSeriesFolder -> "Episodes"
@@ -150,12 +152,12 @@ fun CinemaPanel(
                     onPrimary(ch)
                 }
                 if (known && ch.kind == Kind.MOVIE) {
-                    GhostButton("More info", Icons.Outlined.Info) {
+                    GlassButton(null, Icons.Outlined.Info, label = "More info") {
                         tap?.invoke(HERO_ROW, ch.id)
                         vm.openDetails(ch)
                     }
                 }
-                if (known) GhostButton("My list") { vm.listSheetFor = ch }
+                if (known) GlassButton(null, Icons.Filled.FavoriteBorder, label = "My list") { vm.listSheetFor = ch }
             }
         }
     }

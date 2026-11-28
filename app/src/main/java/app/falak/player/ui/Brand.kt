@@ -242,6 +242,64 @@ fun PaperButton(text: String, icon: ImageVector? = null, modifier: Modifier = Mo
     }
 }
 
+/**
+ * A glass button (8.55, the owner picked "C"): see-through over the picture; under the remote the tint grows,
+ * the edge brightens and a soft ring shows outside it. [text] null = a round icon button with no words (its
+ * [label] is read out).
+ */
+@Composable
+fun GlassButton(
+    text: String?,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    label: String = text.orEmpty(),
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    // (8.48) Only while the focus moves; read in the draw phase.
+    val lit by androidx.compose.animation.core.animateFloatAsState(
+        if (focused) 1f else 0f,
+        androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
+        label = "glassButton",
+    )
+    val paper = Paper
+    Row(
+        modifier
+            .then(if (text == null) Modifier.size(46.dp) else Modifier.height(46.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .drawBehind {
+                val r = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+                drawRoundRect(paper.copy(alpha = GLASS_FILL + (GLASS_LIT_FILL - GLASS_FILL) * lit), cornerRadius = r)
+                drawRoundRect(
+                    paper.copy(alpha = GLASS_EDGE + (0.8f - GLASS_EDGE) * lit),
+                    cornerRadius = r,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke((1f + 0.5f * lit).dp.toPx()),
+                )
+                if (lit > 0.01f) {
+                    val out = 4.dp.toPx()
+                    drawRoundRect(
+                        paper.copy(alpha = 0.35f * lit),
+                        topLeft = Offset(-out, -out),
+                        size = androidx.compose.ui.geometry.Size(size.width + 2 * out, size.height + 2 * out),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2 + out),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()),
+                    )
+                }
+            }
+            .clip(RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (text == null) 0.dp else 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = if (text == null) label else null, tint = paper, modifier = Modifier.size(if (text == null) 22.dp else 18.dp))
+        if (text != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(text, color = paper, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        }
+    }
+}
+
 /** Secondary action: hairline outline. */
 @Composable
 fun GhostButton(text: String, icon: ImageVector? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {

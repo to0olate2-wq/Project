@@ -384,6 +384,21 @@ fun Modifier.notesSideways(): Modifier = onPreviewKeyEvent { e ->
     false
 }
 
+/**
+ * Glass (8.55, the owner picked "C"): a see-through surface, a light tint of the text colour with a hairline,
+ * so the picture behind shows through. Android can't blur what is behind a view on these TVs, so it is tint
+ * only. [GLASS_LIT_FILL] = the tint under the remote.
+ */
+internal const val GLASS_FILL = 0.10f
+internal const val GLASS_EDGE = 0.22f
+internal const val GLASS_LIT_FILL = 0.26f
+
+@Composable
+fun Modifier.glass(shape: Shape): Modifier {
+    val paper = Paper
+    return this.clip(shape).background(paper.copy(alpha = GLASS_FILL), shape).border(1.dp, paper.copy(alpha = GLASS_EDGE), shape)
+}
+
 /** How long the focus takes to show and to leave (TV, 8.48): quick, so the remote never waits for it. */
 internal const val FOCUS_IN_MS = 140
 internal const val FOCUS_OUT_MS = 110

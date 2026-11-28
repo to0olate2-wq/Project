@@ -93,68 +93,81 @@ fun TopMenu(vm: LibraryViewModel, state: AppState, modifier: Modifier = Modifier
     val recordingNow = rememberRecordings().any { it.state == RecState.RECORDING }
     val hasDownloads = !kids && rememberDownloads().isNotEmpty()
     val unread = if (kids) 0 else state.notices.count { !it.read }
+    // 8.55 (the owner picked "C, floating dock"): the logo on the left, every section and tool as an icon in
+    // one see-through capsule in the middle, the clock on the right. No names: the icons speak for themselves.
     Row(modifier.fillMaxWidth().height(TOP_MENU_HEIGHT).padding(horizontal = 28.dp), verticalAlignment = Alignment.CenterVertically) {
         BrandMark(28.dp)
-        Spacer(Modifier.width(12.dp))
-        // (Scrolls sideways if a narrow screen can't hold every section: none is ever out of reach.)
-        // 8.49: the remote resting on a section opens it; coming up from the page lands on the one open.
-        val requesters = remember(sections) { sections.associateWith { androidx.compose.ui.focus.FocusRequester() } }
-        val fallback = requesters[current] ?: androidx.compose.ui.focus.FocusRequester.Default
-        Row(
-            Modifier.weight(1f).focusRestorer(fallback).notesSideways().horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            // Icons (8.42, the owner: "just the logo is enough"): the name shows on the one the remote is on.
-            sections.forEach { s ->
-                val selected = screen == Screen.LIBRARY && !searching && s == current
-                // (Not while searching, 8.51: passing over the sections lost the search and its results.)
-                MenuTool(navIcon(s), navLabel(s), selected = selected, mark = true, requester = requesters.getValue(s), openOnFocus = !selected && !searching) {
-                    cinemaSearchOpen = false
-                    vm.openSection(s)
+        Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            Row(
+                Modifier
+                    .glass(RoundedCornerShape(50))
+                    // (Scrolls sideways if a narrow screen can't hold every icon: none is ever out of reach.)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 8.49: the remote resting on a section opens it; coming up from the page lands on the one open.
+                val requesters = remember(sections) { sections.associateWith { androidx.compose.ui.focus.FocusRequester() } }
+                val fallback = requesters[current] ?: androidx.compose.ui.focus.FocusRequester.Default
+                Row(
+                    Modifier.focusRestorer(fallback).notesSideways(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    sections.forEach { s ->
+                        val selected = screen == Screen.LIBRARY && !searching && s == current
+                        // (Not while searching, 8.51: passing over the sections lost the search and its results.)
+                        MenuTool(navIcon(s), navLabel(s), selected = selected, mark = true, requester = requesters.getValue(s), openOnFocus = !selected && !searching) {
+                            cinemaSearchOpen = false
+                            vm.openSection(s)
+                        }
+                    }
+                }
+                Box(Modifier.padding(horizontal = 8.dp).width(1.dp).height(22.dp).background(Paper.copy(alpha = 0.25f)))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    MenuTool(painterResource(R.drawable.ic_nav_search), "Search", selected = searching) {
+                        // On the lists: their own search (this section's). From any other page (8.48): everything.
+                        if (screen == Screen.LIBRARY) cinemaSearchOpen = true else vm.openSearch()
+                    }
+                    if (hasLive) MenuTool(painterResource(R.drawable.ic_nav_guide), "TV guide") { vm.screen = Screen.GUIDE }
+                    // Recordings and Add-ons: never in the Kids profile (as on the rail).
+                    if (hasLive && !kids) {
+                        MenuTool(painterResource(R.drawable.ic_pl_record), "Recordings", selected = screen == Screen.RECORDINGS, dot = recordingNow) {
+                            vm.screen = Screen.RECORDINGS
+                        }
+                    }
+                    if (Addons.enabled && !kids) {
+                        MenuTool(painterResource(R.drawable.ic_nav_addons), "Add-ons", selected = screen == Screen.ADDONS) {
+                            vm.addons.returnTo = null
+                            vm.screen = Screen.ADDONS
+                        }
+                    }
+                    if (hasDownloads) {
+                        MenuTool(rememberVectorPainter(downloadIcon()), "Downloads", selected = screen == Screen.DOWNLOADS) { vm.screen = Screen.DOWNLOADS }
+                    }
+                    if (!kids) {
+                        MenuTool(rememberVectorPainter(Icons.Outlined.Notifications), "What's new", selected = screen == Screen.NOTICES, dot = unread > 0) {
+                            vm.screen = Screen.NOTICES
+                        }
+                    }
+                    if (playlist != null) {
+                        MenuTool(rememberVectorPainter(Icons.Outlined.Refresh), "Update playlist", enabled = !vm.loading) { vm.open(playlist, refresh = true) }
+                    }
+                    MenuTool(painterResource(R.drawable.ic_nav_playlists), "Playlists") { vm.screen = Screen.PLAYLISTS }
+                    MenuTool(rememberVectorPainter(Icons.Outlined.Settings), "Settings", selected = screen in SETTINGS_SCREENS) { vm.screen = Screen.SETTINGS }
+                    if (vm.profilesWanted(state)) ProfileButton(state, kids) { vm.choosingProfile = true }
                 }
             }
-            Spacer(Modifier.width(8.dp))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            MenuTool(painterResource(R.drawable.ic_nav_search), "Search", selected = searching) {
-                // On the lists: their own search (this section's). From any other page (8.48): everything.
-                if (screen == Screen.LIBRARY) cinemaSearchOpen = true else vm.openSearch()
-            }
-            if (hasLive) MenuTool(painterResource(R.drawable.ic_nav_guide), "TV guide") { vm.screen = Screen.GUIDE }
-            // Recordings and Add-ons: never in the Kids profile (as on the rail).
-            if (hasLive && !kids) {
-                MenuTool(painterResource(R.drawable.ic_pl_record), "Recordings", selected = screen == Screen.RECORDINGS, dot = recordingNow) {
-                    vm.screen = Screen.RECORDINGS
-                }
-            }
-            if (Addons.enabled && !kids) {
-                MenuTool(painterResource(R.drawable.ic_nav_addons), "Add-ons", selected = screen == Screen.ADDONS) {
-                    vm.addons.returnTo = null
-                    vm.screen = Screen.ADDONS
-                }
-            }
-            if (hasDownloads) {
-                MenuTool(rememberVectorPainter(downloadIcon()), "Downloads", selected = screen == Screen.DOWNLOADS) { vm.screen = Screen.DOWNLOADS }
-            }
-            if (!kids) {
-                MenuTool(rememberVectorPainter(Icons.Outlined.Notifications), "What's new", selected = screen == Screen.NOTICES, dot = unread > 0) {
-                    vm.screen = Screen.NOTICES
-                }
-            }
-            if (playlist != null) {
-                MenuTool(rememberVectorPainter(Icons.Outlined.Refresh), "Update playlist", enabled = !vm.loading) { vm.open(playlist, refresh = true) }
-            }
-            MenuTool(painterResource(R.drawable.ic_nav_playlists), "Playlists") { vm.screen = Screen.PLAYLISTS }
-            MenuTool(rememberVectorPainter(Icons.Outlined.Settings), "Settings", selected = screen in SETTINGS_SCREENS) { vm.screen = Screen.SETTINGS }
-            if (vm.profilesWanted(state)) ProfileButton(state, kids) { vm.choosingProfile = true }
-            // (Settings, Recordings and the like show the time in their own heading.)
-            if (screen == Screen.LIBRARY) Clock(Modifier.padding(start = 8.dp))
-        }
+        // (Settings, Recordings and the like show the time in their own heading.)
+        if (screen == Screen.LIBRARY) Clock() else Spacer(Modifier.width(28.dp))
     }
 }
 
-/** One tool of the menu: its icon, and its name beside it while the remote is on it. */
+/**
+ * One icon of the menu (8.55: no name, the owner): a see-through circle grows round it while the remote is on
+ * it, and a small dot under it marks the section that is open. Its name is read out (contentDescription).
+ */
 @Composable
 private fun MenuTool(
     icon: Painter,
@@ -162,7 +175,7 @@ private fun MenuTool(
     selected: Boolean = false,
     dot: Boolean = false,
     enabled: Boolean = true,
-    /** A section (8.42): where you are also gets the short orange line under it. */
+    /** A section (8.42): where you are also gets the small orange dot under it. */
     mark: Boolean = false,
     requester: androidx.compose.ui.focus.FocusRequester? = null,
     /** A section not open yet (8.49): the remote resting on it opens it. */
@@ -170,71 +183,41 @@ private fun MenuTool(
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(50)
-    // (8.48) The pill fades in and the name slides out of it; only while the focus moves.
+    // (8.48) Only while the focus moves; read in the draw phase.
     val lit by androidx.compose.animation.core.animateFloatAsState(
         if (focused) 1f else 0f,
         androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
         label = "menuTool",
     )
-    val tint by androidx.compose.animation.animateColorAsState(
-        when {
-            focused -> Ink
-            selected -> Signal
-            !enabled -> Faint
-            else -> Paper
-        },
-        androidx.compose.animation.core.tween(if (focused) FOCUS_IN_MS else FOCUS_OUT_MS),
-        label = "menuToolTint",
-    )
     val paper = Paper
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-    Row(
+    val signal = Signal
+    val markIt = mark && selected
+    Box(
         Modifier
-            .height(36.dp)
+            .size(40.dp)
             .guideAnchor(label)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .openOnRest(openOnFocus && enabled && mark, onClick)
             .onFocusChanged { focused = it.isFocused }
-            .clip(shape)
-            .drawBehind { if (lit > 0.01f) drawRect(paper.copy(alpha = lit)) }
-            .semantics { this.selected = selected }
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(20.dp),
-            )
-            if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(7.dp).background(Signal, CircleShape))
-        }
-        androidx.compose.animation.AnimatedVisibility(
-            visible = focused,
-            enter = androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(FOCUS_IN_MS)) +
-                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(FOCUS_IN_MS)),
-            exit = androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(FOCUS_OUT_MS)) +
-                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(FOCUS_OUT_MS)),
-        ) {
-            Row {
-                Spacer(Modifier.width(6.dp))
-                Text(label, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink, maxLines = 1)
+            .drawBehind {
+                if (lit > 0.01f) {
+                    drawCircle(paper.copy(alpha = GLASS_LIT_FILL * lit))
+                    drawCircle(paper.copy(alpha = 0.8f * lit), style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                }
+                if (markIt) drawCircle(signal, radius = 2.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height - 4.dp.toPx()))
             }
-        }
-    }
-    if (mark) {
-        Box(
-            Modifier
-                .padding(top = 2.dp)
-                .width(16.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(if (selected && !focused) Signal else Color.Transparent),
+            .clip(CircleShape)
+            .semantics { this.selected = selected }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (enabled) paper.copy(alpha = if (focused || selected) 1f else 0.82f) else Faint,
+            modifier = Modifier.size(20.dp),
         )
-    }
+        if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = (-7).dp, y = 7.dp).size(7.dp).background(Signal, CircleShape))
     }
 }
 
