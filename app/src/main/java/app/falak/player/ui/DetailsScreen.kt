@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import app.falak.player.data.done
 import app.falak.player.data.Kind
 import android.content.Intent
 import android.net.Uri
@@ -69,6 +70,9 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
     val info = vm.vodInfo
     val me = state.mine(p.id)
     val watched = state.progress[progressKey(me, ch.id)]
+    // A film watched to the end (8.54, seen on the TV emulator: "Resume 0:40" on a 40 s film) plays from the
+    // start, as the player does (Watch.done): the button says Play then.
+    val resume = watched?.takeUnless { it.done }
     val isFav = ch.id in state.favorites[me].orEmpty() || state.favLists[me].orEmpty().any { ch.id in it.ids }
     val context = LocalContext.current
     val playFocus = remember { FocusRequester() }
@@ -117,11 +121,11 @@ fun DetailsScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                 ) {
                     ButtonRow(stage.tv) {
                         PaperButton(
-                            if (watched != null) "Resume ${formatClock(watched.pos)}" else "Play",
+                            if (resume != null) "Resume ${formatClock(resume.pos)}" else "Play",
                             Icons.Filled.PlayArrow,
                             Modifier.focusRequester(playFocus),
                         ) { onPlay(listOf(ch), ch) }
-                        if (watched != null) {
+                        if (resume != null) {
                             GhostButton("Start over", Icons.Filled.Refresh) { vm.clearProgress(ch); onPlay(listOf(ch), ch) }
                         }
                         info?.trailer?.takeIf { it.isNotBlank() }?.let { trailer ->
@@ -229,7 +233,12 @@ internal fun formatClock(ms: Long): String {
 @Composable
 internal fun ButtonRow(tv: Boolean, content: @Composable () -> Unit) {
     if (tv) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+        // Room inside the scroll for the focus ring, which grows past the button (8.54: Play's ring was cut
+        // on its left); the offset keeps the buttons where they were.
+        Row(
+            Modifier.offset(x = (-8).dp).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) { content() }
     } else {
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),

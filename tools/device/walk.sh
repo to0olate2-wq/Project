@@ -52,7 +52,8 @@ if [ "$FORM" = tv ]; then
   for page in live films series; do
     key KEYCODE_DPAD_RIGHT; sleep 3; shot "$page"
     gfx_start; keys 6 KEYCODE_DPAD_DOWN 0.5; keys 8 KEYCODE_DPAD_RIGHT 0.3; shot "$page-scrolled"; keys 8 KEYCODE_DPAD_LEFT 0.3; keys 6 KEYCODE_DPAD_UP 0.5; gfx_end "$page"
-    keys 2 KEYCODE_DPAD_UP 0.5
+    # Up past the chips and the panel to the menu (extra presses in the menu do nothing).
+    keys 5 KEYCODE_DPAD_UP 0.4
   done
   alive
   # A film: back to Films, down to a poster, open it, play it.
@@ -97,7 +98,7 @@ else
   done
   alive
   # A film: tap a poster, play it.
-  tap Films; sleep 3; tap "Search"; sleep 2; adb shell input text "matrix"; sleep 4; shot search-films; key KEYCODE_BACK; sleep 1; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
+  tap Films; sleep 3; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 4; shot search-films; key KEYCODE_BACK; sleep 1; tap "The Matrix"; sleep 4; shot film-page; dumpui film-page
   tap Play || tap Resume; sleep 10; shot film-playing
   adb shell input tap $((SW / 2)) $((SH / 2)); sleep 1.5; shot film-controls; dumpui film-controls
   key KEYCODE_BACK; sleep 3; key KEYCODE_BACK; sleep 2; shot after-film
@@ -108,7 +109,7 @@ else
   key KEYCODE_BACK; sleep 3; shot after-live
   alive
   # Search, More, Settings.
-  tap Search; sleep 2; adb shell input text "matrix"; sleep 3; shot search; key KEYCODE_BACK; sleep 1; key KEYCODE_BACK; sleep 1
+  tap Home; sleep 2; python3 "$DIR/ui.py" field | tee -a "$OUT/walk.txt"; sleep 2; adb shell input text "matrix"; sleep 3; shot search; key KEYCODE_BACK; sleep 1; key KEYCODE_BACK; sleep 1
   tap More; sleep 2; shot more; dumpui more
   tap Settings; sleep 2; shot settings
   gfx_start; for _ in 1 2 3; do swipe $((SW / 2)) $((SH * 3 / 4)) $((SW / 2)) $((SH / 4)) 350; sleep 0.8; done; gfx_end settings

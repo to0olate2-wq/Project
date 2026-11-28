@@ -72,7 +72,14 @@ internal fun TitleStage(
             full = tv,
             modifier = Modifier.fillMaxWidth().height(art),
         )
-        content(TitleStageInfo(tv, portrait, art))
+        // (8.54) Seen on the TV emulator: Compose on a TV moves what the remote is on to 30% of the list's
+        // height, so Play (inside the page's first item) scrolled the name and kicker off the top. Here the
+        // page moves only as far as it must.
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides PlainScroll,
+        ) {
+            content(TitleStageInfo(tv, portrait, art))
+        }
         // (Over the page, so it is there however far the page has scrolled.)
         IconButton(onClick = onBack, modifier = Modifier.padding(start = pageMargin() - 12.dp, top = 6.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper)

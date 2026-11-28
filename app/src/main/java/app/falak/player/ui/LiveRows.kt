@@ -198,6 +198,9 @@ private fun GroupRow(
     val shown = remember(all, closed, dead) {
         if (closed) emptyList() else all.asSequence().filterNot { isDividerName(it.name) || it.id in dead }.take(ROW_MAX).toList()
     }
+    // (8.54, seen on both emulators) A group of nothing but the provider's divider lines ("##### UK #####"
+    // as a group of its own): no row of a lone "See all" tile. The list of all channels still has them.
+    if (!closed && shown.isEmpty()) return
     Shelf(
         if (locked) "🔒 $title" else title,
         onSeeAll = { onGroup(name) },

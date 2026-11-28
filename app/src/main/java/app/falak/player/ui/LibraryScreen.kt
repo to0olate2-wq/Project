@@ -448,7 +448,16 @@ fun LibraryScreen(vm: LibraryViewModel, state: AppState, onPlay: (List<Channel>,
                                 LiveRows(
                                     vm, groupMap, liveTree, visibleTotal, favLive, mineOften, latelyGroups, locked, deadIds,
                                     // A TV names the channel watched last, then your favorites, until the remote is on a card.
-                                    featured = remember(lastWatched, mineFav) { (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5) },
+                                    featured = remember(lastWatched, mineFav, groupMap, locked, deadIds) {
+                                        (listOfNotNull(lastWatched) + mineFav).distinctBy { it.id }.take(5).ifEmpty {
+                                            // (8.54, seen on the TV emulator) Nothing watched yet and no favorites: the
+                                            // first channels, not an empty space above the rows.
+                                            groupMap.entries.asSequence().filter { it.key !in locked }
+                                                .flatMap { it.value.asSequence() }
+                                                .filter { !isDividerName(it.name) && it.id !in deadIds }
+                                                .take(5).toList()
+                                        }
+                                    },
                                     epg = epg, now = now,
                                     onPlay = openFrom,
                                     onGroup = selectGroup,
